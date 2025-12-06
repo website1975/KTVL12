@@ -16,14 +16,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [grade, setGrade] = useState<Grade>('10');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(username, password);
+    await login(username, password);
   };
 
-  const login = (u: string, p: string) => {
+  const login = async (u: string, p: string) => {
     setError('');
-    const user = findUser(u);
+    const user = await findUser(u);
     if (user && user.password === p) {
       onLogin(user);
     } else {
@@ -31,10 +31,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (findUser(username)) {
+    const existingUser = await findUser(username);
+    if (existingUser) {
       setError('Tên đăng nhập đã tồn tại.');
       return;
     }
@@ -46,7 +47,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       fullName,
       grade,
     };
-    saveUser(newUser);
+    await saveUser(newUser);
     onLogin(newUser);
   };
 
@@ -71,7 +72,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        <form onSubmit={isLogin ? handleSubmit : handleRegister} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
              <div>
              <label className="block text-sm font-medium text-gray-700 mb-1">Họ và Tên</label>
