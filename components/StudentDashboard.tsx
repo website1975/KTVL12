@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, Quiz, Result } from '../types';
-import { getQuizzes, hasStudentTakenQuiz, getStudentStats, getResults } from '../services/storage';
+import { getQuizzes, getStudentStats, getResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import { Clock, PlayCircle, CheckCircle, BarChart2, BookOpen, Trophy, History, XCircle, RotateCcw } from 'lucide-react';
 import { format, parseISO, isBefore, isAfter, addMinutes } from 'date-fns';
@@ -14,6 +13,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [stats, setStats] = useState({ totalQuizzes: 0, avgScore: 0, totalSeconds: 0 });
+  const [results, setResults] = useState<Result[]>([]);
   
   // History Modal State
   const [historyQuiz, setHistoryQuiz] = useState<{quiz: Quiz, results: Result[]} | null>(null);
@@ -22,14 +22,20 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     refreshData();
   }, [user.grade, activeQuiz]); // Refresh when activeQuiz closes
 
-  const refreshData = () => {
+  const refreshData = async () => {
     // Filter quizzes by user grade AND published status
-    const allQuizzes = getQuizzes();
+    const allQuizzes = await getQuizzes();
     const relevantQuizzes = allQuizzes.filter(q => q.grade === user.grade && q.isPublished === true);
     setQuizzes(relevantQuizzes);
 
     // Get stats
-    setStats(getStudentStats(user.id));
+    const statsData = await getStudentStats(user.id);
+    setStats(statsData);
+
+    // Get results for calculations
+    const allResults = await getResults();
+    const userResults = allResults.filter(r => r.studentId === user.id);
+    setResults(userResults);
   };
 
   const handleStartQuiz = (quiz: Quiz) => {
@@ -37,9 +43,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   };
   
   const handleViewHistory = (quiz: Quiz) => {
-    const allResults = getResults();
-    const quizResults = allResults
-      .filter(r => r.studentId === user.id && r.quizId === quiz.id)
+    // Filter from local results
+    const quizResults = results
+      .filter(r => r.quizId === quiz.id)
       .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
     
     setHistoryQuiz({ quiz, results: quizResults });
@@ -69,8 +75,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   
   // Helper to get stats for a specific practice quiz
   const getPracticeStats = (quizId: string) => {
-      const allResults = getResults();
-      const attempts = allResults.filter(r => r.studentId === user.id && r.quizId === quizId);
+      const attempts = results.filter(r => r.quizId === quizId);
       if (attempts.length === 0) return null;
       
       const maxScore = Math.max(...attempts.map(r => r.score));
@@ -81,7 +86,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     const now = new Date();
     const start = parseISO(quiz.startTime!);
     const end = addMinutes(start, quiz.durationMinutes);
-    const taken = hasStudentTakenQuiz(user.id, quiz.id);
+    const taken = results.some(r => r.quizId === quiz.id);
 
     if (taken) return { status: 'completed', label: 'Đã Thi', color: 'text-green-600 bg-green-100' };
     if (isBefore(now, start)) return { status: 'upcoming', label: 'Chưa mở', color: 'text-yellow-600 bg-yellow-100' };
