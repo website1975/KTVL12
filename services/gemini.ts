@@ -26,6 +26,12 @@ export const generateQuestions = async (
     Tạo ${count} câu hỏi trắc nghiệm khách quan (Phần I - 4 lựa chọn) cho lớp ${grade}, chủ đề "${topic}".
     Độ khó: ${difficulty}. Ngôn ngữ: Tiếng Việt.
     Định dạng JSON. Có điểm số mặc định là 0.25.
+    
+    Yêu cầu đặc biệt về Lời Giải Chi Tiết (solution):
+    - Cung cấp lời giải chi tiết cho từng câu.
+    - Cấu trúc lời giải nên gồm: "Phương pháp/Công thức:" sau đó đến "Lời giải chi tiết:".
+    - Sử dụng Latex cho công thức toán học ($...$).
+    
     Lưu ý: Nếu có công thức Toán học, hãy dùng Latex và đặt trong dấu $ (ví dụ $x^2$).
     QUAN TRỌNG: Hãy escape dấu backslash trong JSON string (ví dụ dùng \\\\frac thay vì \\frac).
   `;
@@ -43,9 +49,10 @@ export const generateQuestions = async (
             properties: {
               question_text: { type: Type.STRING },
               options: { type: Type.ARRAY, items: { type: Type.STRING } },
-              correct_answer: { type: Type.STRING }
+              correct_answer: { type: Type.STRING },
+              solution: { type: Type.STRING, description: "Lời giải chi tiết, bao gồm phương pháp và công thức." }
             },
-            required: ["question_text", "options", "correct_answer"]
+            required: ["question_text", "options", "correct_answer", "solution"]
           }
         }
       }
@@ -59,6 +66,7 @@ export const generateQuestions = async (
       text: item.question_text,
       options: item.options,
       correctAnswer: item.correct_answer,
+      solution: item.solution,
       points: 0.25 // Default point for Part I
     }));
 
@@ -85,6 +93,11 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
     3. PHẦN III: Trả lời ngắn. (Type: 'short')
        - Học sinh điền số hoặc văn bản ngắn.
 
+    Yêu cầu về Lời Giải Chi Tiết (solution):
+    - Trích xuất hoặc tự sinh ra lời giải chi tiết cho mỗi câu hỏi.
+    - Nếu đề bài trong PDF không có lời giải, hãy TỰ GIẢI giúp giáo viên.
+    - Ghi rõ "Phương pháp:" và "Giải:".
+
     Yêu cầu về định dạng Toán học (LaTeX):
     - Hãy giữ nguyên công thức toán học dưới dạng LaTeX.
     - Bao quanh công thức bằng dấu $. Ví dụ: $x^2 + 2x + 1 = 0$.
@@ -94,6 +107,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
     Yêu cầu Output JSON Strict:
     - field 'type': 'mcq' | 'group-tf' | 'short'
     - field 'points': Mặc định (Phần I: 0.25, Phần II: 1.0, Phần III: 0.5)
+    - field 'solution': Chuỗi text chứa lời giải chi tiết.
     - Nếu là 'group-tf': field 'subQuestions' là mảng 4 phần tử {text: string, correctAnswer: 'True'|'False'}
   `;
 
@@ -116,6 +130,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
               type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
               text: { type: Type.STRING },
               points: { type: Type.NUMBER },
+              solution: { type: Type.STRING },
               options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
               correctAnswer: { type: Type.STRING, nullable: true },
               subQuestions: {
@@ -143,6 +158,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         type: item.type,
         text: item.text,
         points: item.points,
+        solution: item.solution || "Đang cập nhật lời giải...",
         options: item.options || undefined,
         correctAnswer: item.correctAnswer || undefined,
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
