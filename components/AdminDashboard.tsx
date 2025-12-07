@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion } fr
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -180,7 +180,8 @@ const AdminDashboard: React.FC = () => {
       text: 'Câu hỏi mới... ($ x^2 $)',
       points: 0.25,
       options: ['Lựa chọn A', 'Lựa chọn B', 'Lựa chọn C', 'Lựa chọn D'],
-      correctAnswer: 'Lựa chọn A'
+      correctAnswer: 'Lựa chọn A',
+      solution: 'Phương pháp: \n...\nGiải: \n...'
     };
     setQuestions([...questions, q]);
   };
@@ -287,7 +288,6 @@ const AdminDashboard: React.FC = () => {
     return `${m}p ${s}s`;
   };
 
-  // Helper to filter quizzes for the list view
   const getListViewQuizzes = () => {
     let filtered = quizzes;
     if (quizFilterGrade !== 'all') {
@@ -319,7 +319,6 @@ const AdminDashboard: React.FC = () => {
 
       {activeTab === 'list' && (
         <div className="space-y-6">
-          {/* Grade Filter */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap items-center gap-3">
              <span className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={18}/> Lọc theo khối:</span>
              <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -407,10 +406,8 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Include other tabs (Import, Create, Results) from previous version, same structure but using updated async handlers */}
       {activeTab === 'create' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           {/* CREATE UI (REUSED) */}
            <div className="lg:col-span-2 space-y-6">
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                <h3 className="text-xl font-semibold mb-4 text-gray-800">{editingId ? 'Chỉnh Sửa Đề Thi' : 'Thông Tin Đề Thi Mới'}</h3>
@@ -427,7 +424,7 @@ const AdminDashboard: React.FC = () => {
                  </div>
                </div>
              </div>
-             {/* QUESTIONS LIST */}
+             
              <div className="space-y-4">
                {questions.map((q, idx) => (
                   <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -436,20 +433,37 @@ const AdminDashboard: React.FC = () => {
                          <div className="flex items-center gap-4"><div className="flex items-center gap-1"><span className="text-sm text-gray-500">Điểm:</span><input type="text" inputMode="decimal" className="w-16 border rounded p-1 text-center font-bold text-gray-700" value={q.points} onChange={(e) => { let val = e.target.value.replace(/[^0-9.,]/g, ''); val = val.replace(',', '.'); updateQuestion(idx, 'points', val); }} /></div><button onClick={() => { const newQs = [...questions]; newQs.splice(idx, 1); setQuestions(newQs); }} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-full"><Trash2 size={16}/></button></div>
                       </div>
                       <div className="space-y-3">
-                         <textarea className="w-full border rounded p-3 font-medium focus:ring-2 focus:ring-blue-100 outline-none font-mono text-sm" value={q.text} rows={3} onChange={e => updateQuestion(idx, 'text', e.target.value)} placeholder="Nhập nội dung..."/>
+                         <textarea className="w-full border rounded p-3 font-medium focus:ring-2 focus:ring-blue-100 outline-none font-mono text-sm" value={q.text} rows={3} onChange={e => updateQuestion(idx, 'text', e.target.value)} placeholder="Nhập nội dung câu hỏi..."/>
                          <div className="mt-1 p-2 bg-gray-50 border rounded text-sm text-gray-700"><span className="text-xs font-bold text-blue-500 uppercase mr-2">Xem trước:</span><LatexText text={q.text} /></div>
-                         {/* Option rendering logic omitted for brevity, same as previous */}
-                         {/* ... (Giữ nguyên logic render option như cũ) ... */}
+                         
                          {q.type === 'mcq' && (<div className="grid grid-cols-2 gap-3">{q.options?.map((opt, optIdx) => <div key={optIdx} className="flex gap-1 border p-2 rounded bg-gray-50"><input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} /><input className="bg-transparent w-full text-sm outline-none" value={opt} onChange={e => { const newOpts = [...(q.options||[])]; newOpts[optIdx] = e.target.value; updateQuestion(idx, 'options', newOpts); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', e.target.value); }} /></div>)}</div>)}
                          {q.type === 'short' && (<div className="flex items-center gap-3"><label>Đáp án:</label><input type="text" className="border p-2 rounded bg-green-50 font-bold" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)}/></div>)}
                          {q.type === 'group-tf' && (q.subQuestions?.map((sq, sqIdx) => <div key={sqIdx} className="flex gap-2 bg-gray-50 p-2 rounded border"><input className="flex-1 bg-transparent" value={sq.text} onChange={e=>updateSubQuestion(idx,sqIdx,'text',e.target.value)} /><button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded ${sq.correctAnswer==='True'?'bg-green-500 text-white':'text-gray-400'}`}>Đ</button><button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded ${sq.correctAnswer==='False'?'bg-red-500 text-white':'text-gray-400'}`}>S</button></div>))}
+
+                         {/* SOLUTION FIELD (NEW) */}
+                         <div className="mt-4 pt-4 border-t border-dashed">
+                             <div className="flex items-center gap-2 mb-2 text-yellow-600 font-bold text-sm">
+                                 <Lightbulb size={16} /> Lời giải / Gợi ý chi tiết (Hiển thị sau khi thi):
+                             </div>
+                             <textarea 
+                                className="w-full border border-yellow-200 bg-yellow-50 rounded p-3 text-sm focus:ring-2 focus:ring-yellow-200 outline-none"
+                                rows={4}
+                                placeholder="Nhập gợi ý phương pháp, công thức, lời giải chi tiết (hỗ trợ Latex $...$)..."
+                                value={q.solution || ''}
+                                onChange={e => updateQuestion(idx, 'solution', e.target.value)}
+                             />
+                             <div className="mt-1 p-2 bg-white border border-gray-100 rounded text-sm text-gray-600">
+                                <span className="text-xs font-bold text-gray-400 uppercase mr-2">Preview Lời giải:</span>
+                                <LatexText text={q.solution || 'Chưa có lời giải'} />
+                             </div>
+                         </div>
                       </div>
                   </div>
                ))}
                <button onClick={addManualQuestion} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-blue-500 transition">+ Thêm câu hỏi mới</button>
              </div>
            </div>
-           {/* SIDEBAR TOOLS */}
+           
            <div className="space-y-6">
                <div className="bg-white p-6 rounded-xl border border-gray-200 sticky top-6">
                   <div className="flex justify-between items-center mb-4 pb-4 border-b"><span className="text-gray-600">Tổng số câu:</span><span className="font-bold text-xl">{questions.length}</span></div>
@@ -462,7 +476,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* IMPORT TAB (REUSED) */}
+      {/* IMPORT TAB */}
       {activeTab === 'import' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -471,13 +485,13 @@ const AdminDashboard: React.FC = () => {
                       <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="pdf-upload" />
                       <label htmlFor="pdf-upload" className="cursor-pointer block"><Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" /><span className="block font-medium text-gray-700">{file ? file.name : 'Click để chọn file PDF'}</span></label>
                   </div>
-                  <div className="mt-6"><button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-50">{isProcessing ? 'Đang phân tích cấu trúc...' : 'Trích xuất đề thi'}{isProcessing && <Sparkles className="animate-spin" size={16} />}</button></div>
+                  <div className="mt-6"><button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-50">{isProcessing ? 'Đang phân tích cấu trúc & lời giải...' : 'Trích xuất đề thi'}{isProcessing && <Sparkles className="animate-spin" size={16} />}</button></div>
               </div>
               <div className="bg-gray-50 p-6 rounded-xl border border-gray-200"><h3 className="font-bold mb-4">Mẫu file PDF hỗ trợ</h3><div className="text-xs text-gray-700 font-mono bg-white p-4 rounded border space-y-2"><p className="font-bold text-blue-600">PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN</p><p>Câu 1: $x^2 - 1 = 0$ có nghiệm là?</p><p>A. 1  B. -1  C. ±1  D. 0</p><p>Đáp án: C</p><hr/><p className="font-bold text-blue-600">PHẦN II. TRẮC NGHIỆM ĐÚNG SAI</p><p>Câu 2: Cho hàm số y = f(x)...</p><p>a) Hàm số đồng biến... (Đúng)</p><p>b) Giá trị cực đại là 5... (Sai)</p><hr/><p className="font-bold text-blue-600">PHẦN III. TRẢ LỜI NGẮN</p><p>Câu 3: Có bao nhiêu số nguyên...?</p><p>Đáp án: 12</p></div></div>
           </div>
       )}
       
-      {/* PREVIEW MODAL (REUSED) */}
+      {/* PREVIEW MODAL */}
       {previewQuiz && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -497,7 +511,7 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="mb-2"><LatexText text={q.text}/></div>
                             {q.imageUrl && <img src={q.imageUrl} alt="img" className="max-h-40 rounded border mb-2"/>}
-                            {/* Render Options based on type */}
+                            {/* Render Options */}
                             {q.type === 'mcq' && (
                                 <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
                                     {q.options?.map((opt, i) => (
@@ -524,6 +538,14 @@ const AdminDashboard: React.FC = () => {
                                     Đáp án: {q.correctAnswer}
                                 </div>
                             )}
+                            
+                            {/* SOLUTION PREVIEW */}
+                            {q.solution && (
+                                <div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-sm">
+                                    <div className="font-bold text-yellow-700 mb-1 flex items-center gap-1"><Lightbulb size={12}/> Lời giải:</div>
+                                    <div className="text-gray-700 whitespace-pre-wrap leading-relaxed"><LatexText text={q.solution}/></div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -534,7 +556,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
       
-      {/* HISTORY DETAILS MODAL (REUSED) */}
+      {/* HISTORY & RESULTS (No changes needed here) */}
       {viewHistoryData && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
@@ -579,9 +601,10 @@ const AdminDashboard: React.FC = () => {
           </div>
       )}
       
-      {/* RESULT TAB (REUSED) */}
       {activeTab === 'results' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+           {/* ... (Existing Results Table code) ... */}
+           {/* Giữ nguyên phần render bảng kết quả */}
            <div className="p-4 border-b bg-gray-50 space-y-4">
               <div className="flex items-center gap-2 text-gray-700 font-medium">
                   <Filter size={18} />
