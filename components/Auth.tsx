@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { User, Role, Grade } from '../types';
 import { findUser, saveUser } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { BookOpen, UserPlus, LogIn, GraduationCap, School } from 'lucide-react';
+import { BookOpen, UserPlus, LogIn } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -29,8 +29,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     try {
       let user = await findUser(u);
       
-      // --- LOGIC TỰ ĐỘNG KHỞI TẠO (AUTO-SEED) ---
-      // Nếu đăng nhập đúng tài khoản demo mà chưa có trong DB, tự động tạo luôn.
+      // --- LOGIC TỰ ĐỘNG KHỞI TẠO ADMIN (Safety Net) ---
+      // Chỉ giữ lại cho Admin để tránh trường hợp mất Database không vào được.
       if (!user && u === 'admin' && p === '123') {
           console.log("Khởi tạo tài khoản Admin lần đầu...");
           user = {
@@ -42,19 +42,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           };
           await saveUser(user);
       }
-
-      if (!user && u === 'hs10' && p === '123') {
-           console.log("Khởi tạo tài khoản HS Demo lần đầu...");
-           user = {
-              id: uuidv4(),
-              username: 'hs10',
-              password: '123',
-              role: 'student',
-              fullName: 'Học Sinh Demo',
-              grade: '10'
-          };
-          await saveUser(user);
-      }
+      // Đã xóa logic tự tạo Học sinh Demo (hs10)
       // ------------------------------------------
 
       if (user && user.password === p) {
@@ -207,28 +195,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </button>
         </div>
 
-        {/* Chỉ hiện nút Demo khi đang ở màn hình Đăng Nhập để đỡ rối */}
-        {isLogin && (
-          <div className="mt-6 pt-4 border-t border-gray-100 bg-gray-50 -mx-8 -mb-8 px-8 pb-8 rounded-b-2xl">
-             <p className="text-xs text-gray-400 text-center mb-3 uppercase font-bold tracking-wider">Hoặc đăng nhập nhanh (Demo)</p>
-             <div className="grid grid-cols-2 gap-3">
-               <button 
-                type="button"
-                onClick={() => login('admin', '123')}
-                className="flex items-center justify-center gap-2 py-2 px-3 bg-white border border-gray-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-50 transition shadow-sm"
-               >
-                 <GraduationCap size={16}/> Giáo viên
-               </button>
-               <button 
-                type="button"
-                onClick={() => login('hs10', '123')}
-                className="flex items-center justify-center gap-2 py-2 px-3 bg-white border border-gray-200 text-green-700 rounded-lg text-sm font-medium hover:bg-green-50 transition shadow-sm"
-               >
-                 <School size={16}/> Học sinh
-               </button>
-             </div>
-          </div>
-        )}
+        {/* Đã xóa phần nút bấm Demo theo yêu cầu */}
       </div>
     </div>
   );
