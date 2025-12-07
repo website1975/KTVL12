@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogOut, GraduationCap, Key, XCircle } from 'lucide-react';
-import { changePassword } from '../services/storage';
+import { LogOut, GraduationCap, Key, XCircle, Database } from 'lucide-react';
+import { changePassword, isDatabaseConnected } from '../services/storage';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +15,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const [newPassInput, setNewPassInput] = useState('');
   const [msg, setMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Kiểm tra kết nối Database ngay khi render
+  const isOnline = isDatabaseConnected();
 
   const handleChangePass = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -88,8 +91,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         {children}
       </main>
       <footer className="bg-white border-t mt-auto py-6">
-         <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm">
-            © 2024 EduQuiz VN. Hệ thống thi trắc nghiệm thông minh.
+         <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm flex flex-col items-center gap-2">
+            <span>© 2024 EduQuiz VN. Hệ thống thi trắc nghiệm thông minh.</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-600 animate-pulse' : 'bg-red-600'}`}></div>
+                {isOnline ? 'Đã kết nối Database (Online)' : 'Mất kết nối Database (Vui lòng nhập Key trên Vercel)'}
+            </div>
          </div>
       </footer>
 
