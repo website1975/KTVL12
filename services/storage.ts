@@ -61,7 +61,8 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
     return [];
   }
   const quizzes = data.map((row: any) => row.data as Quiz);
-  return quizzes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // FIX: Thêm kiểu dữ liệu rõ ràng cho a và b
+  return quizzes.sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
@@ -135,9 +136,13 @@ export const getStudentStats = async (studentId: string) => {
 
   const results = data.map((row: any) => row.data as Result);
   const totalQuizzes = results.length;
-  const totalScore = results.reduce((sum, r) => sum + r.score, 0);
+  
+  // FIX: Thêm kiểu dữ liệu rõ ràng cho sum và r
+  const totalScore = results.reduce((sum: number, r: Result) => sum + r.score, 0);
   const avgScore = totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0;
-  const totalSeconds = results.reduce((sum, r) => sum + (r.durationSeconds || 0), 0);
+  
+  // FIX: Thêm kiểu dữ liệu rõ ràng cho sum và r
+  const totalSeconds = results.reduce((sum: number, r: Result) => sum + (r.durationSeconds || 0), 0);
 
   return {
     totalQuizzes,
