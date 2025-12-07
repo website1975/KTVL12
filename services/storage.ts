@@ -1,18 +1,27 @@
+/// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result } from '../types';
 
-// Sử dụng process.env thay vì import.meta.env để đảm bảo tính tương thích
-// Các giá trị này đã được define cứng trong vite.config.ts
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_KEY || '';
+// Lấy biến môi trường theo chuẩn Vite
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 
-// Tạo client Supabase
-// Nếu chưa có key, app vẫn chạy nhưng các hàm gọi DB sẽ lỗi (cần xử lý try/catch)
-export const supabase = createClient(supabaseUrl, supabaseKey);
+let supabase: any = null;
+
+// CHỈ khởi tạo nếu có đầy đủ URL và Key để tránh lỗi màn hình trắng
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+  } catch (e) {
+    console.error("Lỗi khởi tạo Supabase (Key không hợp lệ):", e);
+  }
+} else {
+  console.warn("Chưa cấu hình Supabase URL/Key. Ứng dụng sẽ chạy nhưng không lưu được dữ liệu.");
+}
 
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
-  if (!supabaseUrl) return [];
+  if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
   if (error) {
     console.error('Lỗi lấy Users:', error);
@@ -22,7 +31,7 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 export const saveUser = async (user: User): Promise<void> => {
-  if (!supabaseUrl) return;
+  if (!supabase) return;
   const { error } = await supabase.from('users').insert({
     id: user.id,
     username: user.username,
@@ -32,7 +41,7 @@ export const saveUser = async (user: User): Promise<void> => {
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
-  if (!supabaseUrl) return undefined;
+  if (!supabase) return undefined;
   const { data, error } = await supabase
     .from('users')
     .select('data')
@@ -45,7 +54,7 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 
 // --- Quizzes ---
 export const getQuizzes = async (): Promise<Quiz[]> => {
-  if (!supabaseUrl) return [];
+  if (!supabase) return [];
   const { data, error } = await supabase.from('quizzes').select('data');
   if (error) {
     console.error('Lỗi lấy Quizzes:', error);
@@ -56,7 +65,7 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
-  if (!supabaseUrl) {
+  if (!supabase) {
       alert("Chưa kết nối Database! Vui lòng kiểm tra file .env");
       return;
   }
@@ -69,7 +78,7 @@ export const saveQuiz = async (quiz: Quiz): Promise<void> => {
 };
 
 export const updateQuiz = async (updatedQuiz: Quiz): Promise<void> => {
-  if (!supabaseUrl) return;
+  if (!supabase) return;
   const { error } = await supabase
     .from('quizzes')
     .update({ data: updatedQuiz, grade: updatedQuiz.grade })
@@ -78,21 +87,21 @@ export const updateQuiz = async (updatedQuiz: Quiz): Promise<void> => {
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
-  if (!supabaseUrl) return;
+  if (!supabase) return;
   const { error } = await supabase.from('quizzes').delete().eq('id', id);
   if (error) console.error('Lỗi xóa Quiz:', error);
 };
 
 // --- Results ---
 export const getResults = async (): Promise<Result[]> => {
-  if (!supabaseUrl) return [];
+  if (!supabase) return [];
   const { data, error } = await supabase.from('results').select('data');
   if (error) return [];
   return data.map((row: any) => row.data as Result);
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
-  if (!supabaseUrl) return;
+  if (!supabase) return;
   const { error } = await supabase.from('results').insert({
     id: result.id,
     quiz_id: result.quizId,
@@ -103,7 +112,7 @@ export const saveResult = async (result: Result): Promise<void> => {
 };
 
 export const hasStudentTakenQuiz = async (studentId: string, quizId: string): Promise<boolean> => {
-  if (!supabaseUrl) return false;
+  if (!supabase) return false;
   const { count, error } = await supabase
     .from('results')
     .select('*', { count: 'exact', head: true })
@@ -115,7 +124,7 @@ export const hasStudentTakenQuiz = async (studentId: string, quizId: string): Pr
 };
 
 export const getStudentStats = async (studentId: string) => {
-  if (!supabaseUrl) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
+  if (!supabase) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
   
   const { data, error } = await supabase
     .from('results')
@@ -138,5 +147,9 @@ export const getStudentStats = async (studentId: string) => {
 };
 
 export const initStorage = () => {
-  console.log("Supabase Storage Initialized (Async Mode)");
+  if (supabase) {
+    console.log("Supabase Storage Connected");
+  } else {
+    console.log("Storage Running in Offline Mode (No DB Connection)");
+  }
 };
