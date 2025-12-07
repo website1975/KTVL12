@@ -19,6 +19,11 @@ if (supabaseUrl && supabaseKey) {
   console.warn("Chưa cấu hình Supabase URL/Key. Ứng dụng sẽ chạy nhưng không lưu được dữ liệu.");
 }
 
+// Hàm kiểm tra trạng thái kết nối
+export const isDatabaseConnected = (): boolean => {
+    return !!supabase;
+};
+
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
@@ -87,13 +92,13 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
     return [];
   }
   const quizzes = data.map((row: any) => row.data as Quiz);
-  // FIX: Thêm kiểu dữ liệu rõ ràng cho a và b
+  // FIX: Thêm kiểu dữ liệu rõ ràng cho a và b để tránh lỗi build Vercel
   return quizzes.sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) {
-      alert("Chưa kết nối Database! Vui lòng kiểm tra file .env");
+      alert("Lỗi: Chưa kết nối Database! Vui lòng kiểm tra cấu hình Key trên Vercel.");
       return;
   }
   const { error } = await supabase.from('quizzes').insert({
