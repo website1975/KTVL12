@@ -1,13 +1,14 @@
-
+/// <reference types="vite/client" />
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, QuestionType, Grade } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
-const API_KEY = process.env.API_KEY || ''; 
+// Đọc key từ import.meta.env (đã được map trong vite.config.ts)
+const API_KEY = import.meta.env.API_KEY || ''; 
 
 const getAIClient = () => {
     if (!API_KEY) {
-        throw new Error("Vui lòng cấu hình API Key trong code hoặc biến môi trường.");
+        throw new Error("Vui lòng cấu hình API Key trong file .env");
     }
     return new GoogleGenAI({ apiKey: API_KEY });
 };
