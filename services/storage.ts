@@ -52,6 +52,32 @@ export const findUser = async (username: string): Promise<User | undefined> => {
   return data.data as User;
 };
 
+export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
+  if (!supabase) return false;
+  
+  // 1. Lấy data người dùng hiện tại
+  const { data: rows, error: fetchError } = await supabase
+      .from('users')
+      .select('data')
+      .eq('id', userId)
+      .single();
+  
+  if (fetchError || !rows) return false;
+  
+  const currentUser = rows.data as User;
+  
+  // 2. Cập nhật mật khẩu trong object JSON
+  const updatedUser = { ...currentUser, password: newPass };
+
+  // 3. Lưu ngược lại vào DB
+  const { error: updateError } = await supabase
+      .from('users')
+      .update({ data: updatedUser })
+      .eq('id', userId);
+
+  return !updateError;
+};
+
 // --- Quizzes ---
 export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
