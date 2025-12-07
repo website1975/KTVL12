@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Quiz, User, Result, Question } from '../types';
 import { saveResult } from '../services/storage';
 import { addMinutes, differenceInSeconds, parseISO } from 'date-fns';
-import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from './LatexText';
 
@@ -381,6 +381,21 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                   </div>
                               </div>
                           )}
+
+                          {/* SHOW DETAILED SOLUTION (ONLY IN REVIEW MODE) */}
+                          {isReview && q.solution && (
+                            <div className="mt-6 animate-fade-in-up">
+                                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
+                                    <h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2">
+                                        <Lightbulb size={20} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết
+                                    </h4>
+                                    <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                        <LatexText text={q.solution} />
+                                    </div>
+                                </div>
+                            </div>
+                          )}
+
                       </div>
                   </div>
               );
