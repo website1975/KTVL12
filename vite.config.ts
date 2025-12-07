@@ -3,18 +3,16 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load các biến môi trường từ file .env (nếu có)
-  const env = loadEnv(mode, process.cwd(), '');
+  // Load env file based on `mode` in the current working directory.
+  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
+  const env = loadEnv(mode, (process as any).cwd(), '')
 
   return {
     plugins: [react()],
+    // Chỉ định nghĩa lại API_KEY vì nó không có prefix VITE_
+    // Các biến VITE_SUPABASE_... sẽ được Vite tự động xử lý, không cần define thủ công để tránh lỗi build
     define: {
-      // Ép kiểu các biến môi trường thành chuỗi JSON để Client đọc được
-      // Nếu không có giá trị (undefined), sẽ gán là chuỗi rỗng "" để tránh lỗi crash app
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
-      'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ''),
-      'process.env.VITE_SUPABASE_KEY': JSON.stringify(env.VITE_SUPABASE_KEY || ''),
-      'process.env.NODE_ENV': JSON.stringify(mode),
+      'import.meta.env.API_KEY': JSON.stringify(env.API_KEY)
     }
   }
 })
