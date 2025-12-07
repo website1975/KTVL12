@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, Role, Grade } from '../types';
 import { findUser, saveUser } from '../services/storage';
@@ -15,6 +16,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [fullName, setFullName] = useState('');
   const [grade, setGrade] = useState<Grade>('10');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,32 +25,77 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const login = async (u: string, p: string) => {
     setError('');
-    const user = await findUser(u);
-    if (user && user.password === p) {
-      onLogin(user);
-    } else {
-      setError('Sai tên đăng nhập hoặc mật khẩu.');
+    setIsLoading(true);
+    try {
+      let user = await findUser(u);
+      
+      // --- LOGIC TỰ ĐỘNG KHỞI TẠO (AUTO-SEED) ---
+      // Nếu đăng nhập đúng tài khoản demo mà chưa có trong DB, tự động tạo luôn.
+      
+      if (!user && u === 'admin' && p === '123') {
+          console.log("Khởi tạo tài khoản Admin lần đầu...");
+          user = {
+              id: uuidv4(),
+              username: 'admin',
+              password: '123',
+              role: 'admin',
+              fullName: 'Giáo Viên (Admin)',
+          };
+          await saveUser(user);
+      }
+
+      if (!user && u === 'hs10' && p === '123') {
+           console.log("Khởi tạo tài khoản HS Demo lần đầu...");
+           user = {
+              id: uuidv4(),
+              username: 'hs10',
+              password: '123',
+              role: 'student',
+              fullName: 'Học Sinh Demo',
+              grade: '10'
+          };
+          await saveUser(user);
+      }
+      // ------------------------------------------
+
+      if (user && user.password === p) {
+        onLogin(user);
+      } else {
+        setError('Sai tên đăng nhập hoặc mật khẩu.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Lỗi kết nối Server. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const existingUser = await findUser(username);
-    if (existingUser) {
-      setError('Tên đăng nhập đã tồn tại.');
-      return;
+    setIsLoading(true);
+    try {
+      const existingUser = await findUser(username);
+      if (existingUser) {
+        setError('Tên đăng nhập đã tồn tại.');
+        return;
+      }
+      const newUser: User = {
+        id: uuidv4(),
+        username,
+        password,
+        role: 'student', // Default registration is student
+        fullName,
+        grade,
+      };
+      await saveUser(newUser);
+      onLogin(newUser);
+    } catch (err) {
+      setError('Lỗi đăng ký. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
     }
-    const newUser: User = {
-      id: uuidv4(),
-      username,
-      password,
-      role: 'student', // Default registration is student
-      fullName,
-      grade,
-    };
-    await saveUser(newUser);
-    onLogin(newUser);
   };
 
   return (
@@ -67,12 +114,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
-            {error}
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm flex items-center gap-2">
+            <span className="font-bold">!</span> {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={isLogin ? handleSubmit : handleRegister} className="space-y-4">
           {!isLogin && (
              <div>
              <label className="block text-sm font-medium text-gray-700 mb-1">Họ và Tên</label>
@@ -121,10 +168,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           )}
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2 disabled:opacity-70"
           >
-            {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
-            {isLogin ? 'Đăng Nhập' : 'Đăng Ký'}
+            {isLoading ? 'Đang xử lý...' : (
+               <>
+                 {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
+                 {isLogin ? 'Đăng Nhập' : 'Đăng Ký'}
+               </>
+            )}
           </button>
         </form>
         
@@ -139,15 +191,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         {isLogin && (
           <div className="mt-8 pt-6 border-t border-gray-100">
-             <p className="text-xs text-gray-400 text-center mb-3">Đăng nhập nhanh (Demo Mode)</p>
+             <p className="text-xs text-gray-400 text-center mb-3">Đăng nhập nhanh (Tự động tạo tài khoản)</p>
              <div className="grid grid-cols-2 gap-3">
                <button 
+                type="button"
                 onClick={() => login('admin', '123')}
                 className="flex items-center justify-center gap-2 py-2 px-3 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition"
                >
                  <GraduationCap size={16}/> Giáo viên
                </button>
                <button 
+                type="button"
                 onClick={() => login('hs10', '123')}
                 className="flex items-center justify-center gap-2 py-2 px-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 transition"
                >
