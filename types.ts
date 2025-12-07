@@ -26,6 +26,9 @@ export interface Question {
   points: number | string; // Teacher manually sets points - allow string for flexible input
   imageUrl?: string;
   
+  // New field: Detailed Solution / Explanation
+  solution?: string; 
+  
   // For MCQ (Part I)
   options?: string[]; 
   correctAnswer?: string; 
