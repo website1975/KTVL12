@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Quiz, User, Result, Question } from '../types';
 import { saveResult } from '../services/storage';
 import { addMinutes, differenceInSeconds, parseISO } from 'date-fns';
@@ -33,6 +33,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const [currentView, setCurrentView] = useState<ViewState>('taking');
   
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // FIX: Sử dụng useRef để lưu trữ câu trả lời, giúp setInterval truy cập được giá trị mới nhất
+  const answersRef = useRef<Record<string, string>>({});
+
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [finalScore, setFinalScore] = useState(0);
   const [totalTimeSpent, setTotalTimeSpent] = useState(0);
@@ -71,12 +74,19 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
   const handleAnswer = (qId: string, val: string) => {
       if (currentView !== 'taking') return;
-      setAnswers(prev => ({ ...prev, [qId]: val }));
+      
+      // Cập nhật cả State (để render giao diện) và Ref (để tính điểm khi hết giờ)
+      const newAnswers = { ...answers, [qId]: val };
+      setAnswers(newAnswers);
+      answersRef.current = newAnswers;
   };
 
   const calculateTotalScore = (): number => {
       let total = 0;
       if (!quiz.questions || !Array.isArray(quiz.questions)) return 0;
+      
+      // FIX: Luôn lấy từ answersRef để đảm bảo dữ liệu mới nhất khi Auto Submit
+      const currentAnswers = answersRef.current;
 
       quiz.questions.forEach(q => {
           if (!q) return; 
@@ -84,10 +94,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
           try {
             if (q.type === 'mcq') {
-                if (answers[q.id] === q.correctAnswer) total += points;
+                if (currentAnswers[q.id] === q.correctAnswer) total += points;
             } 
             else if (q.type === 'short') {
-                const userAns = (answers[q.id] || '').trim().toLowerCase();
+                const userAns = (currentAnswers[q.id] || '').trim().toLowerCase();
                 const correctAns = (q.correctAnswer || '').trim().toLowerCase();
                 if (correctAns && userAns === correctAns) total += points;
             }
@@ -95,7 +105,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 let correctCount = 0;
                 q.subQuestions.forEach(sq => {
                     const key = `${q.id}_${sq.id}`;
-                    if (answers[key] === sq.correctAnswer) correctCount++;
+                    if (currentAnswers[key] === sq.correctAnswer) correctCount++;
                 });
 
                 if (correctCount === 1) total += 0.1;
