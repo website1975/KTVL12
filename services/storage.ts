@@ -24,6 +24,43 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
+// --- Storage (Images) ---
+export const uploadImage = async (file: File): Promise<string | null> => {
+  if (!supabase) {
+    alert("Chưa kết nối Supabase. Vui lòng kiểm tra Key.");
+    return null;
+  }
+
+  try {
+    // 1. Tạo tên file độc nhất để không bị trùng (timestamp_tênfile)
+    // Xử lý tên file để bỏ các ký tự đặc biệt tiếng Việt
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const fileName = `${Date.now()}_${sanitizedName}`;
+
+    // 2. Upload lên bucket 'quiz-images'
+    const { error: uploadError } = await supabase.storage
+      .from('quiz-images')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      console.error('Upload Error:', uploadError);
+      alert("Lỗi upload: " + uploadError.message);
+      return null;
+    }
+
+    // 3. Lấy đường dẫn công khai (Public URL)
+    const { data } = supabase.storage
+      .from('quiz-images')
+      .getPublicUrl(fileName);
+
+    return data.publicUrl;
+
+  } catch (e) {
+    console.error("Lỗi upload:", e);
+    return null;
+  }
+};
+
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
@@ -92,7 +129,7 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
     return [];
   }
   const quizzes = data.map((row: any) => row.data as Quiz);
-  // FIX: Thêm kiểu dữ liệu rõ ràng cho a và b để tránh lỗi build Vercel
+  // FIX: Thêm kiểu dữ liệu rõ ràng (a: Quiz, b: Quiz) để tránh lỗi build TS7006 trên Vercel
   return quizzes.sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
@@ -168,11 +205,11 @@ export const getStudentStats = async (studentId: string) => {
   const results = data.map((row: any) => row.data as Result);
   const totalQuizzes = results.length;
   
-  // FIX: Thêm kiểu dữ liệu rõ ràng cho sum và r
+  // FIX: Thêm kiểu dữ liệu rõ ràng (sum: number, r: Result) để tránh lỗi build TS7006
   const totalScore = results.reduce((sum: number, r: Result) => sum + r.score, 0);
   const avgScore = totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0;
   
-  // FIX: Thêm kiểu dữ liệu rõ ràng cho sum và r
+  // FIX: Thêm kiểu dữ liệu rõ ràng (sum: number, r: Result)
   const totalSeconds = results.reduce((sum: number, r: Result) => sum + (r.durationSeconds || 0), 0);
 
   return {
