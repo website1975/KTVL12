@@ -36,7 +36,8 @@ const LatexText: React.FC<LatexTextProps> = ({ text }) => {
                return <span key={i} className="text-red-400">{part}</span>;
              }
            }
-           return <span key={i}>{part}</span>;
+           // Cho phép render HTML (như thẻ <br/>) trong phần văn bản thường
+           return <span key={i} dangerouslySetInnerHTML={{ __html: part }} />;
       })}
     </span>
   );
