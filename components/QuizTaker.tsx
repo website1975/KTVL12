@@ -151,7 +151,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       }
 
       // 4. Chuyển hướng sang trang kết quả
-      // Không cần alert nữa vì đã confirm ở trên rồi, chuyển cảnh luôn cho mượt
       setCurrentView('result');
       window.scrollTo(0,0);
   };
@@ -189,7 +188,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
                   <div className="space-y-4">
                       <button 
-                          onClick={() => { setCurrentView('review'); window.scrollTo(0,0); }}
+                          onClick={() => { setCurrentView('review'); }}
                           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold text-lg shadow-blue-200 shadow-lg transition transform hover:-translate-y-1"
                       >
                           Xem Chi Tiết Đáp Án
@@ -212,9 +211,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const isReview = currentView === 'review';
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
-      {/* Header Sticky */}
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+      {/* 1. Header (Cố định, không co giãn) */}
+      <div className="bg-white border-b shadow-sm z-20 shrink-0">
           <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
               <div className="flex items-center gap-3">
                   {isReview && (
@@ -242,152 +241,154 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           </div>
       </div>
 
-      {/* List Questions */}
-      <div className="max-w-4xl mx-auto p-4 space-y-6 mt-4">
-          {(!quiz.questions || quiz.questions.length === 0) && (
-              <div className="text-center p-10 text-gray-500">Đề thi chưa có câu hỏi nào.</div>
-          )}
+      {/* 2. Main Content (Cuộn dọc, co giãn) */}
+      <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
+        <div className="max-w-4xl mx-auto space-y-6 pb-6">
+            {(!quiz.questions || quiz.questions.length === 0) && (
+                <div className="text-center p-10 text-gray-500">Đề thi chưa có câu hỏi nào.</div>
+            )}
 
-          {quiz.questions?.map((q, idx) => {
-              if (!q) return null;
-              const points = safeParseScore(q.points);
-              return (
-                  <div key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                      {/* Header Question */}
-                      <div className="bg-gray-50 px-5 py-3 border-b flex justify-between items-center">
-                          <span className="font-bold text-gray-800">Câu {idx + 1} <span className="text-gray-400 font-normal ml-1">({q.type?.toUpperCase() || 'MCQ'})</span></span>
-                          <span className="text-xs font-bold bg-white border px-2 py-1 rounded text-gray-600">{points} điểm</span>
-                      </div>
+            {quiz.questions?.map((q, idx) => {
+                if (!q) return null;
+                const points = safeParseScore(q.points);
+                return (
+                    <div key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        {/* Header Question */}
+                        <div className="bg-gray-50 px-5 py-3 border-b flex justify-between items-center">
+                            <span className="font-bold text-gray-800">Câu {idx + 1} <span className="text-gray-400 font-normal ml-1">({q.type?.toUpperCase() || 'MCQ'})</span></span>
+                            <span className="text-xs font-bold bg-white border px-2 py-1 rounded text-gray-600">{points} điểm</span>
+                        </div>
 
-                      <div className="p-6">
-                          <div className="mb-6 text-gray-900 text-lg leading-relaxed">
-                              <LatexText text={q.text || ''} />
-                          </div>
-                          {q.imageUrl && (
-                              <div className="mb-6">
-                                  <img src={q.imageUrl} className="max-h-80 rounded-lg border mx-auto object-contain bg-gray-100" alt="Question" />
-                              </div>
-                          )}
+                        <div className="p-6">
+                            <div className="mb-6 text-gray-900 text-lg leading-relaxed">
+                                <LatexText text={q.text || ''} />
+                            </div>
+                            {q.imageUrl && (
+                                <div className="mb-6">
+                                    <img src={q.imageUrl} className="max-h-80 rounded-lg border mx-auto object-contain bg-gray-100" alt="Question" />
+                                </div>
+                            )}
 
-                          {/* MCQ */}
-                          {q.type === 'mcq' && (
-                              <div className="grid grid-cols-1 gap-3">
-                                  {q.options?.map((opt, optIdx) => {
-                                      const isSelected = answers[q.id] === opt;
-                                      const isCorrect = q.correctAnswer === opt;
-                                      let containerClass = "p-4 border-2 rounded-xl cursor-pointer flex items-center gap-4 transition-all relative ";
-                                      
-                                      if (isReview) {
-                                          containerClass += "cursor-default ";
-                                          if (isCorrect) containerClass += "bg-green-50 border-green-500 text-green-900";
-                                          else if (isSelected) containerClass += "bg-red-50 border-red-500 text-red-900 opacity-60";
-                                          else containerClass += "border-gray-200 opacity-50";
-                                      } else {
-                                          if (isSelected) containerClass += "bg-blue-50 border-blue-600 shadow-sm";
-                                          else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50";
-                                      }
+                            {/* MCQ */}
+                            {q.type === 'mcq' && (
+                                <div className="grid grid-cols-1 gap-3">
+                                    {q.options?.map((opt, optIdx) => {
+                                        const isSelected = answers[q.id] === opt;
+                                        const isCorrect = q.correctAnswer === opt;
+                                        let containerClass = "p-4 border-2 rounded-xl cursor-pointer flex items-center gap-4 transition-all relative ";
+                                        
+                                        if (isReview) {
+                                            containerClass += "cursor-default ";
+                                            if (isCorrect) containerClass += "bg-green-50 border-green-500 text-green-900";
+                                            else if (isSelected) containerClass += "bg-red-50 border-red-500 text-red-900 opacity-60";
+                                            else containerClass += "border-gray-200 opacity-50";
+                                        } else {
+                                            if (isSelected) containerClass += "bg-blue-50 border-blue-600 shadow-sm";
+                                            else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50";
+                                        }
 
-                                      return (
-                                          <div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}>
-                                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>
-                                                  {(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}
-                                              </div>
-                                              <div className="font-medium"><LatexText text={opt}/></div>
-                                              {isReview && isCorrect && <Check className="absolute right-4 text-green-600" />}
-                                          </div>
-                                      );
-                                  })}
-                              </div>
-                          )}
+                                        return (
+                                            <div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}>
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>
+                                                    {(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}
+                                                </div>
+                                                <div className="font-medium"><LatexText text={opt}/></div>
+                                                {isReview && isCorrect && <Check className="absolute right-4 text-green-600" />}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
 
-                          {/* Group TF */}
-                          {q.type === 'group-tf' && (
-                              <div className="border rounded-xl overflow-hidden divide-y">
-                                  {q.subQuestions?.map((sq, sqIdx) => {
-                                      const key = `${q.id}_${sq.id}`;
-                                      const userVal = answers[key];
-                                      return (
-                                          <div key={sqIdx} className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                              <div className="flex-1">
-                                                  <span className="font-bold mr-2 text-gray-500">{String.fromCharCode(97+sqIdx)})</span>
-                                                  <LatexText text={sq.text}/>
-                                              </div>
-                                              <div className="flex gap-2 shrink-0">
-                                                  {['True', 'False'].map(opt => {
-                                                      const isBtnSelected = userVal === opt;
-                                                      const isBtnCorrect = sq.correctAnswer === opt;
-                                                      let btnClass = "px-6 py-2 rounded-lg text-sm font-bold border transition-all ";
-                                                      
-                                                      if (isReview) {
-                                                          if (isBtnCorrect) btnClass += "bg-green-600 text-white border-green-600 shadow-md ring-2 ring-green-200";
-                                                          else if (isBtnSelected && !isBtnCorrect) btnClass += "bg-red-100 text-red-600 border-red-300 opacity-50";
-                                                          else btnClass += "bg-white text-gray-300 border-gray-200 opacity-40";
-                                                      } else {
-                                                          if (isBtnSelected) btnClass += opt === 'True' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-orange-500 text-white border-orange-500 shadow-md";
-                                                          else btnClass += "bg-white text-gray-500 border-gray-300 hover:bg-gray-100";
-                                                      }
+                            {/* Group TF */}
+                            {q.type === 'group-tf' && (
+                                <div className="border rounded-xl overflow-hidden divide-y">
+                                    {q.subQuestions?.map((sq, sqIdx) => {
+                                        const key = `${q.id}_${sq.id}`;
+                                        const userVal = answers[key];
+                                        return (
+                                            <div key={sqIdx} className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                <div className="flex-1">
+                                                    <span className="font-bold mr-2 text-gray-500">{String.fromCharCode(97+sqIdx)})</span>
+                                                    <LatexText text={sq.text}/>
+                                                </div>
+                                                <div className="flex gap-2 shrink-0">
+                                                    {['True', 'False'].map(opt => {
+                                                        const isBtnSelected = userVal === opt;
+                                                        const isBtnCorrect = sq.correctAnswer === opt;
+                                                        let btnClass = "px-6 py-2 rounded-lg text-sm font-bold border transition-all ";
+                                                        
+                                                        if (isReview) {
+                                                            if (isBtnCorrect) btnClass += "bg-green-600 text-white border-green-600 shadow-md ring-2 ring-green-200";
+                                                            else if (isBtnSelected && !isBtnCorrect) btnClass += "bg-red-100 text-red-600 border-red-300 opacity-50";
+                                                            else btnClass += "bg-white text-gray-300 border-gray-200 opacity-40";
+                                                        } else {
+                                                            if (isBtnSelected) btnClass += opt === 'True' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-orange-500 text-white border-orange-500 shadow-md";
+                                                            else btnClass += "bg-white text-gray-500 border-gray-300 hover:bg-gray-100";
+                                                        }
 
-                                                      return (
-                                                          <button key={opt} onClick={() => handleAnswer(key, opt)} disabled={isReview} className={btnClass}>
-                                                              {opt === 'True' ? 'ĐÚNG' : 'SAI'}
-                                                          </button>
-                                                      );
-                                                  })}
-                                              </div>
-                                          </div>
-                                      );
-                                  })}
-                              </div>
-                          )}
+                                                        return (
+                                                            <button key={opt} onClick={() => handleAnswer(key, opt)} disabled={isReview} className={btnClass}>
+                                                                {opt === 'True' ? 'ĐÚNG' : 'SAI'}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
 
-                          {/* Short Answer */}
-                          {q.type === 'short' && (
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-500 mb-2">Nhập đáp án:</label>
-                                  <div className="relative">
-                                      <input 
-                                          type="text"
-                                          value={answers[q.id] || ''}
-                                          onChange={e => handleAnswer(q.id, e.target.value)}
-                                          disabled={isReview}
-                                          className={`w-full p-4 text-lg border-2 rounded-xl font-medium outline-none transition-colors ${
-                                              isReview 
-                                              ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800') 
-                                              : 'focus:border-blue-500 focus:bg-blue-50 border-gray-300'
-                                          }`}
-                                      />
-                                      {isReview && (
-                                          <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-green-600 bg-white px-2 py-1 rounded shadow-sm border border-green-200 text-sm">
-                                              Đáp án: {q.correctAnswer}
-                                          </div>
-                                      )}
-                                  </div>
-                              </div>
-                          )}
-
-                          {/* SHOW DETAILED SOLUTION (ONLY IN REVIEW MODE) */}
-                          {isReview && q.solution && (
-                            <div className="mt-6 animate-fade-in-up">
-                                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
-                                    <h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2">
-                                        <Lightbulb size={20} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết
-                                    </h4>
-                                    <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                                        <LatexText text={q.solution} />
+                            {/* Short Answer */}
+                            {q.type === 'short' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-500 mb-2">Nhập đáp án:</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text"
+                                            value={answers[q.id] || ''}
+                                            onChange={e => handleAnswer(q.id, e.target.value)}
+                                            disabled={isReview}
+                                            className={`w-full p-4 text-lg border-2 rounded-xl font-medium outline-none transition-colors ${
+                                                isReview 
+                                                ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800') 
+                                                : 'focus:border-blue-500 focus:bg-blue-50 border-gray-300'
+                                            }`}
+                                        />
+                                        {isReview && (
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-green-600 bg-white px-2 py-1 rounded shadow-sm border border-green-200 text-sm">
+                                                Đáp án: {q.correctAnswer}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            </div>
-                          )}
+                            )}
 
-                      </div>
-                  </div>
-              );
-          })}
+                            {/* SHOW DETAILED SOLUTION (ONLY IN REVIEW MODE) */}
+                            {isReview && q.solution && (
+                                <div className="mt-6 animate-fade-in-up">
+                                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
+                                        <h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2">
+                                            <Lightbulb size={20} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết
+                                        </h4>
+                                        <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                            <LatexText text={q.solution} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
       </div>
 
-      {/* FOOTER */}
+      {/* 3. Footer (Cố định ở đáy, không co giãn) */}
       {!isReview && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+          <div className="bg-white border-t p-4 z-20 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
                   <div className="hidden sm:block text-sm text-gray-500">
                       Đã làm: <span className="font-bold text-gray-800">{Object.keys(answers).length}</span> / {quiz.questions?.length || 0} câu
