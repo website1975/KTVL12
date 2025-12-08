@@ -13,8 +13,8 @@ interface QuizTakerProps {
   onExit: () => void;
 }
 
-// Thêm trạng thái 'hello' để test
-type ViewState = 'taking' | 'result' | 'review' | 'hello';
+// Loại bỏ 'hello' khỏi ViewState
+type ViewState = 'taking' | 'result' | 'review';
 
 // Hàm tiện ích: Ép kiểu số an toàn tuyệt đối
 const safeParseScore = (val: any): number => {
@@ -67,7 +67,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [quiz, currentView]); // Quan trọng: currentView thay đổi -> useEffect chạy lại -> cleanup timer cũ
+  }, [quiz, currentView]);
 
   const handleAnswer = (qId: string, val: string) => {
       if (currentView !== 'taking') return;
@@ -111,10 +111,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   const handleSubmit = (auto: boolean = false) => {
-      // 1. NGẮT MỌI LOGIC CHẶN (Bỏ window.confirm)
-      console.log("Đang nộp bài...");
-
-      // 2. Tính toán điểm
+      // 1. Logic tính điểm
       let score = 0;
       let spent = 0;
       try {
@@ -128,7 +125,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       setFinalScore(score);
       setTotalTimeSpent(spent);
 
-      // 3. Lưu kết quả
+      // 2. Lưu kết quả vào DB
       try {
           const result: Result = {
               id: uuidv4(),
@@ -145,10 +142,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           console.error("Lỗi lưu DB", e);
       }
 
-      // 4. CHUYỂN TRANG NGAY LẬP TỨC SANG TRANG 'HELLO' ĐỂ CHỨNG MINH
-      setCurrentView('hello');
-      
-      // Cuộn lên đầu
+      // 3. Thông báo và Chuyển hướng
+      if (!auto) {
+          // Thông báo nhẹ nhàng cho người dùng biết đã nộp xong
+          alert(`Nộp bài thành công!\nĐiểm của bạn: ${score.toFixed(2)} điểm.`);
+      }
+
+      // CHUYỂN THẲNG SANG TRANG KẾT QUẢ
+      setCurrentView('result');
       window.scrollTo(0,0);
   };
 
@@ -159,28 +160,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   // ==========================================================
-  // VIEW TEST: HELLO (Theo yêu cầu của bạn)
-  // ==========================================================
-  if (currentView === 'hello') {
-      return (
-          <div className="min-h-screen bg-blue-600 flex flex-col items-center justify-center text-white p-4">
-              <h1 className="text-4xl md:text-6xl font-extrabold mb-6 text-center">HELLO!</h1>
-              <p className="text-xl md:text-2xl mb-8 text-center bg-blue-700 p-4 rounded-xl">
-                 TÔI ĐÃ ĐIỀU HƯỚNG THÀNH CÔNG THEO YÊU CẦU CỦA BẠN.<br/>
-                 Nút nộp bài đã hoạt động chính xác.
-              </p>
-              <button 
-                onClick={() => setCurrentView('result')}
-                className="bg-white text-blue-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-100 shadow-xl transition transform hover:scale-105"
-              >
-                XEM KẾT QUẢ CHI TIẾT
-              </button>
-          </div>
-      );
-  }
-
-  // ==========================================================
-  // VIEW RESULT: KẾT QUẢ THẬT
+  // VIEW RESULT: KẾT QUẢ
   // ==========================================================
   if (currentView === 'result') {
       return (
