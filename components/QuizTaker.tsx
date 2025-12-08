@@ -59,7 +59,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         if (diff <= 0) {
             clearInterval(timer);
             setTimeLeft(0);
-            // Hết giờ thì tự nộp
+            // Hết giờ thì tự nộp (auto = true)
             handleSubmit(true); 
         } else {
             setTimeLeft(diff);
@@ -111,7 +111,15 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   const handleSubmit = (auto: boolean = false) => {
-      // 1. Logic tính điểm
+      // 1. CẢNH BÁO NỘP BÀI (Chỉ hiện khi người dùng tự bấm nộp, không hiện khi hết giờ)
+      if (!auto) {
+          const isConfirmed = window.confirm("Bạn có chắc chắn muốn nộp bài thi không?\nNhấn OK để nộp bài và xem điểm.\nNhấn Cancel để quay lại làm tiếp.");
+          if (!isConfirmed) {
+              return; // Nếu chọn Cancel thì dừng hàm tại đây, không làm gì cả
+          }
+      }
+
+      // 2. Logic tính điểm
       let score = 0;
       let spent = 0;
       try {
@@ -125,7 +133,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       setFinalScore(score);
       setTotalTimeSpent(spent);
 
-      // 2. Lưu kết quả vào DB
+      // 3. Lưu kết quả vào DB
       try {
           const result: Result = {
               id: uuidv4(),
@@ -142,13 +150,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           console.error("Lỗi lưu DB", e);
       }
 
-      // 3. Thông báo và Chuyển hướng
-      if (!auto) {
-          // Thông báo nhẹ nhàng cho người dùng biết đã nộp xong
-          alert(`Nộp bài thành công!\nĐiểm của bạn: ${score.toFixed(2)} điểm.`);
-      }
-
-      // CHUYỂN THẲNG SANG TRANG KẾT QUẢ
+      // 4. Chuyển hướng sang trang kết quả
+      // Không cần alert nữa vì đã confirm ở trên rồi, chuyển cảnh luôn cho mượt
       setCurrentView('result');
       window.scrollTo(0,0);
   };
