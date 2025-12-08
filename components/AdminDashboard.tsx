@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion } from '../types';
-import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults } from '../services/storage';
+import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
 import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb } from 'lucide-react';
@@ -190,6 +189,19 @@ const AdminDashboard: React.FC = () => {
     const updated = [...questions];
     updated[index] = { ...updated[index], [field]: value };
     setQuestions(updated);
+  };
+
+  const onSelectImage = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      const file = e.target.files[0];
+      
+      // Upload
+      const url = await uploadImage(file);
+      if (url) {
+          updateQuestion(index, 'imageUrl', url);
+      } else {
+          alert("Không thể upload ảnh. Hãy đảm bảo bạn đã tạo Bucket 'quiz-images' trên Supabase và đặt chế độ Public.");
+      }
   };
 
   const changeQuestionType = (index: number, type: QuestionType) => {
@@ -434,6 +446,32 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <div className="space-y-3">
                          <textarea className="w-full border rounded p-3 font-medium focus:ring-2 focus:ring-blue-100 outline-none font-mono text-sm" value={q.text} rows={3} onChange={e => updateQuestion(idx, 'text', e.target.value)} placeholder="Nhập nội dung câu hỏi..."/>
+                         
+                         {/* IMAGE UPLOAD SECTION */}
+                         <div className="flex gap-4 items-start">
+                             <div className="flex-1">
+                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Hình ảnh đính kèm:</label>
+                                 <div className="flex gap-2">
+                                     <input 
+                                        type="text" 
+                                        className="flex-1 border rounded p-2 text-sm text-gray-600 bg-gray-50" 
+                                        placeholder="Dán link ảnh hoặc upload..."
+                                        value={q.imageUrl || ''}
+                                        onChange={e => updateQuestion(idx, 'imageUrl', e.target.value)}
+                                     />
+                                     <label className="cursor-pointer bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 transition flex items-center gap-2 text-sm font-bold whitespace-nowrap">
+                                         <ImageIcon size={16}/> Upload
+                                         <input type="file" className="hidden" accept="image/*" onChange={(e) => onSelectImage(e, idx)} />
+                                     </label>
+                                 </div>
+                             </div>
+                             {q.imageUrl && (
+                                 <div className="shrink-0 w-20 h-20 border rounded bg-gray-50 flex items-center justify-center overflow-hidden">
+                                     <img src={q.imageUrl} alt="preview" className="w-full h-full object-contain" />
+                                 </div>
+                             )}
+                         </div>
+
                          <div className="mt-1 p-2 bg-gray-50 border rounded text-sm text-gray-700"><span className="text-xs font-bold text-blue-500 uppercase mr-2">Xem trước:</span><LatexText text={q.text} /></div>
                          
                          {q.type === 'mcq' && (<div className="grid grid-cols-2 gap-3">{q.options?.map((opt, optIdx) => <div key={optIdx} className="flex gap-1 border p-2 rounded bg-gray-50"><input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} /><input className="bg-transparent w-full text-sm outline-none" value={opt} onChange={e => { const newOpts = [...(q.options||[])]; newOpts[optIdx] = e.target.value; updateQuestion(idx, 'options', newOpts); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', e.target.value); }} /></div>)}</div>)}
