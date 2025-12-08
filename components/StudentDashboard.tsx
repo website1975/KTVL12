@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, Quiz, Result } from '../types';
 import { getQuizzes, getStudentStats, getResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
-import { Clock, PlayCircle, CheckCircle, BarChart2, BookOpen, Trophy, History, XCircle, RotateCcw } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle, BarChart2, BookOpen, Trophy, History, XCircle, RotateCcw, Eye } from 'lucide-react';
 import { format, parseISO, isBefore, isAfter, addMinutes } from 'date-fns';
 
 interface StudentDashboardProps {
@@ -82,6 +83,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       return { count: attempts.length, maxScore };
   };
 
+  // Helper to get result for a specific test quiz (Testing only happens once usually, but get latest)
+  const getTestResult = (quizId: string) => {
+      const attempts = results.filter(r => r.quizId === quizId).sort((a,b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      return attempts.length > 0 ? attempts[0] : null;
+  }
+
   const getTestStatus = (quiz: Quiz) => {
     const now = new Date();
     const start = parseISO(quiz.startTime!);
@@ -143,30 +150,52 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           ) : (
             testQuizzes.map(q => {
               const info = getTestStatus(q);
+              const result = getTestResult(q.id);
+
               return (
-                <div key={q.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+                <div key={q.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col h-full relative overflow-hidden">
+                  {result && (
+                      <div className="absolute top-0 right-0 p-2 z-10">
+                          <div className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-sm border border-green-200">
+                              <Trophy size={12}/> Điểm: {result.score.toFixed(2)}
+                          </div>
+                      </div>
+                  )}
+
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-lg">{q.title}</h3>
-                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${info.color}`}>
-                      {info.label}
-                    </span>
+                    <h3 className="font-bold text-lg pr-16">{q.title}</h3>
+                    {!result && (
+                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${info.color}`}>
+                        {info.label}
+                        </span>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-500 mb-4 line-clamp-2">{q.description}</p>
+                  <p className="text-sm text-gray-500 mb-4 line-clamp-2 flex-1">{q.description}</p>
                   <div className="text-sm text-gray-600 space-y-1 mb-4">
                     <p className="flex items-center gap-2"><Clock size={14}/> {format(parseISO(q.startTime!), "HH:mm dd/MM/yyyy")}</p>
                     <p className="flex items-center gap-2"><PlayCircle size={14}/> {q.durationMinutes} phút</p>
                   </div>
-                  <button 
-                    onClick={() => handleStartQuiz(q)}
-                    disabled={info.status !== 'open'}
-                    className={`w-full py-2 rounded-lg font-medium transition ${
-                      info.status === 'open' 
-                      ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 shadow-md' 
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {info.status === 'open' ? 'Bắt Đầu Làm Bài' : info.label}
-                  </button>
+                  
+                  {info.status === 'completed' ? (
+                       <button 
+                        onClick={() => handleViewHistory(q)}
+                        className="w-full py-2 rounded-lg font-medium transition bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
+                      >
+                        <Eye size={16}/> Xem Chi Tiết
+                      </button>
+                  ) : (
+                      <button 
+                        onClick={() => handleStartQuiz(q)}
+                        disabled={info.status !== 'open'}
+                        className={`w-full py-2 rounded-lg font-medium transition ${
+                          info.status === 'open' 
+                          ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 shadow-md' 
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {info.status === 'open' ? 'Bắt Đầu Làm Bài' : info.label}
+                      </button>
+                  )}
                 </div>
               );
             })
