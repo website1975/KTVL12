@@ -1,3 +1,4 @@
+
 /// <reference types="vite/client" />
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, QuestionType, Grade } from "../types";
@@ -25,15 +26,12 @@ export const generateQuestions = async (
   const prompt = `
     Tạo ${count} câu hỏi trắc nghiệm khách quan (Phần I - 4 lựa chọn) cho lớp ${grade}, chủ đề "${topic}".
     Độ khó: ${difficulty}. Ngôn ngữ: Tiếng Việt.
-    Định dạng JSON. Có điểm số mặc định là 0.25.
+    Định dạng JSON.
     
-    Yêu cầu đặc biệt về Lời Giải Chi Tiết (solution):
-    - Cung cấp lời giải chi tiết cho từng câu.
-    - Cấu trúc lời giải nên gồm: "Phương pháp/Công thức:" sau đó đến "Lời giải chi tiết:".
-    - Sử dụng Latex cho công thức toán học ($...$).
-    
-    Lưu ý: Nếu có công thức Toán học, hãy dùng Latex và đặt trong dấu $ (ví dụ $x^2$).
-    QUAN TRỌNG: Hãy escape dấu backslash trong JSON string (ví dụ dùng \\\\frac thay vì \\frac).
+    Yêu cầu:
+    - KHÔNG cần sinh lời giải chi tiết (solution) để tăng tốc độ, trừ khi là câu hỏi cực khó.
+    - Sử dụng thẻ <br/> để xuống dòng.
+    - Sử dụng Latex chuẩn cho công thức toán ($...$). Ví dụ: $\\sqrt{x}$, $\\frac{1}{2}$, $\\Rightarrow$, $\\approx$.
   `;
 
   try {
@@ -50,9 +48,9 @@ export const generateQuestions = async (
               question_text: { type: Type.STRING },
               options: { type: Type.ARRAY, items: { type: Type.STRING } },
               correct_answer: { type: Type.STRING },
-              solution: { type: Type.STRING, description: "Lời giải chi tiết, bao gồm phương pháp và công thức." }
+              solution: { type: Type.STRING }
             },
-            required: ["question_text", "options", "correct_answer", "solution"]
+            required: ["question_text", "options", "correct_answer"]
           }
         }
       }
@@ -66,8 +64,8 @@ export const generateQuestions = async (
       text: item.question_text,
       options: item.options,
       correctAnswer: item.correct_answer,
-      solution: item.solution,
-      points: 0.25 // Default point for Part I
+      solution: item.solution || "",
+      points: 0.25
     }));
 
   } catch (error) {
@@ -80,35 +78,33 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   const ai = getAIClient();
 
   const prompt = `
-    Bạn là trợ lý soạn đề thi theo mẫu mới của Bộ GD&ĐT Việt Nam (từ 2025).
-    Hãy đọc file PDF và trích xuất câu hỏi theo 3 phần:
+    Bạn là trợ lý nhập liệu đề thi thông minh. Nhiệm vụ: Trích xuất câu hỏi từ file PDF sang JSON.
     
-    1. PHẦN I: Trắc nghiệm nhiều lựa chọn (MCQ). (Type: 'mcq')
-       - 4 lựa chọn A, B, C, D. Chọn 1 đúng.
-    
-    2. PHẦN II: Trắc nghiệm Đúng/Sai (Grouped True/False). (Type: 'group-tf')
-       - Một câu dẫn chính.
-       - 4 ý nhỏ (a, b, c, d). Mỗi ý phải xác định là Đúng (True) hay Sai (False).
-    
-    3. PHẦN III: Trả lời ngắn. (Type: 'short')
-       - Học sinh điền số hoặc văn bản ngắn.
+    Ưu tiên tốc độ và định dạng gọn nhẹ:
+    1. PHẦN I (MCQ): 
+       - Tìm câu hỏi và 4 đáp án.
+       - Đáp án đúng thường được đánh dấu bằng dấu sao (*) hoặc tô đậm/khoanh tròn. Nếu không thấy, hãy tự giải.
+       - KHÔNG cần sinh field 'solution' (để trống).
 
-    Yêu cầu về Lời Giải Chi Tiết (solution):
-    - Trích xuất hoặc tự sinh ra lời giải chi tiết cho mỗi câu hỏi.
-    - Nếu đề bài trong PDF không có lời giải, hãy TỰ GIẢI giúp giáo viên.
-    - Ghi rõ "Phương pháp:" và "Giải:".
+    2. PHẦN II (Đúng/Sai):
+       - Tìm các ý a, b, c, d.
+       - Đáp án thường ghi là (Đ) hoặc (S), hoặc (True)/(False).
+       - KHÔNG cần sinh field 'solution' (để trống).
 
-    Yêu cầu về định dạng Toán học (LaTeX):
-    - Hãy giữ nguyên công thức toán học dưới dạng LaTeX.
-    - Bao quanh công thức bằng dấu $. Ví dụ: $x^2 + 2x + 1 = 0$.
-    - RẤT QUAN TRỌNG: Khi trả về JSON string, bạn PHẢI escape các dấu gạch chéo ngược (backslash). 
-      Ví dụ: để hiển thị \frac, trong chuỗi JSON phải viết là \\frac. Để hiển thị \alpha, viết là \\alpha.
+    3. PHẦN III (Trả lời ngắn):
+       - BẮT BUỘC phải điền đáp án vào 'correctAnswer'.
+       - BẮT BUỘC sinh lời giải vắn tắt vào field 'solution' (Ví dụ: "Giải pt ta được x=2").
 
-    Yêu cầu Output JSON Strict:
-    - field 'type': 'mcq' | 'group-tf' | 'short'
-    - field 'points': Mặc định (Phần I: 0.25, Phần II: 1.0, Phần III: 0.5)
-    - field 'solution': Chuỗi text chứa lời giải chi tiết.
-    - Nếu là 'group-tf': field 'subQuestions' là mảng 4 phần tử {text: string, correctAnswer: 'True'|'False'}
+    Quy tắc định dạng văn bản (Rich Text):
+    - Xuống dòng: Sử dụng thẻ <br/>
+    - Căn, mũ, phân số, ký hiệu đặc biệt: Dùng LaTeX đặt trong dấu $.
+      Ví dụ: $\\sqrt{x}$, $x^2$, $\\frac{a}{b}$, $\\approx$, $\\Leftrightarrow$, $\\Rightarrow$.
+    - Escape JSON: Chú ý escape dấu gạch chéo ngược (ví dụ \\frac phải viết là \\\\frac).
+
+    Output JSON Strict:
+    - type: 'mcq' | 'group-tf' | 'short'
+    - points: 0.25 (mcq), 1.0 (group-tf), 0.5 (short)
+    - subQuestions: [{text: string, correctAnswer: 'True'|'False'}] (chỉ dùng cho group-tf)
   `;
 
   try {
@@ -158,7 +154,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         type: item.type,
         text: item.text,
         points: item.points,
-        solution: item.solution || "Đang cập nhật lời giải...",
+        solution: item.solution || "", // Mặc định rỗng cho nhanh, trừ phần III
         options: item.options || undefined,
         correctAnswer: item.correctAnswer || undefined,
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
@@ -170,6 +166,6 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 
   } catch (error) {
      console.error("Gemini PDF Parse Error:", error);
-     throw new Error("Lỗi đọc file PDF. Đảm bảo file đúng định dạng đề thi mới.");
+     throw new Error("Lỗi đọc file PDF. Vui lòng thử lại với file rõ nét hơn.");
   }
 };
