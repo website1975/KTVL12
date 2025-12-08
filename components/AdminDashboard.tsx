@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion } from '../types';
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage } from '../services/storage';
@@ -176,11 +177,11 @@ const AdminDashboard: React.FC = () => {
     const q: Question = {
       id: uuidv4(),
       type: 'mcq',
-      text: 'Câu hỏi mới... ($ x^2 $)',
+      text: 'Câu hỏi mới... <br/> (Công thức: $\\sqrt{x}$)',
       points: 0.25,
       options: ['Lựa chọn A', 'Lựa chọn B', 'Lựa chọn C', 'Lựa chọn D'],
       correctAnswer: 'Lựa chọn A',
-      solution: 'Phương pháp: \n...\nGiải: \n...'
+      solution: ''
     };
     setQuestions([...questions, q]);
   };
@@ -525,7 +526,29 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="mt-6"><button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-50">{isProcessing ? 'Đang phân tích cấu trúc & lời giải...' : 'Trích xuất đề thi'}{isProcessing && <Sparkles className="animate-spin" size={16} />}</button></div>
               </div>
-              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200"><h3 className="font-bold mb-4">Mẫu file PDF hỗ trợ</h3><div className="text-xs text-gray-700 font-mono bg-white p-4 rounded border space-y-2"><p className="font-bold text-blue-600">PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN</p><p>Câu 1: $x^2 - 1 = 0$ có nghiệm là?</p><p>A. 1  B. -1  C. ±1  D. 0</p><p>Đáp án: C</p><hr/><p className="font-bold text-blue-600">PHẦN II. TRẮC NGHIỆM ĐÚNG SAI</p><p>Câu 2: Cho hàm số y = f(x)...</p><p>a) Hàm số đồng biến... (Đúng)</p><p>b) Giá trị cực đại là 5... (Sai)</p><hr/><p className="font-bold text-blue-600">PHẦN III. TRẢ LỜI NGẮN</p><p>Câu 3: Có bao nhiêu số nguyên...?</p><p>Đáp án: 12</p></div></div>
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                  <h3 className="font-bold mb-4">Quy ước mẫu file (Gọn nhẹ)</h3>
+                  <div className="text-xs text-gray-700 font-mono bg-white p-4 rounded border space-y-3">
+                      <div>
+                          <p className="font-bold text-blue-600">PHẦN I. TRẮC NGHIỆM (Đánh dấu * trước đáp án đúng)</p>
+                          <p>Câu 1: $1+1=?$</p>
+                          <p>A. 1 &nbsp; *B. 2 &nbsp; C. 3 &nbsp; D. 4</p>
+                      </div>
+                      <hr/>
+                      <div>
+                          <p className="font-bold text-blue-600">PHẦN II. ĐÚNG SAI (Dùng Đ/S hoặc True/False)</p>
+                          <p>Câu 2: Hàm số $y=x^2$...</p>
+                          <p>a) Đồng biến trên R (S)</p>
+                          <p>b) Có cực tiểu tại x=0 (Đ)</p>
+                      </div>
+                      <hr/>
+                      <div>
+                          <p className="font-bold text-blue-600">PHẦN III. TRẢ LỜI NGẮN (Ghi rõ Đáp án: ...)</p>
+                          <p>Câu 3: $\sqrt{4}$ bằng bao nhiêu?</p>
+                          <p>Đáp án: 2</p>
+                      </div>
+                  </div>
+              </div>
           </div>
       )}
       
