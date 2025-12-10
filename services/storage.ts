@@ -1,10 +1,12 @@
-/// <reference types="vite/client" />
+
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result } from '../types';
 
 // Lấy biến môi trường theo chuẩn Vite
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
+// Fix: Cast import.meta to any to resolve missing property 'env' error
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
+// Fix: Cast import.meta to any to resolve missing property 'env' error
+const supabaseKey = (import.meta as any).env.VITE_SUPABASE_KEY;
 
 let supabase: any = null;
 
@@ -80,6 +82,22 @@ export const saveUser = async (user: User): Promise<void> => {
     data: user
   });
   if (error) console.error('Lỗi lưu User:', error);
+};
+
+export const updateUser = async (user: User): Promise<void> => {
+  if (!supabase) return;
+  const { error } = await supabase
+    .from('users')
+    .update({ data: user }) // Cập nhật cột JSON
+    .eq('id', user.id);
+  
+  if (error) console.error('Lỗi update User:', error);
+};
+
+export const deleteUser = async (id: string): Promise<void> => {
+  if (!supabase) return;
+  const { error } = await supabase.from('users').delete().eq('id', id);
+  if (error) console.error('Lỗi xóa User:', error);
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
@@ -178,6 +196,12 @@ export const saveResult = async (result: Result): Promise<void> => {
     data: result
   });
   if (error) console.error('Lỗi lưu Result:', error);
+};
+
+export const deleteResult = async (id: string): Promise<void> => {
+  if (!supabase) return;
+  const { error } = await supabase.from('results').delete().eq('id', id);
+  if (error) console.error('Lỗi xóa Result:', error);
 };
 
 export const hasStudentTakenQuiz = async (studentId: string, quizId: string): Promise<boolean> => {
