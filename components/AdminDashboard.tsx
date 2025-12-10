@@ -580,9 +580,64 @@ const AdminDashboard: React.FC = () => {
 
                          <div className="mt-1 p-2 bg-gray-50 border rounded text-sm text-gray-700"><span className="text-xs font-bold text-blue-500 uppercase mr-2">Xem trước:</span><LatexText text={q.text} /></div>
                          
-                         {q.type === 'mcq' && (<div className="grid grid-cols-2 gap-3">{q.options?.map((opt, optIdx) => <div key={optIdx} className="flex gap-1 border p-2 rounded bg-gray-50"><input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} /><input className="bg-transparent w-full text-sm outline-none" value={opt} onChange={e => { const newOpts = [...(q.options||[])]; newOpts[optIdx] = e.target.value; updateQuestion(idx, 'options', newOpts); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', e.target.value); }} /></div>)}</div>)}
+                         {q.type === 'mcq' && (
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                                 {q.options?.map((opt, optIdx) => (
+                                     <div key={optIdx} className="border p-2 rounded-lg bg-gray-50 hover:border-blue-300 transition-colors flex flex-col gap-1">
+                                         <div className="flex items-center gap-2">
+                                             <input 
+                                                type="radio" 
+                                                checked={q.correctAnswer === opt} 
+                                                onChange={() => updateQuestion(idx, 'correctAnswer', opt)} 
+                                                className="cursor-pointer"
+                                             />
+                                             <span className="font-bold text-gray-500 text-sm w-4">{String.fromCharCode(65+optIdx)}.</span>
+                                             <input 
+                                                className="bg-white border border-gray-200 rounded px-2 py-1.5 w-full text-sm outline-none focus:border-blue-500" 
+                                                value={opt} 
+                                                onChange={e => { 
+                                                    const newOpts = [...(q.options||[])]; 
+                                                    newOpts[optIdx] = e.target.value; 
+                                                    updateQuestion(idx, 'options', newOpts); 
+                                                    if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', e.target.value); 
+                                                }} 
+                                                placeholder={`Đáp án ${String.fromCharCode(65+optIdx)}`}
+                                             />
+                                         </div>
+                                         {/* PREVIEW LINE FOR OPTION */}
+                                         <div className="ml-8 pl-2 border-l-2 border-blue-200 text-sm text-gray-600 min-h-[1.25rem]">
+                                             <LatexText text={opt || '...'} />
+                                         </div>
+                                     </div>
+                                 ))}
+                             </div>
+                         )}
+
                          {q.type === 'short' && (<div className="flex items-center gap-3"><label>Đáp án:</label><input type="text" className="border p-2 rounded bg-green-50 font-bold" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)}/></div>)}
-                         {q.type === 'group-tf' && (q.subQuestions?.map((sq, sqIdx) => <div key={sqIdx} className="flex gap-2 bg-gray-50 p-2 rounded border"><input className="flex-1 bg-transparent" value={sq.text} onChange={e=>updateSubQuestion(idx,sqIdx,'text',e.target.value)} /><button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded ${sq.correctAnswer==='True'?'bg-green-500 text-white':'text-gray-400'}`}>Đ</button><button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded ${sq.correctAnswer==='False'?'bg-red-500 text-white':'text-gray-400'}`}>S</button></div>))}
+                         
+                         {q.type === 'group-tf' && (
+                             <div className="space-y-2 mt-2">
+                                 {q.subQuestions?.map((sq, sqIdx) => (
+                                     <div key={sqIdx} className="bg-gray-50 p-2 rounded border">
+                                         <div className="flex gap-2 items-center mb-1">
+                                             <span className="font-bold text-gray-500 text-sm">{String.fromCharCode(97+sqIdx)})</span>
+                                             <input 
+                                                className="flex-1 bg-white border px-2 py-1 rounded text-sm outline-none focus:border-blue-500" 
+                                                value={sq.text} 
+                                                onChange={e=>updateSubQuestion(idx,sqIdx,'text',e.target.value)} 
+                                                placeholder="Nhập nội dung ý..."
+                                             />
+                                             <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='True'?'bg-green-500 text-white border-green-600':'bg-white text-gray-400'}`}>Đ</button>
+                                             <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='False'?'bg-red-500 text-white border-red-600':'bg-white text-gray-400'}`}>S</button>
+                                         </div>
+                                         {/* PREVIEW LINE FOR SUB-QUESTION */}
+                                         <div className="ml-6 pl-2 border-l-2 border-blue-200 text-sm text-gray-600">
+                                              <LatexText text={sq.text || '...'} />
+                                         </div>
+                                     </div>
+                                 ))}
+                             </div>
+                         )}
 
                          {/* SOLUTION FIELD (NEW) */}
                          <div className="mt-4 pt-4 border-t border-dashed">
