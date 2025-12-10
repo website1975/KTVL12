@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, Use
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key, Download, FileSpreadsheet, TrendingUp, Award, UserCheck } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -68,10 +68,9 @@ const AdminDashboard: React.FC = () => {
     const rData = await getResults();
     setResults(rData);
 
-    if (activeTab === 'students') {
-        const uData = await getUsers();
-        setUsers(uData);
-    }
+    // Luôn lấy user để map tên cho chính xác khi xuất excel
+    const uData = await getUsers();
+    setUsers(uData);
   };
 
   const handleSaveQuiz = async () => {
@@ -331,6 +330,82 @@ const AdminDashboard: React.FC = () => {
   };
 
   const { tests: listTests, practices: listPractices } = getListViewQuizzes();
+
+  // --- EXPORT EXCEL LOGIC ---
+  const escapeCsv = (str: any) => {
+      if (str === null || str === undefined) return '';
+      const stringValue = String(str);
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+  }
+
+  const handleExportExcel = () => {
+      if (!selectedQuizId) return;
+      
+      const quiz = quizzes.find(q => q.id === selectedQuizId);
+      if (!quiz) return;
+
+      // Lấy tất cả kết quả của bài thi này
+      const quizResults = results.filter(r => r.quizId === selectedQuizId);
+
+      if (quizResults.length === 0) {
+          alert("Chưa có dữ liệu kết quả để xuất.");
+          return;
+      }
+
+      // Tạo nội dung CSV
+      // Thêm BOM (\uFEFF) để Excel nhận diện đúng Tiếng Việt UTF-8
+      const headers = ["STT", "Họ và Tên", "Tên đăng nhập", "Lớp", "Điểm số", "Thời gian làm bài", "Ngày nộp"];
+      const csvRows = [headers.join(",")];
+
+      quizResults.forEach((r, index) => {
+          const student = users.find(u => u.id === r.studentId);
+          const row = [
+              index + 1,
+              escapeCsv(student ? student.fullName : r.studentName),
+              escapeCsv(student ? student.username : "N/A"),
+              escapeCsv(student ? student.grade : "N/A"),
+              r.score.toFixed(2),
+              escapeCsv((r.durationSeconds / 60).toFixed(1) + " phút"),
+              escapeCsv(format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm"))
+          ];
+          csvRows.push(row.join(","));
+      });
+
+      const csvString = "\uFEFF" + csvRows.join("\n");
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      // UPDATE: Thêm Khối lớp vào tên file để dễ phân biệt
+      link.setAttribute("download", `KetQua_K${quiz.grade}_${quiz.title}_${format(new Date(), "dd-MM-yyyy")}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
+  // --- STATS CALCULATION FOR SELECTED QUIZ ---
+  const getSelectedQuizStats = () => {
+      if (!selectedQuizId) return null;
+      const quizResults = results.filter(r => r.quizId === selectedQuizId);
+      if (quizResults.length === 0) return null;
+
+      const scores = quizResults.map(r => r.score);
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const max = Math.max(...scores);
+      const min = Math.min(...scores);
+      
+      return {
+          count: quizResults.length,
+          avg,
+          max,
+          min
+      };
+  };
+  const selectedQuizStats = getSelectedQuizStats();
+
 
   // --- STUDENT MANAGEMENT LOGIC ---
   const handleEditUser = (user: User) => {
@@ -903,19 +978,54 @@ const AdminDashboard: React.FC = () => {
                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Đề Luyện Tập</label>
                           <select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizzes.find(q => q.id === selectedQuizId)?.type === 'practice' ? selectedQuizId : ''} onChange={(e) => setSelectedQuizId(e.target.value)}>
                               <option value="">-- Chọn đề luyện tập --</option>
-                              {practiceQuizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                              {practiceQuizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title}</option>)}
                           </select>
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Đề Kiểm Tra</label>
                           <select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizzes.find(q => q.id === selectedQuizId)?.type === 'test' ? selectedQuizId : ''} onChange={(e) => setSelectedQuizId(e.target.value)}>
                               <option value="">-- Chọn bài kiểm tra --</option>
-                              {testQuizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                              {testQuizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title}</option>)}
                           </select>
                       </div>
                   </div>
               )}
            </div>
+
+           {/* STATS PANEL (Hiển thị khi chọn 1 đề thi cụ thể) */}
+           {selectedQuizId && selectedQuizStats && (
+               <div className="p-6 bg-blue-50 border-b border-blue-100 animate-fade-in">
+                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                       <div>
+                           <h3 className="font-bold text-lg text-blue-900 flex items-center gap-2"><TrendingUp size={20}/> Thống Kê Chi Tiết</h3>
+                           <p className="text-sm text-blue-600">Đề thi: {quizzes.find(q=>q.id===selectedQuizId)?.title}</p>
+                       </div>
+                       <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 transition">
+                           <FileSpreadsheet size={18} /> Xuất Excel (.csv)
+                       </button>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                           <div className="text-xs text-gray-500 uppercase font-bold mb-1">Số lượt thi</div>
+                           <div className="text-2xl font-bold text-gray-800 flex items-center gap-2"><UserCheck size={20} className="text-blue-500"/> {selectedQuizStats.count}</div>
+                       </div>
+                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                           <div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm trung bình</div>
+                           <div className="text-2xl font-bold text-blue-600">{selectedQuizStats.avg.toFixed(2)}</div>
+                       </div>
+                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                           <div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm cao nhất</div>
+                           <div className="text-2xl font-bold text-green-600 flex items-center gap-2"><Award size={20}/> {selectedQuizStats.max.toFixed(2)}</div>
+                       </div>
+                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                           <div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm thấp nhất</div>
+                           <div className="text-2xl font-bold text-red-500">{selectedQuizStats.min.toFixed(2)}</div>
+                       </div>
+                   </div>
+               </div>
+           )}
+
            <div className="overflow-hidden min-h-[300px]">
                 {resultFilterGrade !== 'all' && !selectedQuizId && (
                     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
@@ -936,7 +1046,9 @@ const AdminDashboard: React.FC = () => {
                         </tr>
                         </thead>
                         <tbody>
-                        {groupedResults.map((group, idx) => (
+                        {groupedResults.length === 0 ? (
+                            <tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">Chưa có kết quả nào.</td></tr>
+                        ) : groupedResults.map((group, idx) => (
                             <tr key={idx} className="border-b hover:bg-gray-50">
                                 <td className="p-4 font-bold text-gray-800">{group.studentName}</td>
                                 <td className="p-4 text-gray-600">{group.quizTitle}</td>
