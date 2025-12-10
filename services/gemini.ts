@@ -1,11 +1,11 @@
 
-/// <reference types="vite/client" />
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Question, QuestionType, Grade } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
 // Đọc key từ import.meta.env (đã được map trong vite.config.ts)
-const API_KEY = import.meta.env.API_KEY || ''; 
+// Fix: Cast import.meta to any to resolve missing property 'env' error
+const API_KEY = (import.meta as any).env.API_KEY || ''; 
 
 const getAIClient = () => {
     if (!API_KEY) {
@@ -77,34 +77,30 @@ export const generateQuestions = async (
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
 
+  // Prompt được tối ưu để xử lý PDF nhiễu và định dạng số học
   const prompt = `
     Bạn là trợ lý nhập liệu đề thi thông minh. Nhiệm vụ: Trích xuất câu hỏi từ file PDF sang JSON.
     
-    Ưu tiên tốc độ và định dạng gọn nhẹ:
+    CHÚ Ý QUAN TRỌNG:
+    - Bỏ qua Header, Footer, Số trang, Watermark (chữ chìm). Chỉ lấy nội dung câu hỏi.
+    - Nếu câu hỏi bị ngắt trang, hãy tự động nối lại thành câu hoàn chỉnh.
+    
+    Cấu trúc đề thi cần tìm:
     1. PHẦN I (MCQ): 
-       - Tìm câu hỏi và 4 đáp án.
-       - Đáp án đúng thường được đánh dấu bằng dấu sao (*) hoặc tô đậm/khoanh tròn. Nếu không thấy, hãy tự giải.
-       - KHÔNG cần sinh field 'solution' (để trống).
-
+       - Tìm câu hỏi và 4 đáp án (A, B, C, D).
+       - Đáp án đúng: Thường có dấu (*), gạch chân, hoặc tô đậm. Nếu không có dấu hiệu, hãy TỰ GIẢI để tìm đáp án đúng.
     2. PHẦN II (Đúng/Sai):
-       - Tìm các ý a, b, c, d.
-       - Đáp án thường ghi là (Đ) hoặc (S), hoặc (True)/(False).
-       - KHÔNG cần sinh field 'solution' (để trống).
-
+       - Tìm các ý a), b), c), d).
+       - Đáp án: (Đ)/(S) hoặc (True)/(False).
     3. PHẦN III (Trả lời ngắn):
-       - BẮT BUỘC phải điền đáp án vào 'correctAnswer'.
-       - BẮT BUỘC sinh lời giải vắn tắt vào field 'solution' (Ví dụ: "Giải pt ta được x=2").
+       - Tìm câu hỏi và điền đáp án vào 'correctAnswer'.
+       - BẮT BUỘC sinh lời giải vắn tắt vào 'solution'.
 
-    Quy tắc định dạng văn bản (Rich Text):
-    - Xuống dòng: Sử dụng thẻ <br/>
-    - Căn, mũ, phân số, ký hiệu đặc biệt: Dùng LaTeX đặt trong dấu $.
-      Ví dụ: $\\sqrt{x}$, $x^2$, $\\frac{a}{b}$, $\\approx$, $\\Leftrightarrow$, $\\Rightarrow$.
-    - Escape JSON: Chú ý escape dấu gạch chéo ngược (ví dụ \\frac phải viết là \\\\frac).
+    Quy tắc định dạng:
+    - Toán học: Dùng LaTeX giữa dấu $ (VD: $\\sqrt{x}$).
+    - Điểm số (points): Phần I (0.25), Phần II (1.0), Phần III (0.5).
 
     Output JSON Strict:
-    - type: 'mcq' | 'group-tf' | 'short'
-    - points: 0.25 (mcq), 1.0 (group-tf), 0.5 (short)
-    - subQuestions: [{text: string, correctAnswer: 'True'|'False'}] (chỉ dùng cho group-tf)
   `;
 
   try {
@@ -117,6 +113,13 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         ]
       },
       config: {
+        // Tắt bộ lọc an toàn để tránh chặn nội dung giáo dục (Lịch sử, Sinh học, v.v...)
+        safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -154,7 +157,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         type: item.type,
         text: item.text,
         points: item.points,
-        solution: item.solution || "", // Mặc định rỗng cho nhanh, trừ phần III
+        solution: item.solution || "", 
         options: item.options || undefined,
         correctAnswer: item.correctAnswer || undefined,
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
@@ -164,8 +167,12 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         })) : undefined
     }));
 
-  } catch (error) {
-     console.error("Gemini PDF Parse Error:", error);
-     throw new Error("Lỗi đọc file PDF. Vui lòng thử lại với file rõ nét hơn.");
+  } catch (error: any) {
+     console.error("Gemini PDF Parse Error Full:", error);
+     // Trả về lỗi chi tiết hơn thay vì lỗi chung chung
+     const msg = error.message || JSON.stringify(error);
+     if (msg.includes("429")) throw new Error("Hệ thống đang bận (429). Vui lòng đợi 30s rồi thử lại.");
+     if (msg.includes("SAFETY")) throw new Error("File bị chặn bởi bộ lọc an toàn. Hãy kiểm tra nội dung nhạy cảm.");
+     throw new Error(`Lỗi đọc file: ${msg.substring(0, 100)}... (Xem Console)`);
   }
 };
