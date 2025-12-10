@@ -179,13 +179,14 @@ const AdminDashboard: React.FC = () => {
               alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi!`);
               setActiveTab('create');
           } catch (e: any) {
-              alert(e.message);
+              console.error("Upload error:", e);
+              alert(e.message || "Lỗi không xác định khi đọc PDF.");
           } finally {
               setIsProcessing(false);
           }
       };
       reader.onerror = () => {
-          alert("Lỗi đọc file");
+          alert("Lỗi không thể đọc file từ trình duyệt.");
           setIsProcessing(false);
       }
   };
