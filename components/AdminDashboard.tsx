@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion } from '../types';
-import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage } from '../services/storage';
+import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, User, Role } from '../types';
+import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
 const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'list' | 'create' | 'import' | 'results'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'create' | 'import' | 'results' | 'students'>('list');
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [results, setResults] = useState<Result[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   
   // List Filter State (NEW)
   const [quizFilterGrade, setQuizFilterGrade] = useState<Grade | 'all'>('all');
@@ -43,6 +44,18 @@ const AdminDashboard: React.FC = () => {
   // Result History Modal State
   const [viewHistoryData, setViewHistoryData] = useState<{ studentName: string, quizTitle: string, items: Result[] } | null>(null);
 
+  // Student Management State
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [searchUser, setSearchUser] = useState('');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState({
+      fullName: '',
+      username: '',
+      password: '',
+      grade: '10' as Grade,
+      role: 'student' as Role
+  });
+
   useEffect(() => {
     refreshData();
   }, [activeTab]);
@@ -54,6 +67,11 @@ const AdminDashboard: React.FC = () => {
     
     const rData = await getResults();
     setResults(rData);
+
+    if (activeTab === 'students') {
+        const uData = await getUsers();
+        setUsers(uData);
+    }
   };
 
   const handleSaveQuiz = async () => {
@@ -314,6 +332,92 @@ const AdminDashboard: React.FC = () => {
 
   const { tests: listTests, practices: listPractices } = getListViewQuizzes();
 
+  // --- STUDENT MANAGEMENT LOGIC ---
+  const handleEditUser = (user: User) => {
+      setEditingUser(user);
+      setUserForm({
+          fullName: user.fullName,
+          username: user.username,
+          password: user.password,
+          grade: user.grade || '10',
+          role: user.role
+      });
+      setShowUserModal(true);
+  };
+
+  const handleCreateUser = () => {
+      setEditingUser(null);
+      setUserForm({
+          fullName: '',
+          username: '',
+          password: '',
+          grade: '10',
+          role: 'student'
+      });
+      setShowUserModal(true);
+  };
+
+  const handleDeleteUser = async (id: string) => {
+      if (window.confirm('Cảnh báo: Xóa học sinh này sẽ xóa toàn bộ lịch sử thi của họ. Bạn có chắc không?')) {
+          await deleteUser(id);
+          refreshData(); // Reload user list
+      }
+  };
+
+  const handleSaveUser = async () => {
+      if (!userForm.username || !userForm.password || !userForm.fullName) {
+          alert("Vui lòng nhập đầy đủ thông tin.");
+          return;
+      }
+
+      const userData: User = {
+          id: editingUser ? editingUser.id : uuidv4(),
+          username: userForm.username,
+          password: userForm.password,
+          fullName: userForm.fullName,
+          grade: userForm.role === 'student' ? userForm.grade : undefined,
+          role: userForm.role
+      };
+
+      if (editingUser) {
+          await updateUser(userData);
+      } else {
+          // Check exist
+          const exists = users.find(u => u.username === userData.username);
+          if (exists) {
+              alert("Tên đăng nhập đã tồn tại!");
+              return;
+          }
+          await saveUser(userData);
+      }
+      setShowUserModal(false);
+      refreshData();
+  };
+
+  const handleDeleteResult = async (resultId: string) => {
+      if (window.confirm("Bạn có chắc chắn muốn XÓA kết quả bài thi này không? Hành động này không thể hoàn tác.")) {
+          await deleteResult(resultId);
+          
+          // Cập nhật lại viewHistoryData bằng cách xóa item vừa xóa khỏi mảng
+          if (viewHistoryData) {
+              const updatedItems = viewHistoryData.items.filter(item => item.id !== resultId);
+              if (updatedItems.length === 0) {
+                  setViewHistoryData(null); // Close if no items left
+              } else {
+                  setViewHistoryData({ ...viewHistoryData, items: updatedItems });
+              }
+          }
+          
+          // Refresh toàn bộ dữ liệu nền
+          refreshData();
+      }
+  };
+
+  const filteredUsers = users.filter(u => 
+      u.role === 'student' && 
+      (u.fullName.toLowerCase().includes(searchUser.toLowerCase()) || u.username.toLowerCase().includes(searchUser.toLowerCase()))
+  );
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2">
@@ -328,6 +432,7 @@ const AdminDashboard: React.FC = () => {
         </button>
         <button onClick={() => { setActiveTab('import'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'import' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><Upload size={20} /> Nhập File PDF</button>
         <button onClick={() => { setActiveTab('results'); resetForm(); setSelectedQuizId(''); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'results' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><BarChart3 size={20} /> Kết Quả Thi</button>
+        <button onClick={() => { setActiveTab('students'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'students' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><Users size={20} /> Quản Lý Học Sinh</button>
       </div>
 
       {activeTab === 'list' && (
@@ -551,6 +656,60 @@ const AdminDashboard: React.FC = () => {
               </div>
           </div>
       )}
+
+      {/* USERS TAB */}
+      {activeTab === 'students' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex items-center gap-2 w-full md:w-auto">
+                      <div className="relative w-full">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <input 
+                              type="text" 
+                              placeholder="Tìm tên hoặc username..." 
+                              className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64 focus:ring-2 focus:ring-blue-200 outline-none"
+                              value={searchUser}
+                              onChange={(e) => setSearchUser(e.target.value)}
+                          />
+                      </div>
+                  </div>
+                  <button onClick={handleCreateUser} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700">
+                      <UserPlus size={18} /> Thêm Học Sinh
+                  </button>
+              </div>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                      <thead className="bg-gray-50 border-b text-gray-500 text-sm uppercase">
+                          <tr>
+                              <th className="p-4">Họ và Tên</th>
+                              <th className="p-4">Tên đăng nhập</th>
+                              <th className="p-4">Mật khẩu</th>
+                              <th className="p-4 text-center">Khối</th>
+                              <th className="p-4 text-right">Hành động</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {filteredUsers.length === 0 ? (
+                              <tr><td colSpan={5} className="p-8 text-center text-gray-500">Không tìm thấy học sinh nào.</td></tr>
+                          ) : (
+                              filteredUsers.map(u => (
+                                  <tr key={u.id} className="border-b hover:bg-gray-50">
+                                      <td className="p-4 font-bold text-gray-800">{u.fullName}</td>
+                                      <td className="p-4 text-blue-600 font-mono">{u.username}</td>
+                                      <td className="p-4 text-gray-500 font-mono text-xs">******</td>
+                                      <td className="p-4 text-center"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">K{u.grade}</span></td>
+                                      <td className="p-4 text-right flex justify-end gap-2">
+                                          <button onClick={() => handleEditUser(u)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Sửa"><Edit size={16}/></button>
+                                          <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Xóa"><Trash2 size={16}/></button>
+                                      </td>
+                                  </tr>
+                              ))
+                          )}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      )}
       
       {/* PREVIEW MODAL */}
       {previewQuiz && (
@@ -617,7 +776,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
       
-      {/* HISTORY & RESULTS (No changes needed here) */}
+      {/* HISTORY & RESULTS (Updated with Delete Button) */}
       {viewHistoryData && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
@@ -634,21 +793,28 @@ const AdminDashboard: React.FC = () => {
                               <tr>
                                   <th className="p-3 border-b">Lần</th>
                                   <th className="p-3 border-b">Ngày nộp</th>
-                                  <th className="p-3 border-b">Thời gian</th>
-                                  <th className="p-3 border-b text-right">Điểm</th>
+                                  <th className="p-3 border-b">Điểm</th>
+                                  <th className="p-3 border-b text-right">Xóa</th>
                               </tr>
                           </thead>
                           <tbody>
                               {viewHistoryData.items.map((item, idx) => (
-                                  <tr key={item.id} className="border-b hover:bg-blue-50">
+                                  <tr key={item.id} className="border-b hover:bg-blue-50 group">
                                       <td className="p-3 text-gray-500">#{viewHistoryData.items.length - idx}</td>
                                       <td className="p-3">
-                                          <div className="font-medium text-gray-800">{format(parseISO(item.submittedAt), "dd/MM/yyyy")}</div>
-                                          <div className="text-xs text-gray-400">{format(parseISO(item.submittedAt), "HH:mm")}</div>
+                                          <div className="font-medium text-gray-800">{format(parseISO(item.submittedAt), "dd/MM/yyyy HH:mm")}</div>
                                       </td>
-                                      <td className="p-3 font-mono text-gray-600">{formatDurationSimple(item.durationSeconds || 0)}</td>
-                                      <td className="p-3 text-right">
+                                      <td className="p-3">
                                           <span className={`font-bold ${item.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{item.score.toFixed(2)}</span>
+                                      </td>
+                                      <td className="p-3 text-right">
+                                          <button 
+                                              onClick={() => handleDeleteResult(item.id)}
+                                              className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition" 
+                                              title="Xóa kết quả thi này"
+                                          >
+                                              <Trash2 size={14}/>
+                                          </button>
                                       </td>
                                   </tr>
                               ))}
@@ -664,8 +830,6 @@ const AdminDashboard: React.FC = () => {
       
       {activeTab === 'results' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-           {/* ... (Existing Results Table code) ... */}
-           {/* Giữ nguyên phần render bảng kết quả */}
            <div className="p-4 border-b bg-gray-50 space-y-4">
               <div className="flex items-center gap-2 text-gray-700 font-medium">
                   <Filter size={18} />
@@ -733,6 +897,49 @@ const AdminDashboard: React.FC = () => {
                     </table>
                 )}
            </div>
+        </div>
+      )}
+
+      {/* USER MODAL */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up">
+                <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+                    <h3 className="font-bold text-lg flex items-center gap-2"><UserPlus size={20}/> {editingUser ? 'Sửa Thông Tin Học Sinh' : 'Thêm Học Sinh Mới'}</h3>
+                    <button onClick={() => setShowUserModal(false)} className="text-blue-100 hover:text-white rounded-full p-1"><XCircle size={24}/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Họ và Tên</label>
+                        <input type="text" className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nguyễn Văn A" value={userForm.fullName} onChange={e => setUserForm({...userForm, fullName: e.target.value})} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Tên đăng nhập (Viết liền)</label>
+                        <input type="text" className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="nguyenvana" value={userForm.username} onChange={e => setUserForm({...userForm, username: e.target.value})} disabled={!!editingUser} />
+                        {editingUser && <p className="text-xs text-gray-500 mt-1">* Không thể đổi tên đăng nhập</p>}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Mật khẩu</label>
+                        <div className="relative">
+                            <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
+                            <input type="text" className="w-full border rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="******" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Khối Lớp</label>
+                        <select className="w-full border rounded-lg p-2.5 bg-white" value={userForm.grade} onChange={e => setUserForm({...userForm, grade: e.target.value as Grade})}>
+                            <option value="10">Lớp 10</option>
+                            <option value="11">Lớp 11</option>
+                            <option value="12">Lớp 12</option>
+                        </select>
+                    </div>
+                    <div className="pt-4">
+                        <button onClick={handleSaveUser} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-200 transition">
+                            {editingUser ? 'Lưu Thay Đổi' : 'Tạo Tài Khoản'}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
       )}
     </div>
