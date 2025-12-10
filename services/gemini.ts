@@ -14,6 +14,37 @@ const getAIClient = () => {
     return new GoogleGenAI({ apiKey: API_KEY });
 };
 
+// Hàm delay để đợi trước khi thử lại
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Hàm bọc để thực hiện cơ chế Retry (Thử lại khi lỗi server)
+async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDelay = 2000): Promise<T> {
+    let lastError: any;
+    
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            lastError = error;
+            const msg = error.toString().toLowerCase();
+            
+            // Kiểm tra các mã lỗi thường gặp do server bận: 503 (Overloaded), 429 (Rate Limit), 500 (Internal)
+            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('429') || msg.includes('quota') || msg.includes('500');
+            
+            if (isServerBusy && i < retries - 1) {
+                console.warn(`Gemini API busy (Lần ${i + 1}/${retries}). Đang thử lại sau ${initialDelay}ms...`);
+                await delay(initialDelay);
+                initialDelay *= 2; // Tăng thời gian chờ lên gấp đôi (Exponential backoff)
+                continue;
+            }
+            
+            // Nếu không phải lỗi server busy hoặc đã hết số lần thử, ném lỗi ra ngoài
+            throw error;
+        }
+    }
+    throw lastError;
+}
+
 export const generateQuestions = async (
   topic: string,
   grade: Grade,
@@ -35,25 +66,28 @@ export const generateQuestions = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question_text: { type: Type.STRING },
-              options: { type: Type.ARRAY, items: { type: Type.STRING } },
-              correct_answer: { type: Type.STRING },
-              solution: { type: Type.STRING }
-            },
-            required: ["question_text", "options", "correct_answer"]
-          }
-        }
-      }
+    // Áp dụng withRetry
+    const response = await withRetry(async () => {
+        return await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                    question_text: { type: Type.STRING },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    correct_answer: { type: Type.STRING },
+                    solution: { type: Type.STRING }
+                    },
+                    required: ["question_text", "options", "correct_answer"]
+                }
+                }
+            }
+        });
     });
 
     const rawData = JSON.parse(response.text || '[]');
@@ -70,7 +104,7 @@ export const generateQuestions = async (
 
   } catch (error) {
     console.error("Gemini Error:", error);
-    throw new Error("Không thể tạo câu hỏi tự động.");
+    throw new Error("Không thể tạo câu hỏi tự động do hệ thống AI đang bận. Vui lòng thử lại sau vài giây.");
   }
 };
 
@@ -104,50 +138,53 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: {
-        parts: [
-            { inlineData: { mimeType: "application/pdf", data: base64Data } },
-            { text: prompt }
-        ]
-      },
-      config: {
-        // Tắt bộ lọc an toàn để tránh chặn nội dung giáo dục (Lịch sử, Sinh học, v.v...)
-        safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
-              text: { type: Type.STRING },
-              points: { type: Type.NUMBER },
-              solution: { type: Type.STRING },
-              options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-              correctAnswer: { type: Type.STRING, nullable: true },
-              subQuestions: {
-                type: Type.ARRAY,
-                nullable: true,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    text: { type: Type.STRING },
-                    correctAnswer: { type: Type.STRING, enum: ["True", "False"] }
-                  }
-                }
-              }
+    // Áp dụng withRetry cho cả hàm đọc PDF
+    const response = await withRetry(async () => {
+        return await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: "application/pdf", data: base64Data } },
+                    { text: prompt }
+                ]
             },
-            required: ["type", "text", "points"]
-          }
-        }
-      }
+            config: {
+                // Tắt bộ lọc an toàn để tránh chặn nội dung giáo dục
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                ],
+                responseMimeType: "application/json",
+                responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                    type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
+                    text: { type: Type.STRING },
+                    points: { type: Type.NUMBER },
+                    solution: { type: Type.STRING },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                    correctAnswer: { type: Type.STRING, nullable: true },
+                    subQuestions: {
+                        type: Type.ARRAY,
+                        nullable: true,
+                        items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            text: { type: Type.STRING },
+                            correctAnswer: { type: Type.STRING, enum: ["True", "False"] }
+                        }
+                        }
+                    }
+                    },
+                    required: ["type", "text", "points"]
+                }
+                }
+            }
+        });
     });
 
     const rawData = JSON.parse(response.text || '[]');
@@ -169,10 +206,13 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 
   } catch (error: any) {
      console.error("Gemini PDF Parse Error Full:", error);
-     // Trả về lỗi chi tiết hơn thay vì lỗi chung chung
      const msg = error.message || JSON.stringify(error);
-     if (msg.includes("429")) throw new Error("Hệ thống đang bận (429). Vui lòng đợi 30s rồi thử lại.");
+     
+     // Custom error messages
+     if (msg.includes("503") || msg.includes("overloaded")) throw new Error("Server AI đang quá tải (503). Đã thử lại nhưng không thành công. Vui lòng đợi 1 phút và thử lại.");
+     if (msg.includes("429")) throw new Error("Bạn đã gửi quá nhiều yêu cầu (429). Vui lòng đợi 30s rồi thử lại.");
      if (msg.includes("SAFETY")) throw new Error("File bị chặn bởi bộ lọc an toàn. Hãy kiểm tra nội dung nhạy cảm.");
+     
      throw new Error(`Lỗi đọc file: ${msg.substring(0, 100)}... (Xem Console)`);
   }
 };
