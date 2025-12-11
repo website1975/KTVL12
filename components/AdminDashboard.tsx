@@ -1,12 +1,120 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, User, Role } from '../types';
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key, Download, FileSpreadsheet, TrendingUp, Award, UserCheck } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key, Download, FileSpreadsheet, TrendingUp, Award, UserCheck, Bold, Italic, Underline, Type, Sigma, ChevronRight, CornerDownLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
+
+// --- HELPER COMPONENTS FOR RICH EDITOR ---
+
+interface ToolbarButtonProps {
+    onClick: () => void;
+    icon?: React.ReactNode;
+    label?: string;
+    tooltip: string;
+}
+
+const ToolbarBtn: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, tooltip }) => (
+    <button 
+        type="button"
+        onClick={onClick}
+        className="p-1.5 hover:bg-gray-200 rounded text-gray-700 font-medium text-xs flex items-center gap-1 border border-transparent hover:border-gray-300 transition-all min-w-[24px] justify-center"
+        title={tooltip}
+    >
+        {icon}
+        {label && <span>{label}</span>}
+    </button>
+);
+
+interface RichTextEditorProps {
+    value: string;
+    onChange: (val: string) => void;
+    placeholder?: string;
+    rows?: number; // If rows is defined, use textarea, else input
+    className?: string;
+}
+
+const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeholder, rows, className }) => {
+    const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
+
+    const insertTag = (prefix: string, suffix: string = '') => {
+        const el = inputRef.current;
+        if (!el) return;
+
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const text = el.value;
+
+        if (start === null || end === null) return;
+
+        const before = text.substring(0, start);
+        const selected = text.substring(start, end);
+        const after = text.substring(end);
+
+        const newVal = before + prefix + selected + suffix + after;
+        
+        onChange(newVal);
+
+        // Restore focus and cursor position (inside the tags)
+        setTimeout(() => {
+            el.focus();
+            const newCursorPos = start + prefix.length + selected.length; // Cursor after the inserted content (or selection)
+            el.setSelectionRange(newCursorPos, newCursorPos);
+        }, 0);
+    };
+
+    return (
+        <div className="flex flex-col border rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+            {/* TOOLBAR */}
+            <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-50 border-b border-gray-100">
+                {/* HTML Group */}
+                <ToolbarBtn onClick={() => insertTag('<b>', '</b>')} icon={<Bold size={14}/>} tooltip="In đậm (Bold)" />
+                <ToolbarBtn onClick={() => insertTag('<i>', '</i>')} icon={<Italic size={14}/>} tooltip="In nghiêng (Italic)" />
+                <ToolbarBtn onClick={() => insertTag('<u>', '</u>')} icon={<Underline size={14}/>} tooltip="Gạch chân (Underline)" />
+                <ToolbarBtn onClick={() => insertTag('<br/>')} icon={<CornerDownLeft size={14}/>} tooltip="Xuống dòng (Line Break)" />
+                
+                <div className="w-px h-4 bg-gray-300 mx-1"></div>
+                
+                {/* Math Group */}
+                <ToolbarBtn onClick={() => insertTag('$', '$')} icon={<Sigma size={14}/>} tooltip="Công thức toán (Inline Latex)" />
+                <ToolbarBtn onClick={() => insertTag('$\\frac{', '}$') } label="a/b" tooltip="Phân số" />
+                <ToolbarBtn onClick={() => insertTag('$\\sqrt{', '}$') } label="√x" tooltip="Căn bậc hai" />
+                <ToolbarBtn onClick={() => insertTag('$^{', '}$') } label="x²" tooltip="Số mũ" />
+                <ToolbarBtn onClick={() => insertTag('$_{', '}$') } label="x₁" tooltip="Chỉ số dưới" />
+                <ToolbarBtn onClick={() => insertTag('$\\vec{', '}$') } label="vec" tooltip="Vector" />
+                <ToolbarBtn onClick={() => insertTag('$\\Rightarrow$') } icon={<ChevronRight size={14}/>} tooltip="Suy ra" />
+                <ToolbarBtn onClick={() => insertTag('$\\pi$') } label="π" tooltip="Pi" />
+                <ToolbarBtn onClick={() => insertTag('^\\circ') } label="°" tooltip="Độ" />
+            </div>
+
+            {/* INPUT AREA */}
+            {rows ? (
+                <textarea
+                    ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                    className={`w-full p-3 outline-none text-sm font-mono leading-relaxed resize-y ${className}`}
+                    rows={rows}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                />
+            ) : (
+                <input
+                    ref={inputRef as React.RefObject<HTMLInputElement>}
+                    type="text"
+                    className={`w-full p-2 outline-none text-sm font-medium ${className}`}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                />
+            )}
+        </div>
+    );
+};
+
+// --- END HELPER COMPONENTS ---
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'import' | 'results' | 'students'>('list');
@@ -627,7 +735,13 @@ const AdminDashboard: React.FC = () => {
                          <div className="flex items-center gap-4"><div className="flex items-center gap-1"><span className="text-sm text-gray-500">Điểm:</span><input type="text" inputMode="decimal" className="w-16 border rounded p-1 text-center font-bold text-gray-700" value={q.points} onChange={(e) => { let val = e.target.value.replace(/[^0-9.,]/g, ''); val = val.replace(',', '.'); updateQuestion(idx, 'points', val); }} /></div><button onClick={() => { const newQs = [...questions]; newQs.splice(idx, 1); setQuestions(newQs); }} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-full"><Trash2 size={16}/></button></div>
                       </div>
                       <div className="space-y-3">
-                         <textarea className="w-full border rounded p-3 font-medium focus:ring-2 focus:ring-blue-100 outline-none font-mono text-sm" value={q.text} rows={3} onChange={e => updateQuestion(idx, 'text', e.target.value)} placeholder="Nhập nội dung câu hỏi..."/>
+                         {/* QUESTION TEXT EDITOR */}
+                         <RichTextEditor 
+                             rows={3}
+                             value={q.text} 
+                             onChange={(val) => updateQuestion(idx, 'text', val)} 
+                             placeholder="Nhập nội dung câu hỏi..." 
+                         />
                          
                          {/* IMAGE UPLOAD SECTION */}
                          <div className="flex gap-4 items-start">
@@ -668,17 +782,19 @@ const AdminDashboard: React.FC = () => {
                                                 className="cursor-pointer"
                                              />
                                              <span className="font-bold text-gray-500 text-sm w-4">{String.fromCharCode(65+optIdx)}.</span>
-                                             <input 
-                                                className="bg-white border border-gray-200 rounded px-2 py-1.5 w-full text-sm outline-none focus:border-blue-500" 
-                                                value={opt} 
-                                                onChange={e => { 
-                                                    const newOpts = [...(q.options||[])]; 
-                                                    newOpts[optIdx] = e.target.value; 
-                                                    updateQuestion(idx, 'options', newOpts); 
-                                                    if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', e.target.value); 
-                                                }} 
-                                                placeholder={`Đáp án ${String.fromCharCode(65+optIdx)}`}
-                                             />
+                                             {/* OPTION RICH EDITOR */}
+                                             <div className="flex-1">
+                                                <RichTextEditor 
+                                                    value={opt} 
+                                                    onChange={(val) => {
+                                                        const newOpts = [...(q.options||[])]; 
+                                                        newOpts[optIdx] = val; 
+                                                        updateQuestion(idx, 'options', newOpts); 
+                                                        if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', val); 
+                                                    }}
+                                                    placeholder={`Đáp án ${String.fromCharCode(65+optIdx)}`}
+                                                />
+                                             </div>
                                          </div>
                                          {/* PREVIEW LINE FOR OPTION */}
                                          <div className="ml-8 pl-2 border-l-2 border-blue-200 text-sm text-gray-600 min-h-[1.25rem]">
@@ -695,16 +811,20 @@ const AdminDashboard: React.FC = () => {
                              <div className="space-y-2 mt-2">
                                  {q.subQuestions?.map((sq, sqIdx) => (
                                      <div key={sqIdx} className="bg-gray-50 p-2 rounded border">
-                                         <div className="flex gap-2 items-center mb-1">
-                                             <span className="font-bold text-gray-500 text-sm">{String.fromCharCode(97+sqIdx)})</span>
-                                             <input 
-                                                className="flex-1 bg-white border px-2 py-1 rounded text-sm outline-none focus:border-blue-500" 
-                                                value={sq.text} 
-                                                onChange={e=>updateSubQuestion(idx,sqIdx,'text',e.target.value)} 
-                                                placeholder="Nhập nội dung ý..."
-                                             />
-                                             <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='True'?'bg-green-500 text-white border-green-600':'bg-white text-gray-400'}`}>Đ</button>
-                                             <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='False'?'bg-red-500 text-white border-red-600':'bg-white text-gray-400'}`}>S</button>
+                                         <div className="flex gap-2 items-start mb-1">
+                                             <span className="font-bold text-gray-500 text-sm mt-2">{String.fromCharCode(97+sqIdx)})</span>
+                                             {/* SUB-QUESTION RICH EDITOR */}
+                                             <div className="flex-1">
+                                                <RichTextEditor
+                                                    value={sq.text}
+                                                    onChange={(val) => updateSubQuestion(idx, sqIdx, 'text', val)}
+                                                    placeholder="Nhập nội dung ý..."
+                                                />
+                                             </div>
+                                             <div className="flex flex-col gap-1">
+                                                <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='True'?'bg-green-500 text-white border-green-600':'bg-white text-gray-400'}`}>Đ</button>
+                                                <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='False'?'bg-red-500 text-white border-red-600':'bg-white text-gray-400'}`}>S</button>
+                                             </div>
                                          </div>
                                          {/* PREVIEW LINE FOR SUB-QUESTION */}
                                          <div className="ml-6 pl-2 border-l-2 border-blue-200 text-sm text-gray-600">
@@ -720,12 +840,13 @@ const AdminDashboard: React.FC = () => {
                              <div className="flex items-center gap-2 mb-2 text-yellow-600 font-bold text-sm">
                                  <Lightbulb size={16} /> Lời giải / Gợi ý chi tiết (Hiển thị sau khi thi):
                              </div>
-                             <textarea 
-                                className="w-full border border-yellow-200 bg-yellow-50 rounded p-3 text-sm focus:ring-2 focus:ring-yellow-200 outline-none"
+                             {/* SOLUTION RICH EDITOR */}
+                             <RichTextEditor 
                                 rows={4}
-                                placeholder="Nhập gợi ý phương pháp, công thức, lời giải chi tiết (hỗ trợ Latex $...$)..."
+                                className="bg-yellow-50 border-yellow-200 focus:ring-yellow-200"
                                 value={q.solution || ''}
-                                onChange={e => updateQuestion(idx, 'solution', e.target.value)}
+                                onChange={(val) => updateQuestion(idx, 'solution', val)}
+                                placeholder="Nhập gợi ý phương pháp, công thức, lời giải chi tiết..."
                              />
                              <div className="mt-1 p-2 bg-white border border-gray-100 rounded text-sm text-gray-600">
                                 <span className="text-xs font-bold text-gray-400 uppercase mr-2">Preview Lời giải:</span>
