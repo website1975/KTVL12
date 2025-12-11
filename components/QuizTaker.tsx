@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Quiz, User, Result, Question } from '../types';
 import { saveResult } from '../services/storage';
 import { addMinutes, differenceInSeconds, parseISO } from 'date-fns';
-import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb } from 'lucide-react';
+import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb, Menu, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from './LatexText';
 
@@ -13,7 +13,6 @@ interface QuizTakerProps {
   onExit: () => void;
 }
 
-// Loại bỏ 'hello' khỏi ViewState
 type ViewState = 'taking' | 'result' | 'review';
 
 // Hàm tiện ích: Ép kiểu số an toàn tuyệt đối
@@ -33,16 +32,16 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const [currentView, setCurrentView] = useState<ViewState>('taking');
   
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  // FIX: Sử dụng useRef để lưu trữ câu trả lời, giúp setInterval truy cập được giá trị mới nhất
   const answersRef = useRef<Record<string, string>>({});
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [finalScore, setFinalScore] = useState(0);
   const [totalTimeSpent, setTotalTimeSpent] = useState(0);
   
-  // Khởi tạo thời gian
+  // Mobile sidebar toggle
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   useEffect(() => {
-    // Nếu không phải đang làm bài thì không chạy đồng hồ
     if (currentView !== 'taking') return;
 
     const durationMins = safeParseScore(quiz.durationMinutes) || 30;
@@ -62,7 +61,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         if (diff <= 0) {
             clearInterval(timer);
             setTimeLeft(0);
-            // Hết giờ thì tự nộp (auto = true)
             handleSubmit(true); 
         } else {
             setTimeLeft(diff);
@@ -74,18 +72,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
   const handleAnswer = (qId: string, val: string) => {
       if (currentView !== 'taking') return;
-      
-      // Cập nhật cả State (để render giao diện) và Ref (để tính điểm khi hết giờ)
       const newAnswers = { ...answers, [qId]: val };
       setAnswers(newAnswers);
       answersRef.current = newAnswers;
+  };
+
+  const handleReset = () => {
+      if (window.confirm("Bạn có chắc muốn làm lại từ đầu? Mọi đáp án hiện tại sẽ bị xóa.")) {
+          setAnswers({});
+          answersRef.current = {};
+          // Reset scroll
+          const mainContent = document.getElementById('main-content');
+          if (mainContent) mainContent.scrollTop = 0;
+      }
   };
 
   const calculateTotalScore = (): number => {
       let total = 0;
       if (!quiz.questions || !Array.isArray(quiz.questions)) return 0;
       
-      // FIX: Luôn lấy từ answersRef để đảm bảo dữ liệu mới nhất khi Auto Submit
       const currentAnswers = answersRef.current;
 
       quiz.questions.forEach(q => {
@@ -107,7 +112,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     const key = `${q.id}_${sq.id}`;
                     if (currentAnswers[key] === sq.correctAnswer) correctCount++;
                 });
-
                 if (correctCount === 1) total += 0.1;
                 else if (correctCount === 2) total += 0.25;
                 else if (correctCount === 3) total += 0.5;
@@ -121,15 +125,15 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   const handleSubmit = (auto: boolean = false) => {
-      // 1. CẢNH BÁO NỘP BÀI (Chỉ hiện khi người dùng tự bấm nộp, không hiện khi hết giờ)
       if (!auto) {
-          const isConfirmed = window.confirm("Bạn có chắc chắn muốn nộp bài thi không?\nNhấn OK để nộp bài và xem điểm.\nNhấn Cancel để quay lại làm tiếp.");
-          if (!isConfirmed) {
-              return; // Nếu chọn Cancel thì dừng hàm tại đây, không làm gì cả
-          }
+          const unanswered = (quiz.questions?.length || 0) - Object.keys(answers).length;
+          let msg = "Bạn có chắc chắn muốn nộp bài thi không?";
+          if (unanswered > 0) msg += `\n⚠️ Còn ${unanswered} câu chưa trả lời.`; // Note: This logic is simple, ideally check question by question
+          
+          const isConfirmed = window.confirm(msg);
+          if (!isConfirmed) return;
       }
 
-      // 2. Logic tính điểm
       let score = 0;
       let spent = 0;
       try {
@@ -143,7 +147,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       setFinalScore(score);
       setTotalTimeSpent(spent);
 
-      // 3. Lưu kết quả vào DB
       try {
           const result: Result = {
               id: uuidv4(),
@@ -160,20 +163,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           console.error("Lỗi lưu DB", e);
       }
 
-      // 4. Chuyển hướng sang trang kết quả
       setCurrentView('result');
-      window.scrollTo(0,0);
+      setIsSidebarOpen(false);
   };
 
   const formatTime = (s: number) => {
       const m = Math.floor(s / 60);
       const sec = s % 60;
-      return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+      return `${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
-  // ==========================================================
-  // VIEW RESULT: KẾT QUẢ
-  // ==========================================================
+  const scrollToQuestion = (index: number) => {
+      const el = document.getElementById(`q-${index}`);
+      if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setIsSidebarOpen(false); // Close sidebar on mobile after click
+      }
+  };
+
+  // --- VIEW: RESULT SCREEN ---
   if (currentView === 'result') {
       return (
           <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
@@ -215,202 +223,262 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       );
   }
 
-  // ==========================================================
-  // VIEW: LÀM BÀI (TAKING) HOẶC XEM LẠI (REVIEW)
-  // ==========================================================
   const isReview = currentView === 'review';
 
+  // --- MAIN QUIZ UI (SPLIT SCREEN) ---
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-      {/* 1. Header (Cố định, không co giãn) */}
-      <div className="bg-white border-b shadow-sm z-20 shrink-0">
-          <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                  {isReview && (
-                      <button onClick={() => setCurrentView('result')} className="p-2 hover:bg-gray-100 rounded-full">
-                          <ArrowLeft size={24}/>
-                      </button>
-                  )}
-                  <div>
-                      <h1 className="font-bold text-gray-800 truncate max-w-[150px] sm:max-w-md">{quiz.title}</h1>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${isReview ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
-                          {isReview ? 'CHẾ ĐỘ XEM LẠI' : 'ĐANG LÀM BÀI'}
-                      </span>
-                  </div>
+    <div className="flex h-screen bg-gray-100 overflow-hidden relative">
+      
+      {/* MOBILE HEADER (Only visible on small screens) */}
+      <div className="md:hidden absolute top-0 left-0 right-0 bg-slate-800 text-white p-3 z-30 flex justify-between items-center shadow-md">
+          <div className="font-bold truncate max-w-[50%]">{quiz.title}</div>
+          <div className="flex items-center gap-3">
+             <div className="font-mono font-bold bg-slate-700 px-2 py-1 rounded">{isReview ? 'XEM LẠI' : formatTime(timeLeft)}</div>
+             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                 {isSidebarOpen ? <X/> : <Menu/>}
+             </button>
+          </div>
+      </div>
+
+      {/* LEFT SIDEBAR (Navigation) */}
+      <aside className={`
+          absolute md:relative z-20 w-72 bg-slate-800 text-white flex flex-col h-full transition-transform duration-300 shadow-xl
+          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          pt-14 md:pt-0
+      `}>
+          {/* Timer Section */}
+          <div className="p-6 bg-slate-900/50 border-b border-slate-700 text-center">
+              <div className="text-slate-400 text-sm uppercase font-bold mb-1">
+                  {isReview ? 'Điểm số của bạn' : 'Thời gian còn lại'}
               </div>
-              
+              <div className={`font-mono font-bold text-4xl ${timeLeft < 300 && !isReview ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                  {isReview ? `${finalScore.toFixed(2)}` : formatTime(timeLeft)}
+              </div>
+          </div>
+
+          {/* Question Navigator */}
+          <div className="flex-1 overflow-y-auto p-4">
+              <div className="text-xs font-bold text-slate-400 uppercase mb-3 border-b border-slate-700 pb-2">
+                  Bộ điều hướng câu hỏi
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                  {quiz.questions?.map((q, idx) => {
+                      // Logic màu sắc nút
+                      let btnClass = "h-10 w-full rounded font-bold text-sm transition-all border ";
+                      const hasAnswer = q.type === 'group-tf' 
+                          ? Object.keys(answers).some(k => k.startsWith(q.id))
+                          : !!answers[q.id];
+                      
+                      if (isReview) {
+                          // Logic Review (Đúng/Sai chưa check kỹ từng câu, tạm thời hiển thị active)
+                          btnClass += "bg-slate-700 border-slate-600 text-slate-300";
+                      } else {
+                          if (hasAnswer) btnClass += "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/50";
+                          else btnClass += "bg-transparent border-slate-600 text-slate-300 hover:bg-white/10 hover:border-white";
+                      }
+
+                      return (
+                          <button 
+                              key={idx} 
+                              onClick={() => scrollToQuestion(idx)}
+                              className={btnClass}
+                          >
+                              {idx + 1}
+                          </button>
+                      )
+                  })}
+              </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="p-4 bg-slate-900 border-t border-slate-700 space-y-3">
               {!isReview ? (
-                  <div className={`font-mono font-bold text-xl flex items-center gap-2 px-3 py-1 rounded-lg ${timeLeft < 60 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-700'}`}>
-                      <Timer size={20}/> {formatTime(timeLeft)}
-                  </div>
+                  <>
+                    <button 
+                        onClick={() => handleSubmit(false)}
+                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg shadow-red-900/50 transition flex items-center justify-center gap-2"
+                    >
+                        NỘP BÀI VÀ XEM KẾT QUẢ
+                    </button>
+                    <button 
+                        onClick={handleReset}
+                        className="w-full py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-lg shadow-lg shadow-yellow-900/50 transition"
+                    >
+                        LÀM LẠI
+                    </button>
+                  </>
               ) : (
-                  <div className="font-bold text-xl text-blue-600 px-3 py-1 bg-blue-50 rounded-lg border border-blue-100">
-                      {finalScore.toFixed(2)} đ
-                  </div>
+                  <button 
+                      onClick={onExit}
+                      className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition flex items-center justify-center gap-2"
+                  >
+                      <Home size={18}/> VỀ TRANG CHỦ
+                  </button>
               )}
           </div>
-      </div>
+      </aside>
 
-      {/* 2. Main Content (Cuộn dọc, co giãn) */}
-      <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
-        <div className="max-w-4xl mx-auto space-y-6 pb-6">
-            {(!quiz.questions || quiz.questions.length === 0) && (
-                <div className="text-center p-10 text-gray-500">Đề thi chưa có câu hỏi nào.</div>
-            )}
+      {/* RIGHT MAIN CONTENT (Questions) */}
+      <main id="main-content" className="flex-1 h-full overflow-y-auto bg-gray-100 scroll-smooth pt-16 md:pt-0">
+          <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
+              <div className="mb-6 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                  <h1 className="text-2xl font-bold text-gray-800 mb-2">{quiz.title}</h1>
+                  <p className="text-gray-500 text-sm">
+                      {quiz.description || "Hãy đọc kỹ câu hỏi và chọn đáp án chính xác nhất."}
+                  </p>
+              </div>
 
-            {quiz.questions?.map((q, idx) => {
-                if (!q) return null;
-                const points = safeParseScore(q.points);
-                return (
-                    <div key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        {/* Header Question */}
-                        <div className="bg-gray-50 px-5 py-3 border-b flex justify-between items-center">
-                            <span className="font-bold text-gray-800">Câu {idx + 1} <span className="text-gray-400 font-normal ml-1">({q.type?.toUpperCase() || 'MCQ'})</span></span>
-                            <span className="text-xs font-bold bg-white border px-2 py-1 rounded text-gray-600">{points} điểm</span>
-                        </div>
+              <div className="space-y-6">
+                {(!quiz.questions || quiz.questions.length === 0) && (
+                    <div className="text-center p-10 text-gray-500">Đề thi chưa có câu hỏi nào.</div>
+                )}
 
-                        <div className="p-6">
-                            <div className="mb-6 text-gray-900 text-lg leading-relaxed">
-                                <LatexText text={q.text || ''} />
+                {quiz.questions?.map((q, idx) => {
+                    if (!q) return null;
+                    const points = safeParseScore(q.points);
+                    return (
+                        <div id={`q-${idx}`} key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden scroll-mt-24 md:scroll-mt-4">
+                            {/* Question Header */}
+                            <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+                                <span className="font-bold text-blue-800 text-lg">Câu {idx + 1}.</span>
+                                <span className="text-xs font-bold bg-white border px-2 py-1 rounded text-gray-500 shadow-sm">{points} điểm</span>
                             </div>
-                            {q.imageUrl && (
-                                <div className="mb-6">
-                                    <img src={q.imageUrl} className="max-h-80 rounded-lg border mx-auto object-contain bg-gray-100" alt="Question" />
+
+                            <div className="p-6">
+                                <div className="mb-6 text-gray-900 text-lg leading-relaxed font-medium">
+                                    <LatexText text={q.text || ''} />
                                 </div>
-                            )}
-
-                            {/* MCQ */}
-                            {q.type === 'mcq' && (
-                                <div className="grid grid-cols-1 gap-3">
-                                    {q.options?.map((opt, optIdx) => {
-                                        const isSelected = answers[q.id] === opt;
-                                        const isCorrect = q.correctAnswer === opt;
-                                        let containerClass = "p-4 border-2 rounded-xl cursor-pointer flex items-center gap-4 transition-all relative ";
-                                        
-                                        if (isReview) {
-                                            containerClass += "cursor-default ";
-                                            if (isCorrect) containerClass += "bg-green-50 border-green-500 text-green-900";
-                                            else if (isSelected) containerClass += "bg-red-50 border-red-500 text-red-900 opacity-60";
-                                            else containerClass += "border-gray-200 opacity-50";
-                                        } else {
-                                            if (isSelected) containerClass += "bg-blue-50 border-blue-600 shadow-sm";
-                                            else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50";
-                                        }
-
-                                        return (
-                                            <div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}>
-                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>
-                                                    {(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}
-                                                </div>
-                                                <div className="font-medium"><LatexText text={opt}/></div>
-                                                {isReview && isCorrect && <Check className="absolute right-4 text-green-600" />}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* Group TF */}
-                            {q.type === 'group-tf' && (
-                                <div className="border rounded-xl overflow-hidden divide-y">
-                                    {q.subQuestions?.map((sq, sqIdx) => {
-                                        const key = `${q.id}_${sq.id}`;
-                                        const userVal = answers[key];
-                                        return (
-                                            <div key={sqIdx} className="p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                <div className="flex-1">
-                                                    <span className="font-bold mr-2 text-gray-500">{String.fromCharCode(97+sqIdx)})</span>
-                                                    <LatexText text={sq.text}/>
-                                                </div>
-                                                <div className="flex gap-2 shrink-0">
-                                                    {['True', 'False'].map(opt => {
-                                                        const isBtnSelected = userVal === opt;
-                                                        const isBtnCorrect = sq.correctAnswer === opt;
-                                                        let btnClass = "px-6 py-2 rounded-lg text-sm font-bold border transition-all ";
-                                                        
-                                                        if (isReview) {
-                                                            if (isBtnCorrect) btnClass += "bg-green-600 text-white border-green-600 shadow-md ring-2 ring-green-200";
-                                                            else if (isBtnSelected && !isBtnCorrect) btnClass += "bg-red-100 text-red-600 border-red-300 opacity-50";
-                                                            else btnClass += "bg-white text-gray-300 border-gray-200 opacity-40";
-                                                        } else {
-                                                            if (isBtnSelected) btnClass += opt === 'True' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-orange-500 text-white border-orange-500 shadow-md";
-                                                            else btnClass += "bg-white text-gray-500 border-gray-300 hover:bg-gray-100";
-                                                        }
-
-                                                        return (
-                                                            <button key={opt} onClick={() => handleAnswer(key, opt)} disabled={isReview} className={btnClass}>
-                                                                {opt === 'True' ? 'ĐÚNG' : 'SAI'}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* Short Answer */}
-                            {q.type === 'short' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-500 mb-2">Nhập đáp án:</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="text"
-                                            value={answers[q.id] || ''}
-                                            onChange={e => handleAnswer(q.id, e.target.value)}
-                                            disabled={isReview}
-                                            className={`w-full p-4 text-lg border-2 rounded-xl font-medium outline-none transition-colors ${
-                                                isReview 
-                                                ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800') 
-                                                : 'focus:border-blue-500 focus:bg-blue-50 border-gray-300'
-                                            }`}
-                                        />
-                                        {isReview && (
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-green-600 bg-white px-2 py-1 rounded shadow-sm border border-green-200 text-sm">
-                                                Đáp án: {q.correctAnswer}
-                                            </div>
-                                        )}
+                                {q.imageUrl && (
+                                    <div className="mb-6">
+                                        <img src={q.imageUrl} className="max-h-80 rounded-lg border mx-auto object-contain bg-gray-50" alt="Question" />
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* SHOW DETAILED SOLUTION (ONLY IN REVIEW MODE) */}
-                            {isReview && q.solution && (
-                                <div className="mt-6 animate-fade-in-up">
-                                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
-                                        <h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2">
-                                            <Lightbulb size={20} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết
-                                        </h4>
-                                        <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                                            <LatexText text={q.solution} />
+                                {/* RENDER MCQ OPTIONS */}
+                                {q.type === 'mcq' && (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {q.options?.map((opt, optIdx) => {
+                                            const isSelected = answers[q.id] === opt;
+                                            const isCorrect = q.correctAnswer === opt;
+                                            
+                                            // Base style
+                                            let containerClass = "p-4 border rounded-xl cursor-pointer flex items-center gap-4 transition-all relative ";
+                                            
+                                            if (isReview) {
+                                                containerClass += "cursor-default ";
+                                                if (isCorrect) containerClass += "bg-green-50 border-green-500 text-green-900 ring-1 ring-green-200";
+                                                else if (isSelected) containerClass += "bg-red-50 border-red-500 text-red-900 opacity-70";
+                                                else containerClass += "border-gray-200 opacity-50";
+                                            } else {
+                                                if (isSelected) containerClass += "bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-200";
+                                                else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50 hover:shadow-sm";
+                                            }
+
+                                            return (
+                                                <div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}>
+                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>
+                                                        {(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}
+                                                    </div>
+                                                    <div className="font-medium"><LatexText text={opt}/></div>
+                                                    {isReview && isCorrect && <Check className="absolute right-4 text-green-600" />}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* RENDER GROUP TRUE/FALSE */}
+                                {q.type === 'group-tf' && (
+                                    <div className="border rounded-xl overflow-hidden divide-y divide-gray-100">
+                                        {q.subQuestions?.map((sq, sqIdx) => {
+                                            const key = `${q.id}_${sq.id}`;
+                                            const userVal = answers[key];
+                                            return (
+                                                <div key={sqIdx} className="p-4 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                    <div className="flex-1">
+                                                        <span className="font-bold mr-2 text-blue-600">{String.fromCharCode(97+sqIdx)})</span>
+                                                        <LatexText text={sq.text}/>
+                                                    </div>
+                                                    <div className="flex gap-2 shrink-0">
+                                                        {['True', 'False'].map(opt => {
+                                                            const isBtnSelected = userVal === opt;
+                                                            const isBtnCorrect = sq.correctAnswer === opt;
+                                                            let btnClass = "px-6 py-2 rounded-lg text-sm font-bold border transition-all ";
+                                                            
+                                                            if (isReview) {
+                                                                if (isBtnCorrect) btnClass += "bg-green-600 text-white border-green-600 shadow-md";
+                                                                else if (isBtnSelected) btnClass += "bg-red-100 text-red-600 border-red-300 opacity-50";
+                                                                else btnClass += "bg-white text-gray-300 border-gray-200 opacity-40";
+                                                            } else {
+                                                                if (isBtnSelected) btnClass += opt === 'True' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-orange-500 text-white border-orange-500 shadow-md";
+                                                                else btnClass += "bg-white text-gray-500 border-gray-300 hover:bg-gray-100 hover:border-gray-400";
+                                                            }
+
+                                                            return (
+                                                                <button key={opt} onClick={() => handleAnswer(key, opt)} disabled={isReview} className={btnClass}>
+                                                                    {opt === 'True' ? 'ĐÚNG' : 'SAI'}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* RENDER SHORT ANSWER */}
+                                {q.type === 'short' && (
+                                    <div className="mt-2">
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold text-gray-700 whitespace-nowrap">Đáp số {idx+1}:</span>
+                                            <div className="relative w-full max-w-xs">
+                                                <input 
+                                                    type="text"
+                                                    value={answers[q.id] || ''}
+                                                    onChange={e => handleAnswer(q.id, e.target.value)}
+                                                    disabled={isReview}
+                                                    placeholder="Nhập kết quả..."
+                                                    className={`w-full px-4 py-2 border rounded-lg font-medium outline-none transition-colors ${
+                                                        isReview 
+                                                        ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800') 
+                                                        : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100 border-gray-300'
+                                                    }`}
+                                                />
+                                                {isReview && (
+                                                     <div className="mt-2 text-sm font-bold text-green-600 flex items-center gap-1">
+                                                         <Check size={14}/> Đáp án đúng: {q.correctAnswer}
+                                                     </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
+                                {isReview && q.solution && (
+                                    <div className="mt-6 animate-fade-in">
+                                        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                                            <h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2">
+                                                <Lightbulb size={18} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết
+                                            </h4>
+                                            <div className="text-gray-800 leading-relaxed whitespace-pre-wrap text-sm">
+                                                <LatexText text={q.solution} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
                         </div>
-                    </div>
-                );
-            })}
-        </div>
-      </div>
-
-      {/* 3. Footer (Cố định ở đáy, không co giãn) */}
-      {!isReview && (
-          <div className="bg-white border-t p-4 z-20 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-              <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-                  <div className="hidden sm:block text-sm text-gray-500">
-                      Đã làm: <span className="font-bold text-gray-800">{Object.keys(answers).length}</span> / {quiz.questions?.length || 0} câu
-                  </div>
-                  <button 
-                      onClick={() => handleSubmit(false)}
-                      className="flex-1 sm:flex-none sm:w-64 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
-                  >
-                      <Save size={20}/> NỘP BÀI THI
-                  </button>
+                    );
+                })}
               </div>
           </div>
+      </main>
+      
+      {/* OVERLAY FOR MOBILE SIDEBAR */}
+      {isSidebarOpen && (
+          <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-10 md:hidden"></div>
       )}
     </div>
   );
