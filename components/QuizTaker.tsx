@@ -174,10 +174,22 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   const scrollToQuestion = (index: number) => {
-      const el = document.getElementById(`q-${index}`);
-      if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          setIsSidebarOpen(false); // Close sidebar on mobile after click
+      const container = document.getElementById('main-content');
+      const element = document.getElementById(`q-${index}`);
+      
+      if (container && element) {
+          // Tính toán vị trí cần cuộn đến:
+          // Lấy vị trí của element so với phần tử cha (offsetTop)
+          // Trừ đi khoảng 20px (hoặc 100px nếu mobile) để tạo khoảng trống phía trên, giúp nhìn thấy tiêu đề "Câu X"
+          const offset = window.innerWidth < 768 ? 80 : 20; 
+          const topPos = element.offsetTop - offset;
+
+          container.scrollTo({
+              top: topPos,
+              behavior: 'smooth'
+          });
+          
+          setIsSidebarOpen(false); // Đóng sidebar trên mobile sau khi click
       }
   };
 
@@ -247,24 +259,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           pt-14 md:pt-0
       `}>
           {/* Timer Section */}
-          <div className="p-6 bg-slate-900/50 border-b border-slate-700 text-center">
-              <div className="text-slate-400 text-sm uppercase font-bold mb-1">
+          <div className="p-4 bg-slate-900/50 border-b border-slate-700 text-center">
+              <div className="text-slate-400 text-xs uppercase font-bold mb-1">
                   {isReview ? 'Điểm số của bạn' : 'Thời gian còn lại'}
               </div>
-              <div className={`font-mono font-bold text-4xl ${timeLeft < 300 && !isReview ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+              <div className={`font-mono font-bold text-3xl ${timeLeft < 300 && !isReview ? 'text-red-500 animate-pulse' : 'text-white'}`}>
                   {isReview ? `${finalScore.toFixed(2)}` : formatTime(timeLeft)}
               </div>
           </div>
 
-          {/* Question Navigator */}
-          <div className="flex-1 overflow-y-auto p-4">
-              <div className="text-xs font-bold text-slate-400 uppercase mb-3 border-b border-slate-700 pb-2">
-                  Bộ điều hướng câu hỏi
+          {/* Question Navigator - COMPACT VERSION */}
+          <div className="flex-1 overflow-y-auto p-3">
+              <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b border-slate-700 pb-1">
+                  Bộ điều hướng
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              {/* Tăng số cột lên 5, giảm gap, giảm kích thước nút */}
+              <div className="grid grid-cols-5 gap-1.5">
                   {quiz.questions?.map((q, idx) => {
                       // Logic màu sắc nút
-                      let btnClass = "h-10 w-full rounded font-bold text-sm transition-all border ";
+                      let btnClass = "h-8 w-full rounded font-bold text-xs transition-all border flex items-center justify-center ";
                       const hasAnswer = q.type === 'group-tf' 
                           ? Object.keys(answers).some(k => k.startsWith(q.id))
                           : !!answers[q.id];
@@ -273,7 +286,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                           // Logic Review (Đúng/Sai chưa check kỹ từng câu, tạm thời hiển thị active)
                           btnClass += "bg-slate-700 border-slate-600 text-slate-300";
                       } else {
-                          if (hasAnswer) btnClass += "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/50";
+                          if (hasAnswer) btnClass += "bg-blue-600 border-blue-500 text-white shadow-sm";
                           else btnClass += "bg-transparent border-slate-600 text-slate-300 hover:bg-white/10 hover:border-white";
                       }
 
@@ -282,6 +295,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                               key={idx} 
                               onClick={() => scrollToQuestion(idx)}
                               className={btnClass}
+                              title={`Câu ${idx + 1}`}
                           >
                               {idx + 1}
                           </button>
@@ -291,18 +305,18 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           </div>
 
           {/* Action Buttons */}
-          <div className="p-4 bg-slate-900 border-t border-slate-700 space-y-3">
+          <div className="p-3 bg-slate-900 border-t border-slate-700 space-y-2">
               {!isReview ? (
                   <>
                     <button 
                         onClick={() => handleSubmit(false)}
-                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg shadow-red-900/50 transition flex items-center justify-center gap-2"
+                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-lg shadow-red-900/50 transition flex items-center justify-center gap-2 text-sm"
                     >
-                        NỘP BÀI VÀ XEM KẾT QUẢ
+                        NỘP BÀI
                     </button>
                     <button 
                         onClick={handleReset}
-                        className="w-full py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-lg shadow-lg shadow-yellow-900/50 transition"
+                        className="w-full py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-lg shadow-yellow-900/50 transition text-sm"
                     >
                         LÀM LẠI
                     </button>
@@ -310,19 +324,19 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               ) : (
                   <button 
                       onClick={onExit}
-                      className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-sm"
                   >
-                      <Home size={18}/> VỀ TRANG CHỦ
+                      <Home size={16}/> VỀ TRANG CHỦ
                   </button>
               )}
           </div>
       </aside>
 
       {/* RIGHT MAIN CONTENT (Questions) */}
-      <main id="main-content" className="flex-1 h-full overflow-y-auto bg-gray-100 scroll-smooth pt-16 md:pt-0">
+      <main id="main-content" className="flex-1 h-full overflow-y-auto bg-gray-100 pt-16 md:pt-0 relative">
           <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
               <div className="mb-6 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-2">{quiz.title}</h1>
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">{quiz.title}</h1>
                   <p className="text-gray-500 text-sm">
                       {quiz.description || "Hãy đọc kỹ câu hỏi và chọn đáp án chính xác nhất."}
                   </p>
@@ -337,7 +351,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     if (!q) return null;
                     const points = safeParseScore(q.points);
                     return (
-                        <div id={`q-${idx}`} key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden scroll-mt-24 md:scroll-mt-4">
+                        <div id={`q-${idx}`} key={q.id || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
                             {/* Question Header */}
                             <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
                                 <span className="font-bold text-blue-800 text-lg">Câu {idx + 1}.</span>
