@@ -382,9 +382,16 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                             
                                             if (isReview) {
                                                 containerClass += "cursor-default ";
-                                                if (isCorrect) containerClass += "bg-green-50 border-green-500 text-green-900 ring-1 ring-green-200";
-                                                else if (isSelected) containerClass += "bg-red-50 border-red-500 text-red-900 opacity-70";
-                                                else containerClass += "border-gray-200 opacity-50";
+                                                if (isCorrect) {
+                                                    // Đáp án ĐÚNG: Nổi bật hẳn
+                                                    containerClass += "bg-green-100 border-green-600 text-green-900 ring-2 ring-green-200 font-bold z-10 shadow-sm";
+                                                } else if (isSelected) {
+                                                    // Đáp án SAI người dùng chọn: Mờ đi (opacity) và màu đỏ
+                                                    containerClass += "bg-red-50 border-red-300 text-red-500 opacity-60 line-through decoration-red-400";
+                                                } else {
+                                                    // Không chọn và không đúng: Rất mờ
+                                                    containerClass += "bg-white border-gray-100 text-gray-300 opacity-30 grayscale";
+                                                }
                                             } else {
                                                 if (isSelected) containerClass += "bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-200";
                                                 else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50 hover:shadow-sm";
@@ -396,7 +403,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                         {(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}
                                                     </div>
                                                     <div className="font-medium"><LatexText text={opt}/></div>
-                                                    {isReview && isCorrect && <Check className="absolute right-4 text-green-600" />}
+                                                    {isReview && isCorrect && <Check className="absolute right-4 text-green-600" strokeWidth={3} />}
                                                 </div>
                                             );
                                         })}
@@ -422,9 +429,16 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                             let btnClass = "px-6 py-2 rounded-lg text-sm font-bold border transition-all ";
                                                             
                                                             if (isReview) {
-                                                                if (isBtnCorrect) btnClass += "bg-green-600 text-white border-green-600 shadow-md";
-                                                                else if (isBtnSelected) btnClass += "bg-red-100 text-red-600 border-red-300 opacity-50";
-                                                                else btnClass += "bg-white text-gray-300 border-gray-200 opacity-40";
+                                                                if (isBtnCorrect) {
+                                                                    // Nút đúng
+                                                                    btnClass += "bg-green-600 text-white border-green-600 shadow-md opacity-100";
+                                                                } else if (isBtnSelected) {
+                                                                    // Nút sai người dùng chọn: Mờ
+                                                                    btnClass += "bg-red-100 text-red-500 border-red-300 opacity-50";
+                                                                } else {
+                                                                    // Nút còn lại
+                                                                    btnClass += "bg-white text-gray-200 border-gray-100 opacity-20";
+                                                                }
                                                             } else {
                                                                 if (isBtnSelected) btnClass += opt === 'True' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-orange-500 text-white border-orange-500 shadow-md";
                                                                 else btnClass += "bg-white text-gray-500 border-gray-300 hover:bg-gray-100 hover:border-gray-400";
@@ -457,7 +471,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                     placeholder="Nhập kết quả..."
                                                     className={`w-full px-4 py-2 border rounded-lg font-medium outline-none transition-colors ${
                                                         isReview 
-                                                        ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800') 
+                                                        ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') 
                                                         : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100 border-gray-300'
                                                     }`}
                                                 />
