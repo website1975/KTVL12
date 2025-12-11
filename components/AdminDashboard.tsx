@@ -84,8 +84,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeh
                 <ToolbarBtn onClick={() => insertTag('$\\sqrt{', '}$') } label="√x" tooltip="Căn bậc hai" />
                 <ToolbarBtn onClick={() => insertTag('$^{', '}$') } label="x²" tooltip="Số mũ" />
                 <ToolbarBtn onClick={() => insertTag('$_{', '}$') } label="x₁" tooltip="Chỉ số dưới" />
+                
+                <div className="w-px h-4 bg-gray-300 mx-1"></div>
+
+                {/* Symbols Group - NEW ADDITIONS */}
+                <ToolbarBtn onClick={() => insertTag('$\\rightarrow$') } label="→" tooltip="Mũi tên đơn" />
+                <ToolbarBtn onClick={() => insertTag('$\\Rightarrow$') } label="⇒" tooltip="Suy ra" />
+                <ToolbarBtn onClick={() => insertTag('$\\Leftrightarrow$') } label="⇔" tooltip="Tương đương" />
+                <ToolbarBtn onClick={() => insertTag('$\\approx$') } label="≈" tooltip="Gần bằng" />
+                <ToolbarBtn onClick={() => insertTag('$\\leq$') } label="≤" tooltip="Nhỏ hơn hoặc bằng" />
+                <ToolbarBtn onClick={() => insertTag('$\\geq$') } label="≥" tooltip="Lớn hơn hoặc bằng" />
+
+                <div className="w-px h-4 bg-gray-300 mx-1"></div>
+
                 <ToolbarBtn onClick={() => insertTag('$\\vec{', '}$') } label="vec" tooltip="Vector" />
-                <ToolbarBtn onClick={() => insertTag('$\\Rightarrow$') } icon={<ChevronRight size={14}/>} tooltip="Suy ra" />
                 <ToolbarBtn onClick={() => insertTag('$\\pi$') } label="π" tooltip="Pi" />
                 <ToolbarBtn onClick={() => insertTag('^\\circ') } label="°" tooltip="Độ" />
             </div>
