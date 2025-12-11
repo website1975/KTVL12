@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Quiz, User, Result, Question } from '../types';
 import { saveResult } from '../services/storage';
 import { addMinutes, differenceInSeconds, parseISO } from 'date-fns';
-import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb, Menu, X } from 'lucide-react';
+import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb, Menu, X, Send } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from './LatexText';
 
@@ -254,12 +254,12 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
       {/* LEFT SIDEBAR (Navigation) */}
       <aside className={`
-          absolute md:relative z-20 w-72 bg-slate-800 text-white flex flex-col h-full transition-transform duration-300 shadow-xl
+          absolute md:relative z-20 w-64 bg-slate-800 text-white flex flex-col h-full transition-transform duration-300 shadow-xl
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           pt-14 md:pt-0
       `}>
-          {/* Timer Section */}
-          <div className="p-4 bg-slate-900/50 border-b border-slate-700 text-center">
+          {/* Timer Section - Fixed at top */}
+          <div className="p-4 bg-slate-900/50 border-b border-slate-700 text-center shrink-0">
               <div className="text-slate-400 text-xs uppercase font-bold mb-1">
                   {isReview ? 'Điểm số của bạn' : 'Thời gian còn lại'}
               </div>
@@ -268,13 +268,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               </div>
           </div>
 
-          {/* Question Navigator - COMPACT VERSION */}
+          {/* Combined Scrollable Area: Navigator + Buttons */}
           <div className="flex-1 overflow-y-auto p-3">
               <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b border-slate-700 pb-1">
                   Bộ điều hướng
               </div>
-              {/* Tăng số cột lên 5, giảm gap, giảm kích thước nút */}
-              <div className="grid grid-cols-5 gap-1.5">
+              
+              {/* Question Grid */}
+              <div className="grid grid-cols-5 gap-1.5 mb-4">
                   {quiz.questions?.map((q, idx) => {
                       // Logic màu sắc nút
                       let btnClass = "h-8 w-full rounded font-bold text-xs transition-all border flex items-center justify-center ";
@@ -283,7 +284,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                           : !!answers[q.id];
                       
                       if (isReview) {
-                          // Logic Review (Đúng/Sai chưa check kỹ từng câu, tạm thời hiển thị active)
                           btnClass += "bg-slate-700 border-slate-600 text-slate-300";
                       } else {
                           if (hasAnswer) btnClass += "bg-blue-600 border-blue-500 text-white shadow-sm";
@@ -302,33 +302,35 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                       )
                   })}
               </div>
-          </div>
 
-          {/* Action Buttons */}
-          <div className="p-3 bg-slate-900 border-t border-slate-700 space-y-2">
-              {!isReview ? (
-                  <>
-                    <button 
-                        onClick={() => handleSubmit(false)}
-                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-lg shadow-red-900/50 transition flex items-center justify-center gap-2 text-sm"
-                    >
-                        NỘP BÀI
-                    </button>
-                    <button 
-                        onClick={handleReset}
-                        className="w-full py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-lg shadow-yellow-900/50 transition text-sm"
-                    >
-                        LÀM LẠI
-                    </button>
-                  </>
-              ) : (
-                  <button 
-                      onClick={onExit}
-                      className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-sm"
-                  >
-                      <Home size={16}/> VỀ TRANG CHỦ
-                  </button>
-              )}
+              {/* Action Buttons - Compact & In-flow (No huge gap) */}
+              <div className="border-t border-slate-700 pt-3">
+                  {!isReview ? (
+                      <div className="grid grid-cols-2 gap-2">
+                          <button 
+                              onClick={() => handleSubmit(false)}
+                              className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"
+                              title="Nộp bài thi"
+                          >
+                              <Send size={14} /> NỘP BÀI
+                          </button>
+                          <button 
+                              onClick={handleReset}
+                              className="w-full py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"
+                              title="Làm lại từ đầu"
+                          >
+                              <RotateCcw size={14} /> LÀM LẠI
+                          </button>
+                      </div>
+                  ) : (
+                      <button 
+                          onClick={onExit}
+                          className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-xs"
+                      >
+                          <Home size={14}/> VỀ TRANG CHỦ
+                      </button>
+                  )}
+              </div>
           </div>
       </aside>
 
