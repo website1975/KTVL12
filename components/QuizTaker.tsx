@@ -28,6 +28,29 @@ const safeParseScore = (val: any): number => {
     }
 };
 
+// Hàm kiểm tra đáp án ngắn linh hoạt (Chấp nhận 6.5 và 6,5)
+const checkShortAnswer = (userAns: string | undefined, correctAns: string | undefined): boolean => {
+    if (!userAns || !correctAns) return false;
+    
+    const u = userAns.trim().toLowerCase();
+    const c = correctAns.trim().toLowerCase();
+
+    // 1. So sánh chuỗi thuần túy (Case insensitive)
+    if (u === c) return true;
+
+    // 2. So sánh dạng số (Chấp nhận 6,5 == 6.5)
+    // Thay dấu phẩy bằng dấu chấm để parse số
+    const uNum = parseFloat(u.replace(',', '.'));
+    const cNum = parseFloat(c.replace(',', '.'));
+
+    if (!isNaN(uNum) && !isNaN(cNum)) {
+        // Sử dụng một khoảng sai số nhỏ (epsilon) để an toàn với số thực
+        return Math.abs(uNum - cNum) < 0.000001; 
+    }
+
+    return false;
+};
+
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const [currentView, setCurrentView] = useState<ViewState>('taking');
   
@@ -102,9 +125,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 if (currentAnswers[q.id] === q.correctAnswer) total += points;
             } 
             else if (q.type === 'short') {
-                const userAns = (currentAnswers[q.id] || '').trim().toLowerCase();
-                const correctAns = (q.correctAnswer || '').trim().toLowerCase();
-                if (correctAns && userAns === correctAns) total += points;
+                // Sử dụng hàm kiểm tra linh hoạt
+                if (checkShortAnswer(currentAnswers[q.id], q.correctAnswer)) {
+                    total += points;
+                }
             }
             else if (q.type === 'group-tf' && q.subQuestions) {
                 let correctCount = 0;
@@ -471,7 +495,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                     placeholder="Nhập kết quả..."
                                                     className={`w-full px-4 py-2 border rounded-lg font-medium outline-none transition-colors ${
                                                         isReview 
-                                                        ? (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase() ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') 
+                                                        ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') 
                                                         : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100 border-gray-300'
                                                     }`}
                                                 />
@@ -515,3 +539,4 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 };
 
 export default QuizTaker;
+
