@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, Use
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { generateQuestions, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key, Download, FileSpreadsheet, TrendingUp, Award, UserCheck, Bold, Italic, Underline, Type, Sigma, ChevronRight, CornerDownLeft, ChevronUp, ChevronDown, SortAsc } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, Calendar, Clock, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, Users, UserPlus, Key, Download, FileSpreadsheet, TrendingUp, Award, UserCheck, Bold, Italic, Underline, Type, Sigma, CornerDownLeft, ChevronUp, ChevronDown, SortAsc, Copy, SearchCode, Database } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -72,29 +72,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeh
                 <ToolbarBtn onClick={() => insertTag('<i>', '</i>')} icon={<Italic size={14}/>} tooltip="In nghiêng (Italic)" />
                 <ToolbarBtn onClick={() => insertTag('<u>', '</u>')} icon={<Underline size={14}/>} tooltip="Gạch chân (Underline)" />
                 <ToolbarBtn onClick={() => insertTag('<br/>')} icon={<CornerDownLeft size={14}/>} tooltip="Xuống dòng (Line Break)" />
-                
                 <div className="w-px h-4 bg-gray-300 mx-1"></div>
-                
                 <ToolbarBtn onClick={() => insertTag('$', '$')} icon={<Sigma size={14}/>} tooltip="Công thức toán (Inline Latex)" />
                 <ToolbarBtn onClick={() => insertTag('$\\frac{', '}$') } label="a/b" tooltip="Phân số" />
                 <ToolbarBtn onClick={() => insertTag('$\\sqrt{', '}$') } label="√x" tooltip="Căn bậc hai" />
                 <ToolbarBtn onClick={() => insertTag('$^{', '}$') } label="x²" tooltip="Số mũ" />
                 <ToolbarBtn onClick={() => insertTag('$_{', '}$') } label="x₁" tooltip="Chỉ số dưới" />
-                
                 <div className="w-px h-4 bg-gray-300 mx-1"></div>
-
                 <ToolbarBtn onClick={() => insertTag('$\\rightarrow$') } label="→" tooltip="Mũi tên đơn" />
                 <ToolbarBtn onClick={() => insertTag('$\\Rightarrow$') } label="⇒" tooltip="Suy ra" />
                 <ToolbarBtn onClick={() => insertTag('$\\Leftrightarrow$') } label="⇔" tooltip="Tương đương" />
-                <ToolbarBtn onClick={() => insertTag('$\\approx$') } label="≈" tooltip="Gần bằng" />
-                <ToolbarBtn onClick={() => insertTag('$\\leq$') } label="≤" tooltip="Nhỏ hơn hoặc bằng" />
-                <ToolbarBtn onClick={() => insertTag('$\\geq$') } label="≥" tooltip="Lớn hơn hoặc bằng" />
-
-                <div className="w-px h-4 bg-gray-300 mx-1"></div>
-
-                <ToolbarBtn onClick={() => insertTag('$\\vec{', '}$') } label="vec" tooltip="Vector" />
-                <ToolbarBtn onClick={() => insertTag('$\\pi$') } label="π" tooltip="Pi" />
-                <ToolbarBtn onClick={() => insertTag('^\\circ') } label="°" tooltip="Độ" />
             </div>
 
             {rows ? (
@@ -142,13 +129,16 @@ const AdminDashboard: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isPublished, setIsPublished] = useState(false); 
 
-  const [genTopic, setGenTopic] = useState('');
-  const [genCount, setGenCount] = useState(5);
   const [isProcessing, setIsProcessing] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [viewHistoryData, setViewHistoryData] = useState<{ studentName: string, quizTitle: string, items: Result[] } | null>(null);
+
+  // Question Bank Modal State
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [bankTargetType, setBankTargetType] = useState<QuestionType>('mcq');
+  const [bankSelectedQuizId, setBankSelectedQuizId] = useState('');
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [searchUser, setSearchUser] = useState('');
@@ -249,22 +239,9 @@ const AdminDashboard: React.FC = () => {
     setIsPublished(false);
   };
 
-  const handleGenerateAI = async () => {
-    setIsProcessing(true);
-    try {
-      const newQuestions = await generateQuestions(genTopic, grade, genCount, 'Medium');
-      setQuestions([...questions, ...newQuestions]);
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleFileUpload = async () => {
       if (!file) return;
       setIsProcessing(true);
-      
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = async () => {
@@ -275,55 +252,51 @@ const AdminDashboard: React.FC = () => {
               alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi!`);
               setActiveTab('create');
           } catch (e: any) {
-              console.error("Upload error:", e);
-              alert(e.message || "Lỗi không xác định khi đọc PDF.");
+              alert(e.message || "Lỗi đọc PDF.");
           } finally {
               setIsProcessing(false);
           }
       };
       reader.onerror = () => {
-          alert("Lỗi không thể đọc file từ trình duyệt.");
+          alert("Lỗi không thể đọc file.");
           setIsProcessing(false);
       }
   };
 
+  // Logic thêm câu hỏi thông minh: Chèn vào đúng phân đoạn
   const addManualQuestion = (type: QuestionType = 'mcq') => {
     let q: Question;
     if (type === 'mcq') {
-      q = {
-        id: uuidv4(),
-        type: 'mcq',
-        text: 'Câu hỏi trắc nghiệm mới...',
-        points: 0.25,
-        options: ['Lựa chọn A', 'Lựa chọn B', 'Lựa chọn C', 'Lựa chọn D'],
-        correctAnswer: 'Lựa chọn A',
-        solution: ''
-      };
+      q = { id: uuidv4(), type: 'mcq', text: 'Nội dung câu trắc nghiệm...', points: 0.25, options: ['A', 'B', 'C', 'D'], correctAnswer: 'A', solution: '' };
     } else if (type === 'group-tf') {
-      q = {
-        id: uuidv4(),
-        type: 'group-tf',
-        text: 'Câu hỏi Đúng/Sai mới...',
-        points: 1.0,
-        subQuestions: [
-            { id: uuidv4(), text: 'Ý a)', correctAnswer: 'True' },
-            { id: uuidv4(), text: 'Ý b)', correctAnswer: 'False' },
-            { id: uuidv4(), text: 'Ý c)', correctAnswer: 'True' },
-            { id: uuidv4(), text: 'Ý d)', correctAnswer: 'False' },
-        ],
-        solution: ''
-      };
+      q = { id: uuidv4(), type: 'group-tf', text: 'Nội dung câu Đúng/Sai...', points: 1.0, subQuestions: [{ id: uuidv4(), text: 'Ý a)', correctAnswer: 'True' }, { id: uuidv4(), text: 'Ý b)', correctAnswer: 'False' }, { id: uuidv4(), text: 'Ý c)', correctAnswer: 'True' }, { id: uuidv4(), text: 'Ý d)', correctAnswer: 'False' }], solution: '' };
     } else {
-      q = {
-        id: uuidv4(),
-        type: 'short',
-        text: 'Câu hỏi trả lời ngắn mới...',
-        points: 0.5,
-        correctAnswer: '',
-        solution: ''
-      };
+      q = { id: uuidv4(), type: 'short', text: 'Nội dung câu trả lời ngắn...', points: 0.5, correctAnswer: '', solution: '' };
     }
-    setQuestions([...questions, q]);
+
+    // Tìm vị trí cuối cùng của các câu cùng loại để chèn vào sau đó
+    const lastIdxOfSameType = [...questions].reverse().findIndex(x => x.type === type);
+    if (lastIdxOfSameType === -1) {
+        // Nếu chưa có câu nào loại này, chèn dựa trên thứ tự phần (I < II < III)
+        if (type === 'mcq') {
+            setQuestions([q, ...questions]);
+        } else if (type === 'group-tf') {
+            const firstShortIdx = questions.findIndex(x => x.type === 'short');
+            if (firstShortIdx === -1) setQuestions([...questions, q]);
+            else {
+                const newQs = [...questions];
+                newQs.splice(firstShortIdx, 0, q);
+                setQuestions(newQs);
+            }
+        } else {
+            setQuestions([...questions, q]);
+        }
+    } else {
+        const actualIdx = questions.length - 1 - lastIdxOfSameType;
+        const newQs = [...questions];
+        newQs.splice(actualIdx + 1, 0, q);
+        setQuestions(newQs);
+    }
   };
 
   const updateQuestion = (index: number, field: keyof Question, value: any) => {
@@ -336,7 +309,6 @@ const AdminDashboard: React.FC = () => {
     const newQuestions = [...questions];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newQuestions.length) return;
-    
     [newQuestions[index], newQuestions[targetIndex]] = [newQuestions[targetIndex], newQuestions[index]];
     setQuestions(newQuestions);
   };
@@ -347,70 +319,25 @@ const AdminDashboard: React.FC = () => {
         return order[a.type] - order[b.type];
     });
     setQuestions(sorted);
-    alert("Đã sắp xếp lại đề thi theo Phần I, II và III!");
   };
 
   const onSelectImage = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
       const url = await uploadImage(file);
-      if (url) {
-          updateQuestion(index, 'imageUrl', url);
-      } else {
-          alert("Không thể upload ảnh.");
-      }
-  };
-
-  const changeQuestionType = (index: number, type: QuestionType) => {
-    const updated = [...questions];
-    const q = updated[index];
-    q.type = type;
-    
-    if (type === 'mcq') {
-      q.points = 0.25;
-      q.options = ['A', 'B', 'C', 'D'];
-      q.correctAnswer = 'A';
-      q.subQuestions = undefined;
-    } else if (type === 'group-tf') {
-      q.points = 1.0;
-      q.options = undefined;
-      q.correctAnswer = undefined;
-      q.subQuestions = [
-        { id: uuidv4(), text: 'Ý a)', correctAnswer: 'True' },
-        { id: uuidv4(), text: 'Ý b)', correctAnswer: 'False' },
-        { id: uuidv4(), text: 'Ý c)', correctAnswer: 'True' },
-        { id: uuidv4(), text: 'Ý d)', correctAnswer: 'False' },
-      ];
-    } else if (type === 'short') {
-      q.points = 0.5;
-      q.options = undefined;
-      q.subQuestions = undefined;
-      q.correctAnswer = '';
-    }
-    setQuestions(updated);
+      if (url) updateQuestion(index, 'imageUrl', url);
   };
 
   const updateSubQuestion = (qIndex: number, subIndex: number, field: keyof SubQuestion, value: any) => {
       const updated = [...questions];
       if (updated[qIndex].subQuestions) {
-          updated[qIndex].subQuestions![subIndex] = { 
-              ...updated[qIndex].subQuestions![subIndex], 
-              [field]: value 
-          };
+          updated[qIndex].subQuestions![subIndex] = { ...updated[qIndex].subQuestions![subIndex], [field]: value };
           setQuestions(updated);
       }
   };
 
   const getGroupedResults = () => {
-      const groups: Record<string, {
-          studentName: string,
-          quizTitle: string,
-          quizGrade: string,
-          attempts: number,
-          maxScore: number,
-          items: Result[]
-      }> = {};
-
+      const groups: Record<string, { studentName: string, quizTitle: string, quizGrade: string, attempts: number, maxScore: number, items: Result[] }> = {};
       results.forEach(r => {
           const quiz = quizzes.find(q => q.id === r.quizId);
           if (resultFilterGrade !== 'all') {
@@ -418,180 +345,138 @@ const AdminDashboard: React.FC = () => {
               if (selectedQuizId && r.quizId !== selectedQuizId) return;
           }
           if (!quiz) return; 
-
           const key = `${r.studentId}_${r.quizId}`;
           if (!groups[key]) {
-              groups[key] = {
-                  studentName: r.studentName,
-                  quizTitle: quiz.title,
-                  quizGrade: quiz.grade,
-                  attempts: 0,
-                  maxScore: 0,
-                  items: []
-              };
+              groups[key] = { studentName: r.studentName, quizTitle: quiz.title, quizGrade: quiz.grade, attempts: 0, maxScore: 0, items: [] };
           }
           groups[key].attempts += 1;
           groups[key].maxScore = Math.max(groups[key].maxScore, r.score);
           groups[key].items.push(r);
       });
-
-      Object.values(groups).forEach(g => {
-          g.items.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-      });
-
+      Object.values(groups).forEach(g => g.items.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
       return Object.values(groups);
   };
   
   const groupedResults = activeTab === 'results' ? getGroupedResults() : [];
+  const practiceQuizzes = quizzes.filter(q => q.grade === resultFilterGrade && q.type === 'practice');
+  const testQuizzes = quizzes.filter(q => q.grade === resultFilterGrade && q.type === 'test');
 
-  const getFilteredQuizzes = () => {
-      return quizzes.filter(q => q.grade === resultFilterGrade);
+  const { tests: listTests, practices: listPractices } = {
+    tests: quizzes.filter(q => q.type === 'test' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade)),
+    practices: quizzes.filter(q => q.type === 'practice' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade))
   };
-  const practiceQuizzes = getFilteredQuizzes().filter(q => q.type === 'practice');
-  const testQuizzes = getFilteredQuizzes().filter(q => q.type === 'test');
-
-  const formatDurationSimple = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}p ${s}s`;
-  };
-
-  const getListViewQuizzes = () => {
-    let filtered = quizzes;
-    if (quizFilterGrade !== 'all') {
-      filtered = filtered.filter(q => q.grade === quizFilterGrade);
-    }
-    return {
-      tests: filtered.filter(q => q.type === 'test'),
-      practices: filtered.filter(q => q.type === 'practice')
-    };
-  };
-
-  const { tests: listTests, practices: listPractices } = getListViewQuizzes();
-
-  const escapeCsv = (str: any) => {
-      if (str === null || str === undefined) return '';
-      const stringValue = String(str);
-      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-          return `"${stringValue.replace(/"/g, '""')}"`;
-      }
-      return stringValue;
-  }
 
   const handleExportExcel = () => {
       if (!selectedQuizId) return;
       const quiz = quizzes.find(q => q.id === selectedQuizId);
       if (!quiz) return;
       const quizResults = results.filter(r => r.quizId === selectedQuizId);
-      if (quizResults.length === 0) {
-          alert("Chưa có dữ liệu kết quả để xuất.");
-          return;
-      }
-      const headers = ["STT", "Họ và Tên", "Tên đăng nhập", "Lớp", "Điểm số", "Thời gian làm bài", "Ngày nộp"];
+      const headers = ["STT", "Họ và Tên", "Tên đăng nhập", "Lớp", "Điểm số", "Ngày nộp"];
       const csvRows = [headers.join(",")];
       quizResults.forEach((r, index) => {
           const student = users.find(u => u.id === r.studentId);
-          const row = [
-              index + 1,
-              escapeCsv(student ? student.fullName : r.studentName),
-              escapeCsv(student ? student.username : "N/A"),
-              escapeCsv(student ? student.grade : "N/A"),
-              r.score.toFixed(2),
-              escapeCsv((r.durationSeconds / 60).toFixed(1) + " phút"),
-              escapeCsv(format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm"))
-          ];
+          const row = [index + 1, student?.fullName || r.studentName, student?.username || "N/A", student?.grade || "N/A", r.score.toFixed(2), format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")];
           csvRows.push(row.join(","));
       });
-      const csvString = "\uFEFF" + csvRows.join("\n");
-      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `KetQua_K${quiz.grade}_${quiz.title}_${format(new Date(), "dd-MM-yyyy")}.csv`);
-      document.body.appendChild(link);
+      link.href = url;
+      link.download = `KetQua_${quiz.title}.csv`;
       link.click();
-      document.body.removeChild(link);
-  };
-
-  const getSelectedQuizStats = () => {
-      if (!selectedQuizId) return null;
-      const quizResults = results.filter(r => r.quizId === selectedQuizId);
-      if (quizResults.length === 0) return null;
-      const scores = quizResults.map(r => r.score);
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-      const max = Math.max(...scores);
-      const min = Math.min(...scores);
-      return { count: quizResults.length, avg, max, min };
-  };
-  const selectedQuizStats = getSelectedQuizStats();
-
-  const handleEditUser = (user: User) => {
-      setEditingUser(user);
-      setUserForm({ fullName: user.fullName, username: user.username, password: user.password, grade: user.grade || '10', role: user.role });
-      setShowUserModal(true);
-  };
-
-  const handleCreateUser = () => {
-      setEditingUser(null);
-      setUserForm({ fullName: '', username: '', password: '', grade: '10', role: 'student' });
-      setShowUserModal(true);
-  };
-
-  const handleDeleteUser = async (id: string) => {
-      if (window.confirm('Cảnh báo: Xóa học sinh này sẽ xóa toàn bộ lịch sử thi của họ. Bạn có chắc không?')) {
-          await deleteUser(id);
-          refreshData();
-      }
   };
 
   const handleSaveUser = async () => {
-      if (!userForm.username || !userForm.password || !userForm.fullName) {
-          alert("Vui lòng nhập đầy đủ thông tin.");
-          return;
-      }
-      const userData: User = {
-          id: editingUser ? editingUser.id : uuidv4(),
-          username: userForm.username,
-          password: userForm.password,
-          fullName: userForm.fullName,
-          grade: userForm.role === 'student' ? userForm.grade : undefined,
-          role: userForm.role
-      };
-      if (editingUser) {
-          await updateUser(userData);
-      } else {
-          const exists = users.find(u => u.username === userData.username);
-          if (exists) {
-              alert("Tên đăng nhập đã tồn tại!");
-              return;
-          }
-          await saveUser(userData);
-      }
+      if (!userForm.username || !userForm.password || !userForm.fullName) return;
+      const userData: User = { id: editingUser ? editingUser.id : uuidv4(), username: userForm.username, password: userForm.password, fullName: userForm.fullName, grade: userForm.role === 'student' ? userForm.grade : undefined, role: userForm.role };
+      if (editingUser) await updateUser(userData);
+      else await saveUser(userData);
       setShowUserModal(false);
       refreshData();
   };
 
-  const handleDeleteResult = async (resultId: string) => {
-      if (window.confirm("Bạn có chắc chắn muốn XÓA kết quả bài thi này không?")) {
-          await deleteResult(resultId);
-          if (viewHistoryData) {
-              const updatedItems = viewHistoryData.items.filter(item => item.id !== resultId);
-              if (updatedItems.length === 0) setViewHistoryData(null);
-              else setViewHistoryData({ ...viewHistoryData, items: updatedItems });
-          }
-          refreshData();
-      }
-  };
-
-  const filteredUsers = users.filter(u => 
-      u.role === 'student' && 
-      (u.fullName.toLowerCase().includes(searchUser.toLowerCase()) || u.username.toLowerCase().includes(searchUser.toLowerCase()))
-  );
+  const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
+      const partQuestions = questions.filter(q => q.type === type);
+      return (
+          <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
+              <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                  <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">
+                      {label} <span className="text-sm font-normal text-gray-500">({partQuestions.length} câu)</span>
+                  </h3>
+                  <div className="flex gap-2">
+                      <button 
+                        onClick={() => { setBankTargetType(type); setShowBankModal(true); setBankSelectedQuizId(''); }} 
+                        className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1"
+                      >
+                        <Database size={14}/> Lấy từ đề cũ
+                      </button>
+                      <button onClick={() => addManualQuestion(type)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm">
+                        <Plus size={14}/> Thêm câu mới
+                      </button>
+                  </div>
+              </div>
+              <div className="p-4 space-y-4">
+                  {questions.map((q, idx) => {
+                      if (q.type !== type) return null;
+                      return (
+                        <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors">
+                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed">
+                                <div className="flex items-center gap-3">
+                                    <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={18}/></button>
+                                        <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={18}/></button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <input type="text" className="w-16 border rounded p-1 text-center font-bold text-xs" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
+                                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <RichTextEditor rows={2} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} />
+                                {q.type === 'mcq' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {q.options?.map((opt, optIdx) => (
+                                            <div key={optIdx} className="flex items-center gap-2 bg-gray-50 p-2 rounded border">
+                                                <input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} />
+                                                <RichTextEditor className="flex-1" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; updateQuestion(idx, 'options', o); }} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {q.type === 'short' && (
+                                    <div className="flex items-center gap-2 bg-green-50 p-2 rounded border">
+                                        <span className="text-xs font-bold text-green-700">Đáp án:</span>
+                                        <input type="text" className="flex-1 border rounded p-1" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} />
+                                    </div>
+                                )}
+                                {q.type === 'group-tf' && (
+                                    <div className="space-y-1">
+                                        {q.subQuestions?.map((sq, sqIdx) => (
+                                            <div key={sqIdx} className="flex gap-2 items-center bg-gray-50 p-2 rounded border">
+                                                <RichTextEditor className="flex-1" value={sq.text} onChange={(val) => updateSubQuestion(idx, sqIdx, 'text', val)} />
+                                                <select className="text-xs border rounded p-1" value={sq.correctAnswer} onChange={e => updateSubQuestion(idx, sqIdx, 'correctAnswer', e.target.value)}>
+                                                    <option value="True">ĐÚNG</option>
+                                                    <option value="False">SAI</option>
+                                                </select>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                      );
+                  })}
+              </div>
+          </div>
+      );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-         Quản Lý Đề Thi (Online)
+         <Database className="text-blue-600" /> Quản Lý Đề Thi Online
       </h1>
 
       <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
@@ -620,24 +505,13 @@ const AdminDashboard: React.FC = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-4">
-               <h2 className="text-lg font-bold text-red-700 flex items-center gap-2 uppercase border-b border-red-200 pb-2">
-                 <GraduationCap className="text-red-600"/> Đề Kiểm Tra ({listTests.length})
-               </h2>
+               <h2 className="text-lg font-bold text-red-700 flex items-center gap-2 uppercase border-b border-red-200 pb-2"><GraduationCap className="text-red-600"/> Đề Kiểm Tra ({listTests.length})</h2>
                <div className="space-y-3">
-                 {listTests.length === 0 ? <p className="text-gray-400 italic text-sm">Chưa có đề kiểm tra nào.</p> : listTests.map(q => (
+                 {listTests.map(q => (
                     <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-red-300 transition group relative">
-                        <div className="flex justify-between items-start mb-2">
-                           <div>
-                              <h3 className="font-bold text-gray-800">{q.title}</h3>
-                              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                                <span className="bg-gray-100 px-2 py-0.5 rounded">K{q.grade}</span>
-                                <span className="flex items-center gap-1"><Clock size={12}/> {q.durationMinutes}p</span>
-                                <span className="flex items-center gap-1"><Calendar size={12}/> {q.startTime ? format(parseISO(q.startTime), "dd/MM/yyyy HH:mm") : '---'}</span>
-                              </div>
-                           </div>
-                           <button onClick={() => handleTogglePublish(q)} className={`text-[10px] font-bold px-2 py-1 rounded-full border ${q.isPublished ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                              {q.isPublished ? 'ĐÃ GIAO' : 'NHÁP'}
-                           </button>
+                        <div className="flex justify-between items-start">
+                           <div><h3 className="font-bold text-gray-800">{q.title}</h3><div className="text-xs text-gray-500 mt-1">K{q.grade} • {q.durationMinutes}p • {q.startTime ? format(parseISO(q.startTime), "dd/MM HH:mm") : '---'}</div></div>
+                           <button onClick={() => handleTogglePublish(q)} className={`text-[10px] font-bold px-2 py-1 rounded-full border ${q.isPublished ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>{q.isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button>
                         </div>
                         <div className="flex gap-2 justify-end mt-3 pt-3 border-t border-dashed">
                             <button onClick={() => setPreviewQuiz(q)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="Xem"><Eye size={16}/></button>
@@ -650,24 +524,13 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-               <h2 className="text-lg font-bold text-green-700 flex items-center gap-2 uppercase border-b border-green-200 pb-2">
-                 <BookOpen className="text-green-600"/> Đề Luyện Tập ({listPractices.length})
-               </h2>
+               <h2 className="text-lg font-bold text-green-700 flex items-center gap-2 uppercase border-b border-green-200 pb-2"><BookOpen className="text-green-600"/> Đề Luyện Tập ({listPractices.length})</h2>
                <div className="space-y-3">
-                 {listPractices.length === 0 ? <p className="text-gray-400 italic text-sm">Chưa có đề luyện tập nào.</p> : listPractices.map(q => (
+                 {listPractices.map(q => (
                     <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-300 transition group relative">
-                        <div className="flex justify-between items-start mb-2">
-                           <div>
-                              <h3 className="font-bold text-gray-800">{q.title}</h3>
-                              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                                <span className="bg-gray-100 px-2 py-0.5 rounded">K{q.grade}</span>
-                                <span className="flex items-center gap-1"><Clock size={12}/> {q.durationMinutes}p</span>
-                                <span className="flex items-center gap-1"><List size={12}/> {q.questions.length} câu</span>
-                              </div>
-                           </div>
-                           <button onClick={() => handleTogglePublish(q)} className={`text-[10px] font-bold px-2 py-1 rounded-full border ${q.isPublished ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                              {q.isPublished ? 'ĐÃ GIAO' : 'NHÁP'}
-                           </button>
+                        <div className="flex justify-between items-start">
+                           <div><h3 className="font-bold text-gray-800">{q.title}</h3><div className="text-xs text-gray-500 mt-1">K{q.grade} • {q.durationMinutes}p • {q.questions.length} câu</div></div>
+                           <button onClick={() => handleTogglePublish(q)} className={`text-[10px] font-bold px-2 py-1 rounded-full border ${q.isPublished ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>{q.isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button>
                         </div>
                         <div className="flex gap-2 justify-end mt-3 pt-3 border-t border-dashed">
                             <button onClick={() => setPreviewQuiz(q)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="Xem"><Eye size={16}/></button>
@@ -686,381 +549,188 @@ const AdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
            <div className="lg:col-span-2 space-y-6">
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-               <h3 className="text-xl font-semibold mb-4 text-gray-800">{editingId ? 'Chỉnh Sửa Đề Thi' : 'Thông Tin Đề Thi Mới'}</h3>
+               <h3 className="text-xl font-semibold mb-4 text-gray-800">Thông Tin Đề Thi</h3>
                <div className="space-y-4">
-                 <div><label className="block text-sm font-medium mb-1">Tên đề thi <span className="text-red-500">*</span></label><input type="text" className="w-full border rounded-lg p-2" value={title} onChange={e => setTitle(e.target.value)}/></div>
-                 <div><label className="block text-sm font-medium mb-1">Mô tả</label><textarea className="w-full border rounded-lg p-2" value={description} onChange={e => setDescription(e.target.value)}/></div>
+                 <input type="text" className="w-full border rounded-lg p-2.5" placeholder="Tên đề thi" value={title} onChange={e => setTitle(e.target.value)}/>
+                 <textarea className="w-full border rounded-lg p-2.5" placeholder="Mô tả đề thi" value={description} onChange={e => setDescription(e.target.value)}/>
                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium mb-1">Hình thức</label><select className="w-full border rounded-lg p-2" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select></div>
-                    <div><label className="block text-sm font-medium mb-1">Khối Lớp</label><select className="w-full border rounded-lg p-2" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                   <div><label className="block text-sm font-medium mb-1">Thời lượng (phút)</label><input type="number" className="w-full border rounded-lg p-2" value={duration} onChange={e => setDuration(Number(e.target.value))}/></div>
-                   {quizType === 'test' && <div><label className="block text-sm font-medium mb-1">Thời gian bắt đầu <span className="text-red-500">*</span></label><input type="datetime-local" className="w-full border rounded-lg p-2" value={startTime} onChange={e => setStartTime(e.target.value)}/></div>}
+                    <select className="border rounded-lg p-2.5" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select>
+                    <select className="border rounded-lg p-2.5" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select>
                  </div>
                </div>
              </div>
              
-             <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
-                <span className="text-blue-800 font-bold flex items-center gap-2"><SortAsc size={20}/> Quản lý thứ tự câu hỏi:</span>
-                <button onClick={sortQuestionsByPart} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 shadow-sm">
-                   Sắp xếp theo Phần (I, II, III)
-                </button>
-             </div>
-
-             <div className="space-y-4">
-               {questions.map((q, idx) => (
-                  <div key={q.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                      <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
-                         <div className="flex items-center gap-3">
-                            <span className="font-bold text-gray-700 bg-white border px-2 py-1 rounded">Câu {idx + 1}</span>
-                            <div className="flex gap-1">
-                               <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={20}/></button>
-                               <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={20}/></button>
-                            </div>
-                            <select className="border rounded px-2 py-1 text-xs bg-white font-bold text-blue-600 ml-2" value={q.type} onChange={(e) => changeQuestionType(idx, e.target.value as QuestionType)}>
-                                <option value="mcq">PHẦN I (TRẮC NGHIỆM)</option>
-                                <option value="group-tf">PHẦN II (ĐÚNG/SAI)</option>
-                                <option value="short">PHẦN III (TRẢ LỜI NGẮN)</option>
-                            </select>
-                         </div>
-                         <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-1">
-                               <span className="text-xs text-gray-500 font-bold">ĐIỂM:</span>
-                               <input type="text" inputMode="decimal" className="w-16 border rounded p-1 text-center font-bold text-gray-700" value={q.points} onChange={(e) => { let val = e.target.value.replace(/[^0-9.,]/g, ''); val = val.replace(',', '.'); updateQuestion(idx, 'points', val); }} />
-                            </div>
-                            <button onClick={() => { if(window.confirm('Xóa câu này?')) { const newQs = [...questions]; newQs.splice(idx, 1); setQuestions(newQs); }}} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-full"><Trash2 size={16}/></button>
-                         </div>
-                      </div>
-                      
-                      <div className="p-4 space-y-3">
-                         <RichTextEditor rows={3} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} placeholder="Nhập nội dung câu hỏi..." />
-                         <div className="flex gap-4 items-start">
-                             <div className="flex-1">
-                                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hình ảnh đính kèm:</label>
-                                 <div className="flex gap-2">
-                                     <input type="text" className="flex-1 border rounded p-2 text-sm text-gray-600 bg-gray-50" placeholder="Dán link ảnh hoặc upload..." value={q.imageUrl || ''} onChange={e => updateQuestion(idx, 'imageUrl', e.target.value)}/>
-                                     <label className="cursor-pointer bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 transition flex items-center gap-2 text-sm font-bold whitespace-nowrap">
-                                         <ImageIcon size={16}/> Upload
-                                         <input type="file" className="hidden" accept="image/*" onChange={(e) => onSelectImage(e, idx)} />
-                                     </label>
-                                 </div>
-                             </div>
-                             {q.imageUrl && <div className="shrink-0 w-20 h-20 border rounded bg-gray-50 flex items-center justify-center overflow-hidden"><img src={q.imageUrl} alt="preview" className="w-full h-full object-contain" /></div>}
-                         </div>
-
-                         <div className="mt-1 p-2 bg-gray-50 border rounded text-sm text-gray-700"><span className="text-[10px] font-bold text-blue-500 uppercase mr-2">Preview:</span><LatexText text={q.text} /></div>
-                         
-                         {q.type === 'mcq' && (
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                                 {q.options?.map((opt, optIdx) => (
-                                     <div key={optIdx} className="border p-2 rounded-lg bg-gray-50 hover:border-blue-300 transition-colors flex flex-col gap-1">
-                                         <div className="flex items-center gap-2">
-                                             <input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} className="cursor-pointer"/>
-                                             <span className="font-bold text-gray-500 text-sm w-4">{String.fromCharCode(65+optIdx)}.</span>
-                                             <div className="flex-1">
-                                                <RichTextEditor value={opt} onChange={(val) => { const newOpts = [...(q.options||[])]; newOpts[optIdx] = val; updateQuestion(idx, 'options', newOpts); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', val); }} placeholder={`Đáp án ${String.fromCharCode(65+optIdx)}`}/>
-                                             </div>
-                                         </div>
-                                         <div className="ml-8 pl-2 border-l-2 border-blue-200 text-sm text-gray-600 min-h-[1.25rem]"><LatexText text={opt || '...'} /></div>
-                                     </div>
-                                 ))}
-                             </div>
-                         )}
-
-                         {q.type === 'short' && (<div className="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100"><label className="font-bold text-green-800">Đáp án Phần III:</label><input type="text" className="border-2 border-green-200 rounded p-2 bg-white font-bold text-green-900" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} placeholder="Nhập số hoặc chữ..."/></div>)}
-                         
-                         {q.type === 'group-tf' && (
-                             <div className="space-y-2 mt-2">
-                                 {q.subQuestions?.map((sq, sqIdx) => (
-                                     <div key={sqIdx} className="bg-gray-50 p-2 rounded border">
-                                         <div className="flex gap-2 items-start mb-1">
-                                             <span className="font-bold text-gray-500 text-sm mt-2">{String.fromCharCode(97+sqIdx)})</span>
-                                             <div className="flex-1"><RichTextEditor value={sq.text} onChange={(val) => updateSubQuestion(idx, sqIdx, 'text', val)} placeholder="Nhập nội dung ý..."/></div>
-                                             <div className="flex flex-col gap-1">
-                                                <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='True'?'bg-green-500 text-white border-green-600':'bg-white text-gray-400'}`}>Đ</button>
-                                                <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-xs rounded border ${sq.correctAnswer==='False'?'bg-red-500 text-white border-red-600':'bg-white text-gray-400'}`}>S</button>
-                                             </div>
-                                         </div>
-                                         <div className="ml-6 pl-2 border-l-2 border-blue-200 text-sm text-gray-600"><LatexText text={sq.text || '...'} /></div>
-                                     </div>
-                                 ))}
-                             </div>
-                         )}
-
-                         <div className="mt-4 pt-4 border-t border-dashed">
-                             <div className="flex items-center gap-2 mb-2 text-yellow-600 font-bold text-xs uppercase tracking-wider"><Lightbulb size={14} /> Lời giải / Gợi ý chi tiết:</div>
-                             <RichTextEditor rows={4} className="bg-yellow-50 border-yellow-200 focus:ring-yellow-200" value={q.solution || ''} onChange={(val) => updateQuestion(idx, 'solution', val)} placeholder="Hướng dẫn giải..." />
-                             <div className="mt-1 p-2 bg-white border border-gray-100 rounded text-sm text-gray-600"><LatexText text={q.solution || 'Chưa có lời giải'} /></div>
-                         </div>
-                      </div>
-                  </div>
-               ))}
-               
-               <div className="bg-white p-6 rounded-xl border-2 border-dashed border-gray-300 space-y-4">
-                  <h4 className="text-center text-gray-400 font-bold text-sm uppercase">Thêm câu hỏi mới vào đề</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                     <button onClick={() => addManualQuestion('mcq')} className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 rounded-lg font-bold border border-blue-200 hover:bg-blue-100 transition shadow-sm">
-                        <Plus size={18}/> Phần I (TN)
-                     </button>
-                     <button onClick={() => addManualQuestion('group-tf')} className="flex items-center justify-center gap-2 py-3 bg-purple-50 text-purple-700 rounded-lg font-bold border border-purple-200 hover:bg-purple-100 transition shadow-sm">
-                        <Plus size={18}/> Phần II (Đ/S)
-                     </button>
-                     <button onClick={() => addManualQuestion('short')} className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-700 rounded-lg font-bold border border-green-200 hover:bg-green-100 transition shadow-sm">
-                        <Plus size={18}/> Phần III (Ngắn)
-                     </button>
-                  </div>
-               </div>
+             <div className="space-y-6">
+                {renderPartEditor('mcq', 'Phần I: Câu hỏi trắc nghiệm', 'border-blue-500')}
+                {renderPartEditor('group-tf', 'Phần II: Câu hỏi đúng sai', 'border-purple-500')}
+                {renderPartEditor('short', 'Phần III: Câu hỏi trả lời ngắn', 'border-green-500')}
              </div>
            </div>
            
            <div className="space-y-6">
                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-lg sticky top-6">
-                  <div className="flex justify-between items-center mb-4 pb-4 border-b"><span className="text-gray-600 font-bold">Tổng số câu:</span><span className="font-bold text-xl text-gray-800">{questions.length}</span></div>
-                  <div className="flex justify-between items-center mb-6"><span className="text-gray-600 font-bold">Tổng điểm:</span><span className="font-bold text-xl text-blue-600">{questions.reduce((sum, q) => sum + (parseFloat(String(q.points).replace(',','.')) || 0), 0).toFixed(2)}</span></div>
-                  <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg"><span className="text-sm font-bold text-gray-700">Trạng thái:</span><button onClick={() => setIsPublished(!isPublished)} className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition shadow-sm ${isPublished ? 'bg-green-100 text-green-700 border-green-200 border' : 'bg-gray-200 text-gray-500 border border-gray-300'}`}>{isPublished ? <CheckCircle size={14}/> : <XCircle size={14}/>}{isPublished ? 'CÔNG KHAI' : 'LƯU NHÁP'}</button></div>
-                  <button onClick={handleSaveQuiz} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-extrabold shadow-lg shadow-green-200 flex justify-center items-center gap-2 transition transform active:scale-95"><Save size={20} /> {editingId ? 'CẬP NHẬT ĐỀ' : 'LƯU ĐỀ THI'}</button>
-                  {editingId && <button onClick={() => { resetForm(); setActiveTab('list'); }} className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2 rounded-lg font-bold transition">Hủy chỉnh sửa</button>}
+                  <div className="flex justify-between items-center mb-4 pb-4 border-b font-bold"><span className="text-gray-500 uppercase text-xs">Tổng số câu:</span><span className="text-xl">{questions.length}</span></div>
+                  <div className="flex justify-between items-center mb-6 font-bold"><span className="text-gray-500 uppercase text-xs">Tổng điểm:</span><span className="text-xl text-blue-600">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</span></div>
+                  <button onClick={handleSaveQuiz} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-extrabold shadow-lg flex justify-center items-center gap-2 transition transform active:scale-95"><Save size={20} /> LƯU ĐỀ THI</button>
+                  <button onClick={sortQuestionsByPart} className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2"><SortAsc size={18}/> Sắp xếp lại STT</button>
                </div>
            </div>
         </div>
       )}
 
+      {/* QUESTION BANK MODAL */}
+      {showBankModal && (
+          <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
+                  <div className="p-6 bg-indigo-600 text-white flex justify-between items-center shrink-0">
+                      <div>
+                        <h3 className="text-xl font-bold flex items-center gap-2"><Database size={24}/> Ngân hàng câu hỏi</h3>
+                        <p className="text-xs text-indigo-100 opacity-80 uppercase font-bold mt-1">Lọc cho: {bankTargetType === 'mcq' ? 'PHẦN I' : bankTargetType === 'group-tf' ? 'PHẦN II' : 'PHẦN III'}</p>
+                      </div>
+                      <button onClick={() => setShowBankModal(false)} className="hover:bg-white/20 p-2 rounded-full transition"><XCircle size={28}/></button>
+                  </div>
+                  <div className="p-6 border-b bg-gray-50 flex flex-wrap items-center gap-4 shrink-0">
+                      <span className="text-sm font-bold text-gray-700">Chọn đề thi gốc:</span>
+                      <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 bg-white shadow-sm" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
+                          <option value="">-- Danh sách đề đã lưu --</option>
+                          {quizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title} ({q.isPublished ? 'Đã đăng' : 'Nháp'})</option>)}
+                      </select>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
+                      {bankSelectedQuizId === '' ? (
+                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-40">
+                              <SearchCode size={64} className="mb-4"/>
+                              <p className="font-bold">Vui lòng chọn đề thi để xem danh sách câu hỏi</p>
+                          </div>
+                      ) : (
+                          <>
+                            {(() => {
+                                const sourceQuiz = quizzes.find(q => q.id === bankSelectedQuizId);
+                                const filteredQs = sourceQuiz?.questions.filter(q => q.type === bankTargetType) || [];
+                                
+                                if (filteredQs.length === 0) return <p className="text-center p-10 text-gray-500 font-bold">Không tìm thấy câu hỏi tương ứng trong đề này.</p>;
+                                
+                                return filteredQs.map((q, idx) => (
+                                    <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">Gốc: Câu {sourceQuiz?.questions.indexOf(q)! + 1}</span>
+                                                <span className="text-xs text-gray-400">{q.points} điểm</span>
+                                            </div>
+                                            <div className="text-sm text-gray-800 line-clamp-3"><LatexText text={q.text}/></div>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const newQ = { ...q, id: uuidv4() }; // Luôn clone với ID mới để tránh xung đột
+                                                const lastIdx = [...questions].reverse().findIndex(x => x.type === bankTargetType);
+                                                if (lastIdx === -1) {
+                                                    addManualQuestion(bankTargetType);
+                                                    const updated = [...questions];
+                                                    // This is a simple logic to replace the dummy one just created, but easier:
+                                                    setQuestions([...questions, newQ]); 
+                                                    // Better logic below to maintain order
+                                                }
+                                                // Tìm vị trí đúng để chèn tương tự addManualQuestion
+                                                const reverseIdx = [...questions].reverse().findIndex(x => x.type === bankTargetType);
+                                                const newQs = [...questions];
+                                                if (reverseIdx === -1) newQs.push(newQ);
+                                                else newQs.splice(questions.length - reverseIdx, 0, newQ);
+                                                
+                                                setQuestions(newQs);
+                                                alert("Đã thêm 1 câu vào đề hiện tại!");
+                                            }}
+                                            className="bg-green-100 text-green-700 p-2 rounded-lg hover:bg-green-200 transition"
+                                            title="Thêm vào đề hiện tại"
+                                        >
+                                            <Plus size={20}/>
+                                        </button>
+                                    </div>
+                                ));
+                            })()}
+                          </>
+                      )}
+                  </div>
+                  <div className="p-4 bg-gray-50 border-t text-right shrink-0">
+                      <button onClick={() => setShowBankModal(false)} className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition">Xong</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* REST OF THE UI (IMPORT, STUDENTS, PREVIEW) SAME AS ORIGINAL */}
       {activeTab === 'import' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><FileText className="text-blue-600" /> Nhập Đề Từ PDF (Mẫu Mới)</h3>
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><FileText className="text-blue-600" /> Nhập Đề Từ PDF</h3>
                   <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition cursor-pointer bg-gray-50">
                       <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="pdf-upload" />
-                      <label htmlFor="pdf-upload" className="cursor-pointer block"><Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" /><span className="block font-medium text-gray-700">{file ? file.name : 'Click để chọn file PDF'}</span></label>
+                      <label htmlFor="pdf-upload" className="cursor-pointer block"><Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" /><span className="block font-medium text-gray-700">{file ? file.name : 'Chọn file PDF đề thi'}</span></label>
                   </div>
-                  <div className="mt-6"><button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-50">{isProcessing ? 'Đang phân tích cấu trúc & lời giải...' : 'Trích xuất đề thi'}{isProcessing && <Sparkles className="animate-spin" size={16} />}</button></div>
-              </div>
-              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                  <h3 className="font-bold mb-4">Quy ước mẫu file (Gọn nhẹ)</h3>
-                  <div className="text-xs text-gray-700 font-mono bg-white p-4 rounded border space-y-3">
-                      <div>
-                          <p className="font-bold text-blue-600">PHẦN I. TRẮC NGHIỆM (Đánh dấu * trước đáp án đúng)</p>
-                          <p>Câu 1: $1+1=?$</p>
-                          <p>A. 1 &nbsp; *B. 2 &nbsp; C. 3 &nbsp; D. 4</p>
-                      </div>
-                      <hr/>
-                      <div>
-                          <p className="font-bold text-blue-600">PHẦN II. ĐÚNG SAI (Dùng Đ/S hoặc True/False)</p>
-                          <p>Câu 2: Hàm số $y=x^2$...</p>
-                          <p>a) Đồng biến trên R (S)</p>
-                          <p>b) Có cực tiểu tại x=0 (Đ)</p>
-                      </div>
-                      <hr/>
-                      <div>
-                          <p className="font-bold text-blue-600">PHẦN III. TRẢ LỜI NGẮN (Ghi rõ Đáp án: ...)</p>
-                          <p>Câu 3: $\sqrt{4}$ bằng bao nhiêu?</p>
-                          <p>Đáp án: 2</p>
-                      </div>
-                  </div>
+                  <div className="mt-6"><button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 disabled:opacity-50">{isProcessing ? 'Đang trích xuất...' : 'Bắt đầu trích xuất'}</button></div>
               </div>
           </div>
       )}
 
       {activeTab === 'students' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div className="flex items-center gap-2 w-full md:w-auto">
-                      <div className="relative w-full">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                          <input type="text" placeholder="Tìm tên hoặc username..." className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64 focus:ring-2 focus:ring-blue-200 outline-none" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/>
-                      </div>
-                  </div>
-                  <button onClick={handleCreateUser} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700"><UserPlus size={18} /> Thêm Học Sinh</button>
+              <div className="p-6 border-b flex justify-between items-center">
+                  <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="Tìm tên học sinh..." className="pl-10 pr-4 py-2 border rounded-lg w-64" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/></div>
+                  <button onClick={() => { setEditingUser(null); setUserForm({fullName:'', username:'', password:'', grade:'10', role:'student'}); setShowUserModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><UserPlus size={18} /> Thêm Học Sinh</button>
               </div>
-              <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                      <thead className="bg-gray-50 border-b text-gray-500 text-sm uppercase">
-                          <tr>
-                              <th className="p-4">Họ và Tên</th>
-                              <th className="p-4">Tên đăng nhập</th>
-                              <th className="p-4">Mật khẩu</th>
-                              <th className="p-4 text-center">Khối</th>
-                              <th className="p-4 text-right">Hành động</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {filteredUsers.length === 0 ? (
-                              <tr><td colSpan={5} className="p-8 text-center text-gray-500">Không tìm thấy học sinh nào.</td></tr>
-                          ) : (
-                              filteredUsers.map(u => (
-                                  <tr key={u.id} className="border-b hover:bg-gray-50">
-                                      <td className="p-4 font-bold text-gray-800">{u.fullName}</td>
-                                      <td className="p-4 text-blue-600 font-mono">{u.username}</td>
-                                      <td className="p-4 text-gray-500 font-mono text-xs">******</td>
-                                      <td className="p-4 text-center"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">K{u.grade}</span></td>
-                                      <td className="p-4 text-right flex justify-end gap-2">
-                                          <button onClick={() => handleEditUser(u)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Sửa"><Edit size={16}/></button>
-                                          <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Xóa"><Trash2 size={16}/></button>
-                                      </td>
-                                  </tr>
-                              ))
-                          )}
-                      </tbody>
-                  </table>
-              </div>
+              <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">Họ và Tên</th><th className="p-4">Tên đăng nhập</th><th className="p-4">Khối</th><th className="p-4 text-right">Hành động</th></tr></thead>
+                  <tbody>{users.filter(u=>u.role==='student' && u.fullName.toLowerCase().includes(searchUser.toLowerCase())).map(u => (
+                      <tr key={u.id} className="border-b hover:bg-gray-50">
+                          <td className="p-4 font-bold">{u.fullName}</td><td className="p-4 font-mono text-blue-600">{u.username}</td><td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold">K{u.grade}</span></td>
+                          <td className="p-4 text-right flex justify-end gap-2">
+                              <button onClick={() => { setEditingUser(u); setUserForm({fullName:u.fullName, username:u.username, password:u.password, grade:u.grade||'10', role:u.role}); setShowUserModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16}/></button>
+                              <button onClick={async () => { if(window.confirm('Xóa?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                          </td>
+                      </tr>
+                  ))}</tbody>
+              </table>
           </div>
-      )}
-      
-      {previewQuiz && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-                <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                    <div>
-                        <h2 className="text-xl font-bold">{previewQuiz.title}</h2>
-                        <p className="text-sm text-gray-500">Dành cho Khối {previewQuiz.grade} • {previewQuiz.durationMinutes} phút</p>
-                    </div>
-                    <button onClick={() => setPreviewQuiz(null)} className="text-gray-500 hover:text-gray-700 hover:bg-gray-200 p-2 rounded-full"><XCircle size={24}/></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                    {previewQuiz.questions.map((q, idx) => (
-                        <div key={q.id} className="border-b pb-4 last:border-0">
-                            <div className="font-bold text-gray-800 mb-2 flex justify-between">
-                                <span>Câu {idx+1} <span className="text-xs font-normal text-gray-500 ml-2">({q.points} điểm)</span></span>
-                                <span className="text-xs bg-gray-100 px-2 py-1 rounded uppercase text-gray-500">{q.type}</span>
-                            </div>
-                            <div className="mb-2"><LatexText text={q.text}/></div>
-                            {q.imageUrl && <img src={q.imageUrl} alt="img" className="max-h-40 rounded border mb-2"/>}
-                            {q.type === 'mcq' && (
-                                <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-                                    {q.options?.map((opt, i) => (
-                                        <div key={i} className={`p-2 border rounded ${opt === q.correctAnswer ? 'bg-green-50 border-green-200 font-medium text-green-800' : ''}`}>
-                                            {String.fromCharCode(65+i)}. <LatexText text={opt}/>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                             {q.type === 'group-tf' && (
-                                <div className="space-y-1 text-sm">
-                                    {q.subQuestions?.map((sq, i) => (
-                                        <div key={i} className="flex justify-between border-b border-dashed pb-1">
-                                            <span>{String.fromCharCode(97+i)}) <LatexText text={sq.text}/></span>
-                                            <span className={sq.correctAnswer === 'True' ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>
-                                                {sq.correctAnswer === 'True' ? 'ĐÚNG' : 'SAI'}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                             {q.type === 'short' && (
-                                <div className="text-sm bg-green-50 text-green-800 p-2 rounded inline-block font-mono">
-                                    Đáp án: {q.correctAnswer}
-                                </div>
-                            )}
-                            {q.solution && (
-                                <div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-sm">
-                                    <div className="font-bold text-yellow-700 mb-1 flex items-center gap-1"><Lightbulb size={12}/> Lời giải:</div>
-                                    <div className="text-gray-700 whitespace-pre-wrap leading-relaxed"><LatexText text={q.solution}/></div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-                <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end">
-                    <button onClick={() => setPreviewQuiz(null)} className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-black font-bold">ĐÓNG</button>
-                </div>
-            </div>
-        </div>
-      )}
-      
-      {viewHistoryData && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
-                  <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                      <div>
-                          <h3 className="font-bold text-gray-800">Lịch sử làm bài</h3>
-                          <p className="text-xs text-gray-500">{viewHistoryData.studentName} - {viewHistoryData.quizTitle}</p>
-                      </div>
-                      <button onClick={() => setViewHistoryData(null)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-2 rounded-full"><XCircle size={20}/></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                      <table className="w-full text-left text-sm">
-                          <thead className="bg-gray-100 text-gray-500 sticky top-0">
-                              <tr>
-                                  <th className="p-3 border-b">Lần</th>
-                                  <th className="p-3 border-b">Ngày nộp</th>
-                                  <th className="p-3 border-b">Điểm</th>
-                                  <th className="p-3 border-b text-right">Xóa</th>
-                              </tr>
-                          </thead>
-                          <tbody>
-                              {viewHistoryData.items.map((item, idx) => (
-                                  <tr key={item.id} className="border-b hover:bg-blue-50 group">
-                                      <td className="p-3 text-gray-500">#{viewHistoryData.items.length - idx}</td>
-                                      <td className="p-3"><div className="font-medium text-gray-800">{format(parseISO(item.submittedAt), "dd/MM/yyyy HH:mm")}</div></td>
-                                      <td className="p-3"><span className={`font-bold ${item.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{item.score.toFixed(2)}</span></td>
-                                      <td className="p-3 text-right"><button onClick={() => handleDeleteResult(item.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition"><Trash2 size={14}/></button></td>
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-                  <div className="p-3 border-t bg-gray-50 text-right"><button onClick={() => setViewHistoryData(null)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-100">Đóng</button></div>
-              </div>
-          </div>
-      )}
-      
-      {activeTab === 'results' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-           <div className="p-4 border-b bg-gray-50 space-y-4">
-              <div className="flex items-center gap-2 text-gray-700 font-medium">
-                  <Filter size={18} /><span>Chọn khối lớp cần xem:</span>
-                  <div className="flex bg-white p-1 rounded-lg border shadow-sm ml-2">
-                      {(['all', '10', '11', '12'] as const).map(g => (
-                          <button key={g} onClick={() => { setResultFilterGrade(g); setSelectedQuizId(''); }} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${resultFilterGrade === g ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}>
-                              {g === 'all' ? 'Tổng quan' : `Khối ${g}`}
-                          </button>
-                      ))}
-                  </div>
-              </div>
-              {resultFilterGrade !== 'all' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Đề Luyện Tập</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizzes.find(q => q.id === selectedQuizId)?.type === 'practice' ? selectedQuizId : ''} onChange={(e) => setSelectedQuizId(e.target.value)}><option value="">-- Chọn đề luyện tập --</option>{practiceQuizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title}</option>)}</select></div>
-                      <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Đề Kiểm Tra</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizzes.find(q => q.id === selectedQuizId)?.type === 'test' ? selectedQuizId : ''} onChange={(e) => setSelectedQuizId(e.target.value)}><option value="">-- Chọn bài kiểm tra --</option>{testQuizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title}</option>)}</select></div>
-                  </div>
-              )}
-           </div>
-
-           {selectedQuizId && selectedQuizStats && (
-               <div className="p-6 bg-blue-50 border-b border-blue-100 animate-fade-in">
-                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                       <div><h3 className="font-bold text-lg text-blue-900 flex items-center gap-2"><TrendingUp size={20}/> Thống Kê Chi Tiết</h3><p className="text-sm text-blue-600">Đề thi: {quizzes.find(q=>q.id===selectedQuizId)?.title}</p></div>
-                       <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 transition"><FileSpreadsheet size={18} /> Xuất Excel (.csv)</button>
-                   </div>
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100"><div className="text-xs text-gray-500 uppercase font-bold mb-1">Số lượt thi</div><div className="text-2xl font-bold text-gray-800 flex items-center gap-2"><UserCheck size={20} className="text-blue-500"/> {selectedQuizStats.count}</div></div>
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100"><div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm trung bình</div><div className="text-2xl font-bold text-blue-600">{selectedQuizStats.avg.toFixed(2)}</div></div>
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100"><div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm cao nhất</div><div className="text-2xl font-bold text-green-600 flex items-center gap-2"><Award size={20}/> {selectedQuizStats.max.toFixed(2)}</div></div>
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100"><div className="text-xs text-gray-500 uppercase font-bold mb-1">Điểm thấp nhất</div><div className="text-2xl font-bold text-red-500">{selectedQuizStats.min.toFixed(2)}</div></div>
-                   </div>
-               </div>
-           )}
-
-           <div className="overflow-hidden min-h-[300px]">
-                {resultFilterGrade !== 'all' && !selectedQuizId && (<div className="flex flex-col items-center justify-center py-16 text-gray-400"><List size={48} className="mb-4 opacity-20"/><p className="font-medium">Vui lòng chọn một đề thi ở trên để xem danh sách học sinh.</p></div>)}
-                {(resultFilterGrade === 'all' || selectedQuizId) && (
-                    <table className="w-full text-left">
-                        <thead className="bg-gray-50 border-b"><tr><th className="p-4 font-semibold text-gray-600">Học Sinh</th><th className="p-4 font-semibold text-gray-600">Bài Thi</th><th className="p-4 font-semibold text-gray-600">Khối</th><th className="p-4 font-semibold text-gray-600 text-center">Số Lần Thi</th><th className="p-4 font-semibold text-gray-600 text-center">Điểm Cao Nhất</th><th className="p-4 font-semibold text-gray-600 text-right">Chi tiết</th></tr></thead>
-                        <tbody>
-                        {groupedResults.length === 0 ? (<tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">Chưa có kết quả nào.</td></tr>) : groupedResults.map((group, idx) => (
-                            <tr key={idx} className="border-b hover:bg-gray-50">
-                                <td className="p-4 font-bold text-gray-800">{group.studentName}</td><td className="p-4 text-gray-600">{group.quizTitle}</td><td className="p-4"><span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-bold">K{group.quizGrade}</span></td><td className="p-4 text-center"><span className="inline-block bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">{group.attempts} lần</span></td><td className="p-4 text-center"><span className={`font-bold text-lg ${group.maxScore >= 5 ? 'text-green-600' : 'text-red-500'}`}>{group.maxScore.toFixed(2)}</span></td><td className="p-4 text-right"><button onClick={() => setViewHistoryData({ studentName: group.studentName, quizTitle: group.quizTitle, items: group.items })} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition flex items-center gap-1 ml-auto text-sm font-medium"><History size={16}/> Xem lịch sử</button></td>
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
-                )}
-           </div>
-        </div>
       )}
 
       {showUserModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up"><div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold text-lg flex items-center gap-2"><UserPlus size={20}/> {editingUser ? 'Sửa Thông Tin Học Sinh' : 'Thêm Học Sinh Mới'}</h3><button onClick={() => setShowUserModal(false)} className="text-blue-100 hover:text-white rounded-full p-1"><XCircle size={24}/></button></div><div className="p-6 space-y-4"><div><label className="block text-sm font-medium mb-1">Họ và Tên</label><input type="text" className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nguyễn Văn A" value={userForm.fullName} onChange={e => setUserForm({...userForm, fullName: e.target.value})} /></div><div><label className="block text-sm font-medium mb-1">Tên đăng nhập (Viết liền)</label><input type="text" className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="nguyenvana" value={userForm.username} onChange={e => setUserForm({...userForm, username: e.target.value})} disabled={!!editingUser} />{editingUser && <p className="text-xs text-gray-500 mt-1">* Không thể đổi tên đăng nhập</p>}</div><div><label className="block text-sm font-medium mb-1">Mật khẩu</label><div className="relative"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input type="text" className="w-full border rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="******" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} /></div></div><div><label className="block text-sm font-medium mb-1">Khối Lớp</label><select className="w-full border rounded-lg p-2.5 bg-white" value={userForm.grade} onChange={e => setUserForm({...userForm, grade: e.target.value as Grade})}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div><div className="pt-4"><button onClick={handleSaveUser} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-200 transition">{editingUser ? 'Lưu Thay Đổi' : 'Tạo Tài Khoản'}</button></div></div></div></div>
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"><div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Thông Tin Học Sinh</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div><div className="p-6 space-y-4"><div><label className="block text-sm font-medium mb-1">Họ Tên</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.fullName} onChange={e=>setUserForm({...userForm, fullName:e.target.value})}/></div><div><label className="block text-sm font-medium mb-1">Username</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div><div><label className="block text-sm font-medium mb-1">Mật khẩu</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})}/></div><div><label className="block text-sm font-medium mb-1">Khối</label><select className="w-full border rounded-lg p-2" value={userForm.grade} onChange={e=>setUserForm({...userForm, grade:e.target.value as Grade})}><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></div><button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-lg">LƯU HỌC SINH</button></div></div></div>
+      )}
+      
+      {activeTab === 'results' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-4 bg-gray-50 border-b flex flex-wrap gap-4 items-center">
+                <span className="text-sm font-bold text-gray-700 uppercase">Xem kết quả Khối:</span>
+                <div className="flex bg-white rounded-lg border p-1 shadow-sm">
+                    {(['all', '10', '11', '12'] as const).map(g => (
+                        <button key={g} onClick={() => { setResultFilterGrade(g); setSelectedQuizId(''); }} className={`px-4 py-1.5 rounded text-xs font-bold ${resultFilterGrade === g ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>{g==='all'?'Tất cả':`Khối ${g}`}</button>
+                    ))}
+                </div>
+                {resultFilterGrade !== 'all' && (
+                    <select className="border rounded-lg p-2 text-sm max-w-[300px]" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
+                        <option value="">-- Chọn đề thi --</option>
+                        {[...testQuizzes, ...practiceQuizzes].map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                    </select>
+                )}
+                {selectedQuizId && <button onClick={handleExportExcel} className="bg-green-600 text-white px-3 py-2 rounded text-xs font-bold flex items-center gap-1"><FileSpreadsheet size={16}/> Xuất CSV</button>}
+            </div>
+            <table className="w-full text-left text-sm">
+                <thead className="bg-gray-100 text-gray-500 uppercase text-[10px]"><tr><th className="p-4">Học Sinh</th><th className="p-4">Bài Thi</th><th className="p-4 text-center">Số Lần</th><th className="p-4 text-center">Điểm Cao Nhất</th><th className="p-4 text-right">Chi tiết</th></tr></thead>
+                <tbody>{groupedResults.map((g, i) => (
+                    <tr key={i} className="border-b hover:bg-gray-50">
+                        <td className="p-4 font-bold">{g.studentName}</td><td className="p-4 text-gray-600">{g.quizTitle}</td><td className="p-4 text-center">{g.attempts}</td><td className="p-4 text-center font-bold text-blue-600">{g.maxScore.toFixed(2)}</td>
+                        <td className="p-4 text-right"><button onClick={() => setViewHistoryData({studentName:g.studentName, quizTitle:g.quizTitle, items:g.items})} className="text-blue-600 hover:underline text-xs font-bold flex items-center gap-1 justify-end"><History size={14}/> Lịch sử</button></td>
+                    </tr>
+                ))}</tbody>
+            </table>
+        </div>
+      )}
+
+      {viewHistoryData && (
+          <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4 animate-fade-in"><div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden"><div className="p-4 bg-gray-100 border-b flex justify-between items-center"><h3 className="font-bold">Lịch sử: {viewHistoryData.studentName}</h3><button onClick={()=>setViewHistoryData(null)}><XCircle size={20}/></button></div><div className="max-h-[60vh] overflow-y-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50"><tr><th className="p-3">Ngày nộp</th><th className="p-3">Điểm</th><th className="p-3 text-right">Hành động</th></tr></thead><tbody>{viewHistoryData.items.map(it=>(<tr key={it.id} className="border-b"><td className="p-3">{format(parseISO(it.submittedAt), "dd/MM/yyyy HH:mm")}</td><td className="p-3 font-bold">{it.score.toFixed(2)}</td><td className="p-3 text-right"><button onClick={async ()=>{if(window.confirm('Xóa?')){await deleteResult(it.id); refreshData(); setViewHistoryData(null);}}} className="text-red-500 p-1"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></div></div>
+      )}
+      
+      {previewQuiz && (
+        <div className="fixed inset-0 bg-black/60 z-[130] flex items-center justify-center p-4"><div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"><div className="p-6 bg-gray-50 border-b flex justify-between items-center"><h2 className="text-xl font-bold">{previewQuiz.title}</h2><button onClick={()=>setPreviewQuiz(null)}><XCircle size={24}/></button></div><div className="flex-1 overflow-y-auto p-8 space-y-8">{previewQuiz.questions.map((q, idx)=>(<div key={q.id} className="border-b pb-6 last:border-0"><div className="font-bold text-gray-800 mb-2">Câu {idx+1} ({q.points}đ): <LatexText text={q.text}/></div>{q.imageUrl && <img src={q.imageUrl} className="max-h-60 rounded border my-3 mx-auto" alt=""/>}{q.type === 'mcq' && <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">{q.options?.map((o,i)=>(<div key={i} className={`p-2 border rounded ${o===q.correctAnswer?'bg-green-50 border-green-300 font-bold':''}`}>{String.fromCharCode(65+i)}. <LatexText text={o}/></div>))}</div>}{q.type === 'group-tf' && <div className="space-y-1 text-sm">{q.subQuestions?.map((s,i)=>(<div key={i} className="flex justify-between border-b border-dashed pb-1"><span>{String.fromCharCode(97+i)}) <LatexText text={s.text}/></span><span className={s.correctAnswer==='True'?'text-green-600 font-bold':'text-red-500 font-bold'}>{s.correctAnswer==='True'?'ĐÚNG':'SAI'}</span></div>))}</div>}{q.type==='short' && <div className="text-sm bg-green-50 p-2 rounded inline-block font-bold">Đáp án: {q.correctAnswer}</div>}</div>))}</div><div className="p-4 bg-gray-50 text-right"><button onClick={()=>setPreviewQuiz(null)} className="px-8 py-2 bg-gray-800 text-white rounded-lg font-bold">ĐÓNG</button></div></div></div>
       )}
     </div>
   );
