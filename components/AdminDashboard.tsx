@@ -635,35 +635,79 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <button onClick={() => setShowBankModal(false)} className="hover:bg-white/20 p-2 rounded-full transition"><XCircle size={28}/></button>
                   </div>
-                  <div className="p-6 border-b bg-gray-50 flex flex-wrap items-center gap-4 shrink-0">
-                      <span className="text-sm font-bold text-gray-700">Chọn đề thi gốc:</span>
-                      <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 bg-white shadow-sm" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
-                          <option value="">-- Danh sách đề đã lưu --</option>
-                          {quizzes.map(q => <option key={q.id} value={q.id}>[K{q.grade}] {q.title} ({q.isPublished ? 'Đã đăng' : 'Nháp'})</option>)}
-                      </select>
+                  <div className="p-6 border-b bg-gray-50 flex flex-wrap items-center justify-between gap-4 shrink-0">
+                      <div className="flex items-center gap-4 flex-1">
+                          <span className="text-sm font-bold text-gray-700 whitespace-nowrap">Chọn đề thi:</span>
+                          <select className="flex-1 min-w-[250px] border rounded-lg p-2.5 bg-white shadow-sm font-medium" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
+                              <option value="">-- Danh sách đề Khối {grade} --</option>
+                              {quizzes.filter(q => q.grade === grade).map(q => <option key={q.id} value={q.id}>{q.title} ({q.isPublished ? 'Công khai' : 'Nháp'})</option>)}
+                              <option disabled>──────────</option>
+                              <option value="ALL">Duyệt toàn bộ đề thi (Mọi khối)</option>
+                          </select>
+                      </div>
+                      <div className="bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-2">
+                          <Filter size={16} className="text-indigo-600" />
+                          <span className="text-xs font-bold text-indigo-700 uppercase">Khối đang soạn: {grade}</span>
+                      </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
                       {bankSelectedQuizId === '' ? (
-                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-40">
-                              <SearchCode size={64} className="mb-4"/>
-                              <p className="font-bold">Vui lòng chọn đề thi để xem danh sách câu hỏi</p>
+                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
+                              <SearchCode size={64} className="mb-4 text-indigo-200"/>
+                              <p className="font-bold">Chọn một đề thi cũ để xem danh sách câu hỏi</p>
+                              <p className="text-xs mt-2 text-center max-w-sm">Chỉ những câu chưa có trong đề hiện tại mới được hiển thị để tránh trùng lặp.</p>
                           </div>
                       ) : (
                           <>
                             {(() => {
-                                const sourceQuiz = quizzes.find(q => q.id === bankSelectedQuizId);
-                                const filteredQs = sourceQuiz?.questions.filter(q => q.type === bankTargetType) || [];
+                                // Lấy đề thi nguồn
+                                let sourceQuizzes = [];
+                                if (bankSelectedQuizId === 'ALL') sourceQuizzes = quizzes;
+                                else {
+                                    const found = quizzes.find(q => q.id === bankSelectedQuizId);
+                                    if (found) sourceQuizzes = [found];
+                                }
+
+                                // Gom toàn bộ câu hỏi từ các đề thi nguồn thỏa mãn điều kiện
+                                let allSourceQs: Question[] = [];
+                                sourceQuizzes.forEach(sq => {
+                                    sq.questions.filter(q => q.type === bankTargetType).forEach(q => {
+                                        // Thêm thông tin đề thi gốc vào câu hỏi để hiển thị
+                                        allSourceQs.push({ ...q, solution: q.solution || `(Nguồn: ${sq.title})` });
+                                    });
+                                });
                                 
-                                if (filteredQs.length === 0) return <p className="text-center p-10 text-gray-500 font-bold">Không tìm thấy câu hỏi tương ứng trong đề này.</p>;
+                                // LỌC: Bỏ những câu hỏi có nội dung text trùng với câu đã có trong đề hiện tại
+                                const availableQs = allSourceQs.filter(sq => 
+                                    !questions.some(currQ => currQ.text.trim() === sq.text.trim())
+                                );
                                 
-                                return filteredQs.map((q, idx) => (
-                                    <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4">
-                                        <div className="flex-1">
+                                if (availableQs.length === 0) return (
+                                    <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed text-gray-400">
+                                        <CheckCircle size={48} className="mb-4 text-green-200"/>
+                                        <p className="font-bold text-center">Tất cả câu hỏi trong đề này đã có mặt trong đề hiện tại!</p>
+                                    </div>
+                                );
+                                
+                                return availableQs.map((q) => (
+                                    <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4 group">
+                                        <div className="flex-1 overflow-hidden">
                                             <div className="flex items-center gap-2 mb-2">
-                                                <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">Gốc: Câu {sourceQuiz?.questions.indexOf(q)! + 1}</span>
-                                                <span className="text-xs text-gray-400">{q.points} điểm</span>
+                                                <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold uppercase">{q.type}</span>
+                                                <span className="text-xs text-gray-400 font-medium">{q.points} điểm</span>
+                                                <span className="text-[10px] text-indigo-300 italic truncate max-w-[200px]">{q.solution}</span>
                                             </div>
-                                            <div className="text-sm text-gray-800 line-clamp-3"><LatexText text={q.text}/></div>
+                                            <div className="text-sm text-gray-800"><LatexText text={q.text}/></div>
+                                            {q.imageUrl && <div className="mt-2"><img src={q.imageUrl} className="h-20 rounded border object-contain bg-gray-50" alt=""/></div>}
+                                            {q.type === 'mcq' && q.options && (
+                                                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 italic">
+                                                    {q.options.map((o, i) => (
+                                                        <div key={i} className={o === q.correctAnswer ? 'text-green-600 font-bold' : ''}>
+                                                            {String.fromCharCode(65+i)}. {o.substring(0, 30)}{o.length > 30 ? '...' : ''}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                         <button 
                                             onClick={() => {
@@ -682,9 +726,9 @@ const AdminDashboard: React.FC = () => {
                                                    newQs.splice(questions.length - reverseIdx, 0, newQ);
                                                 }
                                                 setQuestions(newQs);
-                                                alert("Đã thêm 1 câu vào đề hiện tại!");
+                                                // Alert nhẹ nhàng hoặc toast
                                             }}
-                                            className="bg-green-100 text-green-700 p-2 rounded-lg hover:bg-green-200 transition"
+                                            className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 shrink-0 transform group-active:scale-90"
                                             title="Thêm vào đề hiện tại"
                                         >
                                             <Plus size={20}/>
@@ -695,8 +739,9 @@ const AdminDashboard: React.FC = () => {
                           </>
                       )}
                   </div>
-                  <div className="p-4 bg-gray-50 border-t text-right shrink-0">
-                      <button onClick={() => setShowBankModal(false)} className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition">Xong</button>
+                  <div className="p-4 bg-gray-50 border-t flex justify-between items-center shrink-0">
+                      <p className="text-xs text-gray-500 italic">Gợi ý: Chỉ chọn những câu hỏi chất lượng nhất cho học sinh của bạn.</p>
+                      <button onClick={() => setShowBankModal(false)} className="px-10 py-2.5 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition shadow-lg">ĐÓNG</button>
                   </div>
               </div>
           </div>
