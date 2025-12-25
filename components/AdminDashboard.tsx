@@ -81,7 +81,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeh
                 <div className="w-px h-4 bg-gray-300 mx-1"></div>
                 <ToolbarBtn onClick={() => insertTag('$\\rightarrow$') } label="→" tooltip="Mũi tên đơn" />
                 <ToolbarBtn onClick={() => insertTag('$\\Rightarrow$') } label="⇒" tooltip="Suy ra" />
-                <ToolbarBtn onClick={() => insertTag('$\\Leftrightarrow$') } label="⇔" tooltip="Tương đương" />
             </div>
 
             {rows ? (
@@ -274,10 +273,8 @@ const AdminDashboard: React.FC = () => {
       q = { id: uuidv4(), type: 'short', text: 'Nội dung câu trả lời ngắn...', points: 0.5, correctAnswer: '', solution: '' };
     }
 
-    // Tìm vị trí cuối cùng của các câu cùng loại để chèn vào sau đó
     const lastIdxOfSameType = [...questions].reverse().findIndex(x => x.type === type);
     if (lastIdxOfSameType === -1) {
-        // Nếu chưa có câu nào loại này, chèn dựa trên thứ tự phần (I < II < III)
         if (type === 'mcq') {
             setQuestions([q, ...questions]);
         } else if (type === 'group-tf') {
@@ -419,7 +416,7 @@ const AdminDashboard: React.FC = () => {
                   {questions.map((q, idx) => {
                       if (q.type !== type) return null;
                       return (
-                        <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors">
+                        <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
                             <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed">
                                 <div className="flex items-center gap-3">
                                     <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
@@ -429,41 +426,85 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <input type="text" className="w-16 border rounded p-1 text-center font-bold text-xs" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
-                                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                                    <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase">ĐIỂM:</div>
+                                    <input type="text" className="w-14 border rounded p-1 text-center font-bold text-xs bg-gray-50" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
+                                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full transition"><Trash2 size={16}/></button>
                                 </div>
                             </div>
-                            <div className="space-y-3">
-                                <RichTextEditor rows={2} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} />
+
+                            <div className="space-y-4">
+                                {/* NHẬP CÂU HỎI & PREVIEW */}
+                                <div>
+                                    <RichTextEditor rows={2} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} placeholder="Nhập nội dung câu hỏi..." />
+                                    <div className="mt-1 p-2 bg-gray-50 rounded border text-xs text-gray-600 flex gap-2 overflow-x-auto">
+                                        <span className="shrink-0 font-bold text-blue-500 uppercase text-[9px]">Xem trước:</span>
+                                        <div className="flex-1"><LatexText text={q.text || '...'} /></div>
+                                    </div>
+                                </div>
+
+                                {/* HÌNH ẢNH */}
+                                <div className="flex gap-4 items-start">
+                                    <div className="flex-1">
+                                        <div className="flex gap-2">
+                                            <input type="text" className="flex-1 border rounded p-2 text-xs text-gray-600 bg-white" placeholder="Link ảnh hoặc..." value={q.imageUrl || ''} onChange={e => updateQuestion(idx, 'imageUrl', e.target.value)}/>
+                                            <label className="cursor-pointer bg-blue-50 text-blue-700 px-3 py-2 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center gap-2 text-xs font-bold">
+                                                <ImageIcon size={14}/> Upload
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => onSelectImage(e, idx)} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    {q.imageUrl && <div className="shrink-0 w-12 h-12 border rounded bg-gray-50 flex items-center justify-center overflow-hidden"><img src={q.imageUrl} alt="preview" className="w-full h-full object-contain" /></div>}
+                                </div>
+
+                                {/* ĐÁP ÁN THEO LOẠI */}
                                 {q.type === 'mcq' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         {q.options?.map((opt, optIdx) => (
-                                            <div key={optIdx} className="flex items-center gap-2 bg-gray-50 p-2 rounded border">
-                                                <input type="radio" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} />
-                                                <RichTextEditor className="flex-1" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; updateQuestion(idx, 'options', o); }} />
+                                            <div key={optIdx} className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-100 group hover:border-blue-300 transition-all">
+                                                    <input type="radio" className="w-4 h-4" checked={q.correctAnswer === opt} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} />
+                                                    <span className="text-[10px] font-bold text-gray-400 w-4">{String.fromCharCode(65+optIdx)}.</span>
+                                                    <RichTextEditor className="flex-1 bg-white border-transparent" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; updateQuestion(idx, 'options', o); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', val); }} />
+                                                </div>
+                                                <div className="pl-8 text-[11px] text-gray-500"><LatexText text={opt || '...'} /></div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                                 {q.type === 'short' && (
-                                    <div className="flex items-center gap-2 bg-green-50 p-2 rounded border">
-                                        <span className="text-xs font-bold text-green-700">Đáp án:</span>
-                                        <input type="text" className="flex-1 border rounded p-1" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} />
+                                    <div className="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100 shadow-inner">
+                                        <span className="text-xs font-bold text-green-700 uppercase">ĐÁP ÁN PHẦN III:</span>
+                                        <input type="text" className="flex-1 border-2 border-green-200 rounded p-2 font-bold text-green-900 bg-white" placeholder="Nhập đáp số..." value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} />
                                     </div>
                                 )}
                                 {q.type === 'group-tf' && (
-                                    <div className="space-y-1">
+                                    <div className="space-y-3">
                                         {q.subQuestions?.map((sq, sqIdx) => (
-                                            <div key={sqIdx} className="flex gap-2 items-center bg-gray-50 p-2 rounded border">
-                                                <RichTextEditor className="flex-1" value={sq.text} onChange={(val) => updateSubQuestion(idx, sqIdx, 'text', val)} />
-                                                <select className="text-xs border rounded p-1" value={sq.correctAnswer} onChange={e => updateSubQuestion(idx, sqIdx, 'correctAnswer', e.target.value)}>
-                                                    <option value="True">ĐÚNG</option>
-                                                    <option value="False">SAI</option>
-                                                </select>
+                                            <div key={sqIdx} className="bg-gray-50 p-2 rounded border border-gray-100 space-y-2 shadow-sm">
+                                                <div className="flex gap-2 items-center">
+                                                    <span className="font-bold text-gray-500 text-xs w-4">{String.fromCharCode(97+sqIdx)})</span>
+                                                    <RichTextEditor className="flex-1" value={sq.text} onChange={(val) => updateSubQuestion(idx, sqIdx, 'text', val)} />
+                                                    <div className="flex flex-col gap-1">
+                                                        <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','True')} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='True'?'bg-green-500 text-white border-green-600 font-bold':'bg-white text-gray-400 hover:bg-gray-100'}`}>Đ</button>
+                                                        <button onClick={()=>updateSubQuestion(idx,sqIdx,'correctAnswer','False')} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='False'?'bg-red-500 text-white border-red-600 font-bold':'bg-white text-gray-400 hover:bg-gray-100'}`}>S</button>
+                                                    </div>
+                                                </div>
+                                                <div className="pl-6 text-[11px] text-gray-500"><LatexText text={sq.text || '...'} /></div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
+
+                                {/* LỜI GIẢI CHI TIẾT */}
+                                <div className="mt-4 pt-4 border-t border-dashed border-gray-200">
+                                    <div className="flex items-center gap-2 mb-2 text-yellow-600 font-bold text-[10px] uppercase">
+                                        <Lightbulb size={14} /> Lời giải chi tiết / Hướng dẫn:
+                                    </div>
+                                    <RichTextEditor rows={3} className="bg-yellow-50/50 border-yellow-100 focus:ring-yellow-200" value={q.solution || ''} onChange={(val) => updateQuestion(idx, 'solution', val)} placeholder="Nhập lời giải để học sinh đối chiếu..." />
+                                    <div className="mt-1 p-2 bg-yellow-50/30 rounded border border-yellow-50 text-[11px] text-yellow-800">
+                                        <LatexText text={q.solution || 'Chưa có lời giải'} />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                       );
@@ -557,6 +598,10 @@ const AdminDashboard: React.FC = () => {
                     <select className="border rounded-lg p-2.5" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select>
                     <select className="border rounded-lg p-2.5" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select>
                  </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-xs font-bold text-gray-500 mb-1">Thời lượng (phút):</label><input type="number" className="w-full border rounded-lg p-2" value={duration} onChange={e => setDuration(Number(e.target.value))}/></div>
+                    {quizType === 'test' && <div><label className="block text-xs font-bold text-gray-500 mb-1">Giờ bắt đầu:</label><input type="datetime-local" className="w-full border rounded-lg p-2" value={startTime} onChange={e => setStartTime(e.target.value)}/></div>}
+                 </div>
                </div>
              </div>
              
@@ -571,6 +616,7 @@ const AdminDashboard: React.FC = () => {
                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-lg sticky top-6">
                   <div className="flex justify-between items-center mb-4 pb-4 border-b font-bold"><span className="text-gray-500 uppercase text-xs">Tổng số câu:</span><span className="text-xl">{questions.length}</span></div>
                   <div className="flex justify-between items-center mb-6 font-bold"><span className="text-gray-500 uppercase text-xs">Tổng điểm:</span><span className="text-xl text-blue-600">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</span></div>
+                  <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg"><span className="text-sm font-bold text-gray-700">Trạng thái:</span><button onClick={() => setIsPublished(!isPublished)} className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition shadow-sm ${isPublished ? 'bg-green-100 text-green-700 border-green-200 border' : 'bg-gray-200 text-gray-500 border border-gray-300'}`}>{isPublished ? <CheckCircle size={14}/> : <XCircle size={14}/>}{isPublished ? 'CÔNG KHAI' : 'LƯU NHÁP'}</button></div>
                   <button onClick={handleSaveQuiz} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-extrabold shadow-lg flex justify-center items-center gap-2 transition transform active:scale-95"><Save size={20} /> LƯU ĐỀ THI</button>
                   <button onClick={sortQuestionsByPart} className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2"><SortAsc size={18}/> Sắp xếp lại STT</button>
                </div>
@@ -621,21 +667,20 @@ const AdminDashboard: React.FC = () => {
                                         </div>
                                         <button 
                                             onClick={() => {
-                                                const newQ = { ...q, id: uuidv4() }; // Luôn clone với ID mới để tránh xung đột
-                                                const lastIdx = [...questions].reverse().findIndex(x => x.type === bankTargetType);
-                                                if (lastIdx === -1) {
-                                                    addManualQuestion(bankTargetType);
-                                                    const updated = [...questions];
-                                                    // This is a simple logic to replace the dummy one just created, but easier:
-                                                    setQuestions([...questions, newQ]); 
-                                                    // Better logic below to maintain order
-                                                }
-                                                // Tìm vị trí đúng để chèn tương tự addManualQuestion
+                                                const newQ = { ...q, id: uuidv4() }; 
                                                 const reverseIdx = [...questions].reverse().findIndex(x => x.type === bankTargetType);
                                                 const newQs = [...questions];
-                                                if (reverseIdx === -1) newQs.push(newQ);
-                                                else newQs.splice(questions.length - reverseIdx, 0, newQ);
-                                                
+                                                if (reverseIdx === -1) {
+                                                    if (bankTargetType === 'mcq') newQs.unshift(newQ);
+                                                    else if (bankTargetType === 'group-tf') {
+                                                        const firstShort = newQs.findIndex(x => x.type === 'short');
+                                                        if (firstShort === -1) newQs.push(newQ);
+                                                        else newQs.splice(firstShort, 0, newQ);
+                                                    } else newQs.push(newQ);
+                                                }
+                                                else {
+                                                   newQs.splice(questions.length - reverseIdx, 0, newQ);
+                                                }
                                                 setQuestions(newQs);
                                                 alert("Đã thêm 1 câu vào đề hiện tại!");
                                             }}
@@ -657,7 +702,7 @@ const AdminDashboard: React.FC = () => {
           </div>
       )}
 
-      {/* REST OF THE UI (IMPORT, STUDENTS, PREVIEW) SAME AS ORIGINAL */}
+      {/* REST OF THE UI (IMPORT, STUDENTS, PREVIEW) */}
       {activeTab === 'import' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
