@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, Use
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -110,7 +110,7 @@ const AdminDashboard: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [quizType, setQuizType] = useState<QuizType>('practice');
-  const [grade, setGrade] = useState<Grade>('12'); // Mặc định lớp 12
+  const [grade, setGrade] = useState<Grade>('12');
   const [startTime, setStartTime] = useState('');
   const [duration, setDuration] = useState(90);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -122,7 +122,6 @@ const AdminDashboard: React.FC = () => {
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [viewHistoryData, setViewHistoryData] = useState<{ studentName: string, quizTitle: string, items: Result[] } | null>(null);
 
-  // Question Bank Modal State
   const [showBankModal, setShowBankModal] = useState(false);
   const [bankTargetType, setBankTargetType] = useState<QuestionType>('mcq');
   const [bankSelectedQuizId, setBankSelectedQuizId] = useState('');
@@ -233,99 +232,148 @@ const AdminDashboard: React.FC = () => {
     setQuestions(newQuestions);
   };
 
+  const handleFileUpload = async () => {
+    if (!file) return;
+    setIsProcessing(true);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64Str = (reader.result as string).split(',')[1];
+      try {
+        const extractedQuestions = await parseQuestionsFromPDF(base64Str);
+        setQuestions([...questions, ...extractedQuestions]);
+        alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi!`);
+        setActiveTab('create');
+      } catch (e: any) {
+        alert(e.message || "Lỗi đọc PDF.");
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+  };
+
+  const handleExportExcel = () => {
+    if (!selectedQuizId) return;
+    const quiz = quizzes.find(q => q.id === selectedQuizId);
+    if (!quiz) return;
+    const quizResults = results.filter(r => r.quizId === selectedQuizId);
+    const headers = ["STT", "Họ và Tên", "Tên đăng nhập", "Lớp", "Điểm số", "Ngày nộp"];
+    const csvRows = [headers.join(",")];
+    quizResults.forEach((r, index) => {
+      const student = users.find(u => u.id === r.studentId);
+      const row = [index + 1, student?.fullName || r.studentName, student?.username || "N/A", student?.grade || "N/A", r.score.toFixed(2), format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")];
+      csvRows.push(row.join(","));
+    });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `KetQua_${quiz.title}.csv`;
+    link.click();
+  };
+
+  const handleSaveUser = async () => {
+    if (!userForm.username || !userForm.password || !userForm.fullName) return;
+    const userData: User = { id: editingUser ? editingUser.id : uuidv4(), username: userForm.username, password: userForm.password, fullName: userForm.fullName, grade: userForm.role === 'student' ? userForm.grade : undefined, role: userForm.role };
+    if (editingUser) await updateUser(userData);
+    else await saveUser(userData);
+    setShowUserModal(false);
+    refreshData();
+  };
+
   const onSelectImage = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-      if (!e.target.files?.[0]) return;
-      const url = await uploadImage(e.target.files[0]);
-      if (url) updateQuestion(index, 'imageUrl', url);
+    if (!e.target.files?.[0]) return;
+    const url = await uploadImage(e.target.files[0]);
+    if (url) updateQuestion(index, 'imageUrl', url);
   };
 
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
-      return (
-          <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
-              <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
-                  <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">{label}</h3>
-                  <div className="flex gap-2">
-                      <button onClick={() => { setBankTargetType(type); setShowBankModal(true); setBankSelectedQuizId(''); }} className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1"><Database size={14}/> Ngân hàng</button>
-                      <button onClick={() => addManualQuestion(type)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm"><Plus size={14}/> Thêm câu</button>
-                  </div>
-              </div>
-              <div className="p-4 space-y-4">
-                  {questions.map((q, idx) => {
-                      if (q.type !== type) return null;
-                      return (
-                        <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
-                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed">
-                                <div className="flex items-center gap-3">
-                                    <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={18}/></button>
-                                        <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={18}/></button>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <input type="text" className="w-14 border rounded p-1 text-center font-bold text-xs bg-gray-50" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
-                                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full"><Trash2 size={16}/></button>
-                                </div>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <RichTextEditor rows={2} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} placeholder="Nội dung câu hỏi..." />
-                                    <div className="mt-2 p-3 bg-blue-50/30 rounded border border-blue-100 text-sm"><LatexText text={q.text || '...'} /></div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <input type="text" className="flex-1 border rounded p-2 text-xs" placeholder="Link ảnh..." value={q.imageUrl || ''} onChange={e => updateQuestion(idx, 'imageUrl', e.target.value)}/>
-                                    <label className="cursor-pointer bg-gray-100 px-3 py-2 rounded border hover:bg-gray-200 transition text-xs font-bold flex items-center gap-1"><ImageIcon size={14}/> Upload<input type="file" className="hidden" accept="image/*" onChange={(e) => onSelectImage(e, idx)} /></label>
-                                </div>
-                                {q.type === 'mcq' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {q.options?.map((opt, optIdx) => (
-                                            <div key={optIdx} className="space-y-1">
-                                                <div className="flex items-center gap-2 bg-gray-50 p-2 rounded border">
-                                                    <input type="radio" name={`correct-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} />
-                                                    <span className="font-bold text-gray-400 w-4">{String.fromCharCode(65+optIdx)}.</span>
-                                                    <RichTextEditor className="flex-1 border-none" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; updateQuestion(idx, 'options', o); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', val); }} />
-                                                </div>
-                                                <div className="pl-8 text-xs text-gray-500 italic"><LatexText text={opt || '...'} /></div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                {q.type === 'short' && (
-                                    <div className="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100">
-                                        <span className="text-xs font-bold text-green-700 uppercase">Đáp số:</span>
-                                        <input type="text" className="flex-1 border-2 border-green-200 rounded p-2 font-bold" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} />
-                                    </div>
-                                )}
-                                {q.type === 'group-tf' && (
-                                    <div className="space-y-2">
-                                        {q.subQuestions?.map((sq, sqIdx) => (
-                                            <div key={sqIdx} className="bg-gray-50 p-2 rounded border border-gray-100">
-                                                <div className="flex gap-2 items-center">
-                                                    <span className="font-bold text-gray-400 w-4">{String.fromCharCode(97+sqIdx)})</span>
-                                                    <RichTextEditor className="flex-1" value={sq.text} onChange={(val) => { const s = [...(q.subQuestions||[])]; s[sqIdx].text = val; updateQuestion(idx, 'subQuestions', s); }} />
-                                                    <div className="flex gap-1 shrink-0">
-                                                        <button onClick={()=>{const s=[...(q.subQuestions||[])]; s[sqIdx].correctAnswer='True'; updateQuestion(idx,'subQuestions',s);}} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='True'?'bg-green-600 text-white':'bg-white text-gray-300'}`}>Đ</button>
-                                                        <button onClick={()=>{const s=[...(q.subQuestions||[])]; s[sqIdx].correctAnswer='False'; updateQuestion(idx,'subQuestions',s);}} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='False'?'bg-red-600 text-white':'bg-white text-gray-300'}`}>S</button>
-                                                    </div>
-                                                </div>
-                                                <div className="pl-8 text-xs text-gray-500 italic mt-1"><LatexText text={sq.text || '...'} /></div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                <div className="mt-4 pt-4 border-t border-dashed">
-                                    <div className="flex items-center gap-1 mb-2 text-yellow-600 font-bold text-[10px] uppercase"><Lightbulb size={14} /> Lời giải chi tiết:</div>
-                                    <RichTextEditor rows={3} className="bg-yellow-50/50 border-yellow-100" value={q.solution || ''} onChange={(val) => updateQuestion(idx, 'solution', val)} />
-                                    <div className="mt-1 p-2 bg-yellow-50/30 rounded border border-yellow-50 text-xs text-yellow-800 italic"><LatexText text={q.solution || 'Chưa có lời giải'} /></div>
-                                </div>
-                            </div>
-                        </div>
-                      );
-                  })}
-              </div>
+    return (
+      <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
+        <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+          <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">{label}</h3>
+          <div className="flex gap-2">
+            <button onClick={() => { setBankTargetType(type); setShowBankModal(true); setBankSelectedQuizId(''); }} className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1"><Database size={14}/> Ngân hàng</button>
+            <button onClick={() => addManualQuestion(type)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm"><Plus size={14}/> Thêm câu</button>
           </div>
-      );
-  }
+        </div>
+        <div className="p-4 space-y-4">
+          {questions.map((q, idx) => {
+            if (q.type !== type) return null;
+            return (
+              <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed">
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={18}/></button>
+                      <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={18}/></button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input type="text" className="w-14 border rounded p-1 text-center font-bold text-xs bg-gray-50" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
+                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full"><Trash2 size={16}/></button>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <RichTextEditor rows={2} value={q.text} onChange={(val) => updateQuestion(idx, 'text', val)} placeholder="Nội dung câu hỏi..." />
+                    <div className="mt-2 p-3 bg-blue-50/30 rounded border border-blue-100 text-sm"><LatexText text={q.text || '...'} /></div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" className="flex-1 border rounded p-2 text-xs" placeholder="Link ảnh..." value={q.imageUrl || ''} onChange={e => updateQuestion(idx, 'imageUrl', e.target.value)}/>
+                    <label className="cursor-pointer bg-gray-100 px-3 py-2 rounded border hover:bg-gray-200 transition text-xs font-bold flex items-center gap-1"><ImageIcon size={14}/> Upload<input type="file" className="hidden" accept="image/*" onChange={(e) => onSelectImage(e, idx)} /></label>
+                  </div>
+                  {q.type === 'mcq' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {q.options?.map((opt, optIdx) => (
+                        <div key={optIdx} className="space-y-1">
+                          <div className="flex items-center gap-2 bg-gray-50 p-2 rounded border">
+                            <input type="radio" name={`correct-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => updateQuestion(idx, 'correctAnswer', opt)} />
+                            <span className="font-bold text-gray-400 w-4">{String.fromCharCode(65+optIdx)}.</span>
+                            <RichTextEditor className="flex-1 border-none" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; updateQuestion(idx, 'options', o); if(q.correctAnswer===opt) updateQuestion(idx, 'correctAnswer', val); }} />
+                          </div>
+                          <div className="pl-8 text-xs text-gray-500 italic"><LatexText text={opt || '...'} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {q.type === 'short' && (
+                    <div className="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100">
+                      <span className="text-xs font-bold text-green-700 uppercase">Đáp số:</span>
+                      <input type="text" className="flex-1 border-2 border-green-200 rounded p-2 font-bold" value={q.correctAnswer} onChange={e => updateQuestion(idx, 'correctAnswer', e.target.value)} />
+                    </div>
+                  )}
+                  {q.type === 'group-tf' && (
+                    <div className="space-y-2">
+                      {q.subQuestions?.map((sq, sqIdx) => (
+                        <div key={sqIdx} className="bg-gray-50 p-2 rounded border border-gray-100">
+                          <div className="flex gap-2 items-center">
+                            <span className="font-bold text-gray-400 w-4">{String.fromCharCode(97+sqIdx)})</span>
+                            <RichTextEditor className="flex-1" value={sq.text} onChange={(val) => { const s = [...(q.subQuestions||[])]; s[sqIdx].text = val; updateQuestion(idx, 'subQuestions', s); }} />
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={()=>{const s=[...(q.subQuestions||[])]; s[sqIdx].correctAnswer='True'; updateQuestion(idx,'subQuestions',s);}} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='True'?'bg-green-600 text-white':'bg-white text-gray-300'}`}>Đ</button>
+                              <button onClick={()=>{const s=[...(q.subQuestions||[])]; s[sqIdx].correctAnswer='False'; updateQuestion(idx,'subQuestions',s);}} className={`px-2 py-1 text-[10px] rounded border ${sq.correctAnswer==='False'?'bg-red-600 text-white':'bg-white text-gray-300'}`}>S</button>
+                            </div>
+                          </div>
+                          <div className="pl-8 text-xs text-gray-500 italic mt-1"><LatexText text={sq.text || '...'} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-4 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-1 mb-2 text-yellow-600 font-bold text-[10px] uppercase"><Lightbulb size={14} /> Lời giải chi tiết:</div>
+                    <RichTextEditor rows={3} className="bg-yellow-50/50 border-yellow-100" value={q.solution || ''} onChange={(val) => updateQuestion(idx, 'solution', val)} />
+                    <div className="mt-1 p-2 bg-yellow-50/30 rounded border border-yellow-50 text-xs text-yellow-800 italic"><LatexText text={q.solution || 'Chưa có lời giải'} /></div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -411,51 +459,187 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'import' && (
+        <div className="max-w-2xl mx-auto mt-10">
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center">
+            <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+            <h3 className="text-2xl font-bold mb-2">Nhập Đề Thi Từ PDF</h3>
+            <p className="text-gray-500 mb-6">Hệ thống AI sẽ tự động trích xuất câu hỏi từ file PDF của bạn.</p>
+            <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 hover:border-blue-500 transition cursor-pointer bg-gray-50 relative group">
+              <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
+              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3 group-hover:text-blue-500 transition" />
+              <p className="font-medium text-gray-600">{file ? file.name : "Kéo thả hoặc nhấp để chọn file PDF"}</p>
+            </div>
+            <button 
+              onClick={handleFileUpload} 
+              disabled={!file || isProcessing} 
+              className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl disabled:opacity-50 transition shadow-lg shadow-blue-200"
+            >
+              {isProcessing ? "Đang xử lý..." : "Bắt đầu trích xuất"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'results' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-4 bg-gray-50 border-b flex flex-wrap gap-4 items-center">
+                <span className="text-sm font-bold text-gray-700 uppercase flex items-center gap-1"><Filter size={16}/> Lọc:</span>
+                <select className="border rounded-lg p-2 text-sm" value={resultFilterGrade} onChange={e => { setResultFilterGrade(e.target.value as Grade | 'all'); setSelectedQuizId(''); }}>
+                    <option value="all">Tất cả Khối</option>
+                    <option value="10">Lớp 10</option>
+                    <option value="11">Lớp 11</option>
+                    <option value="12">Lớp 12</option>
+                </select>
+                <select className="border rounded-lg p-2 text-sm flex-1 min-w-[200px]" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
+                    <option value="">-- Tất cả Đề Thi --</option>
+                    {quizzes.filter(q => resultFilterGrade === 'all' || q.grade === resultFilterGrade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                </select>
+                {selectedQuizId && <button onClick={handleExportExcel} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><FileSpreadsheet size={16}/> Xuất Excel</button>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-100 text-gray-500 uppercase text-[10px]">
+                      <tr>
+                          <th className="p-4">Học Sinh</th>
+                          <th className="p-4">Đề Thi</th>
+                          <th className="p-4 text-center">Điểm</th>
+                          <th className="p-4">Thời gian nộp</th>
+                          <th className="p-4 text-right">Hành động</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {results.filter(r => {
+                          const quiz = quizzes.find(q => q.id === r.quizId);
+                          const matchesGrade = resultFilterGrade === 'all' || quiz?.grade === resultFilterGrade;
+                          const matchesQuiz = !selectedQuizId || r.quizId === selectedQuizId;
+                          return matchesGrade && matchesQuiz;
+                      }).sort((a,b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()).map((r, i) => (
+                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                              <td className="p-4 font-bold">{r.studentName}</td>
+                              <td className="p-4 text-gray-600">{quizzes.find(q => q.id === r.quizId)?.title || "N/A"}</td>
+                              <td className="p-4 text-center font-bold text-blue-600">{r.score.toFixed(2)}</td>
+                              <td className="p-4 text-gray-500">{format(parseISO(r.submittedAt), "dd/MM HH:mm")}</td>
+                              <td className="p-4 text-right">
+                                  <button onClick={async () => { if(window.confirm('Xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                              </td>
+                          </tr>
+                      ))}
+                  </tbody>
+              </table>
+            </div>
+        </div>
+      )}
+
+      {activeTab === 'students' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b flex flex-wrap justify-between items-center gap-4">
+                  <div className="relative flex-1 max-w-md"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="Tìm tên học sinh..." className="pl-10 pr-4 py-2 border rounded-lg w-full" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/></div>
+                  <button onClick={() => { setEditingUser(null); setUserForm({fullName:'', username:'', password:'', grade:'12', role:'student'}); setShowUserModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><UserPlus size={18} /> Thêm Học Sinh</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">Họ và Tên</th><th className="p-4">Tên đăng nhập</th><th className="p-4">Khối</th><th className="p-4 text-right">Thao tác</th></tr></thead>
+                    <tbody>{users.filter(u=>u.role==='student' && u.fullName.toLowerCase().includes(searchUser.toLowerCase())).map(u => (
+                        <tr key={u.id} className="border-b hover:bg-gray-50">
+                            <td className="p-4 font-bold">{u.fullName}</td><td className="p-4 font-mono text-blue-600">{u.username}</td><td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold">K{u.grade}</span></td>
+                            <td className="p-4 text-right flex justify-end gap-2">
+                                <button onClick={() => { setEditingUser(u); setUserForm({fullName:u.fullName, username:u.username, password:u.password, grade:u.grade||'12', role:u.role}); setShowUserModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16}/></button>
+                                <button onClick={async () => { if(window.confirm('Xóa tài khoản này?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                            </td>
+                        </tr>
+                    ))}</tbody>
+                </table>
+              </div>
+          </div>
+      )}
+
+      {/* USER MODAL */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Hồ Sơ Học Sinh</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div>
+            <div className="p-6 space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Họ Tên</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.fullName} onChange={e=>setUserForm({...userForm, fullName:e.target.value})}/></div>
+              <div><label className="block text-sm font-medium mb-1">Tên đăng nhập</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div>
+              <div><label className="block text-sm font-medium mb-1">Mật khẩu</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})}/></div>
+              <div><label className="block text-sm font-medium mb-1">Khối lớp</label><select className="w-full border rounded-lg p-2" value={userForm.grade} onChange={e=>setUserForm({...userForm, grade:e.target.value as Grade})}><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></div>
+              <button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">LƯU THÔNG TIN</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QUESTION BANK MODAL */}
       {showBankModal && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
                   <div className="p-6 bg-indigo-600 text-white flex justify-between items-center shrink-0">
                       <div><h3 className="text-xl font-bold flex items-center gap-2"><Database size={24}/> Ngân hàng câu hỏi Lớp {grade}</h3></div>
-                      <button onClick={() => setShowBankModal(false)}><XCircle size={28}/></button>
+                      <button onClick={() => setShowBankModal(false)} className="hover:rotate-90 transition-transform duration-300"><XCircle size={28}/></button>
                   </div>
-                  <div className="p-6 border-b bg-gray-50 shrink-0 flex gap-4">
-                      <select className="flex-1 border rounded-lg p-2.5 shadow-sm" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
+                  <div className="p-6 border-b bg-gray-50 shrink-0 flex flex-wrap gap-4 items-center">
+                      <span className="text-sm font-bold text-gray-500">Nguồn dữ liệu:</span>
+                      <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 shadow-sm" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
                           <option value="">-- Chọn đề thi cùng khối {grade} --</option>
                           {quizzes.filter(q => q.grade === grade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                           <option disabled>──────────</option>
-                          <option value="ALL">Xem tất cả các khối</option>
+                          <option value="ALL">Xem tất cả các khối (Toàn bộ ngân hàng)</option>
                       </select>
+                      <div className="bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-2">
+                        <Filter size={14} className="text-indigo-600"/>
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase">Loại: {bankTargetType}</span>
+                      </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
                       {bankSelectedQuizId === '' ? (
-                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Vui lòng chọn đề thi nguồn</p></div>
+                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Chọn một đề thi cũ để xem danh sách câu hỏi</p></div>
                       ) : (
                           <>
                             {(() => {
                                 let sourceQuizzes = bankSelectedQuizId === 'ALL' ? quizzes : quizzes.filter(q => q.id === bankSelectedQuizId);
                                 let allQs: Question[] = [];
-                                sourceQuizzes.forEach(sq => sq.questions.filter(q => q.type === bankTargetType).forEach(q => allQs.push(q)));
+                                sourceQuizzes.forEach(sq => {
+                                  sq.questions.filter(q => q.type === bankTargetType).forEach(q => {
+                                    allQs.push({ ...q, solution: q.solution || `(Đề: ${sq.title})` });
+                                  });
+                                });
                                 
                                 // Lọc bỏ câu trùng nội dung
-                                const availableQs = allQs.filter(sq => !questions.some(currQ => currQ.text.trim() === sq.text.trim()));
+                                const availableQs = allQs.filter(sq => !questions.some(currQ => currQ.text.trim().toLowerCase() === sq.text.trim().toLowerCase()));
                                 
-                                if (availableQs.length === 0) return <p className="text-center p-10 text-gray-500 font-bold">Không còn câu hỏi mới nào để thêm!</p>;
+                                if (availableQs.length === 0) return (
+                                  <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed text-gray-400">
+                                    <CheckCircle size={48} className="mb-4 text-green-200"/>
+                                    <p className="font-bold text-center">Tất cả câu hỏi trong đề này đã có mặt trong đề hiện tại!</p>
+                                  </div>
+                                );
                                 
-                                return availableQs.map((q, idx) => (
-                                    <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4">
+                                return availableQs.map((q, qIdx) => (
+                                    <div key={q.id || qIdx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4 group">
                                         <div className="flex-1 overflow-hidden">
-                                            <div className="text-sm font-bold text-indigo-600 mb-1">Loại: {q.type}</div>
+                                            <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase">
+                                              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{q.type}</span>
+                                              <span className="text-gray-400">{q.points}đ</span>
+                                              <span className="text-indigo-300 italic truncate max-w-[200px]">{q.solution}</span>
+                                            </div>
                                             <div className="text-sm text-gray-800"><LatexText text={q.text}/></div>
+                                            {q.imageUrl && <img src={q.imageUrl} className="h-16 rounded border mt-2 object-contain bg-gray-50" alt=""/>}
                                         </div>
-                                        <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 shadow-md"><Plus size={18}/></button>
+                                        <button 
+                                          onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} 
+                                          className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-100 transform active:scale-90 transition-transform"
+                                          title="Thêm vào đề"
+                                        >
+                                          <Plus size={20}/>
+                                        </button>
                                     </div>
                                 ));
                             })()}
                           </>
                       )}
                   </div>
-                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-10 py-2 bg-gray-800 text-white rounded-lg font-bold">XONG</button></div>
+                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-black transition shadow-lg">XONG</button></div>
               </div>
           </div>
       )}
