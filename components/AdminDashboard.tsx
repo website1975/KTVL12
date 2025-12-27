@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, Use
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet, AlertCircle, Loader2, Info, FileCheck, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet, AlertCircle, Loader2, Info, FileCheck, HelpCircle, Settings2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -117,7 +117,7 @@ const AdminDashboard: React.FC = () => {
   const [isPublished, setIsPublished] = useState(false); 
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState('Đang khởi tạo kết nối AI...');
+  const [loadingMsg, setLoadingMsg] = useState('Đang khởi tạo máy chủ...');
   const [file, setFile] = useState<File | null>(null);
 
   const [showBankModal, setShowBankModal] = useState(false);
@@ -130,13 +130,13 @@ const AdminDashboard: React.FC = () => {
   const [userForm, setUserForm] = useState({ fullName: '', username: '', password: '', grade: '12' as Grade, role: 'student' as Role });
 
   const loadingMessages = [
-    'Đang tải file lên máy chủ...',
-    'AI đang đọc nội dung PDF của bạn...',
-    'Đang trích xuất các công thức Toán học...',
-    'Đang phân loại các câu hỏi Trắc nghiệm...',
-    'Đang đối chiếu đáp án và lời giải...',
-    'Đang chuẩn hóa dữ liệu hiển thị...',
-    'Sắp xong rồi, vui lòng đợi thêm vài giây...'
+    'Máy đang tải dữ liệu PDF...',
+    'Đang kết nối trí tuệ nhân tạo Gemini...',
+    'Đang quét cấu trúc đề thi...',
+    'Đang trích xuất công thức Toán...',
+    'Đang nhận diện đáp án A, B, C, D...',
+    'Đang tổng hợp lời giải chi tiết...',
+    'Sắp xong rồi, vui lòng đợi giây lát...'
   ];
 
   useEffect(() => {
@@ -150,7 +150,7 @@ const AdminDashboard: React.FC = () => {
       interval = setInterval(() => {
         step = (step + 1) % loadingMessages.length;
         setLoadingMsg(loadingMessages[step]);
-      }, 3000);
+      }, 2500);
     }
     return () => clearInterval(interval);
   }, [isProcessing]);
@@ -222,20 +222,7 @@ const AdminDashboard: React.FC = () => {
     } else {
       q = { id: uuidv4(), type: 'short', text: '', points: 0.5, correctAnswer: '', solution: '' };
     }
-
-    const lastIdx = [...questions].reverse().findIndex(x => x.type === type);
-    const newQs = [...questions];
-    if (lastIdx === -1) {
-        if (type === 'mcq') newQs.unshift(q);
-        else if (type === 'group-tf') {
-            const firstShort = newQs.findIndex(x => x.type === 'short');
-            if (firstShort === -1) newQs.push(q);
-            else newQs.splice(firstShort, 0, q);
-        } else newQs.push(q);
-    } else {
-        newQs.splice(questions.length - lastIdx, 0, q);
-    }
-    setQuestions(newQs);
+    setQuestions([...questions, q]);
   };
 
   const updateQuestion = (index: number, field: keyof Question, value: any) => {
@@ -253,7 +240,10 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleFileUpload = async () => {
-    if (!file) return;
+    if (!file) {
+        alert("Vui lòng chọn file PDF.");
+        return;
+    }
     setIsProcessing(true);
     setLoadingMsg(loadingMessages[0]);
     
@@ -264,7 +254,7 @@ const AdminDashboard: React.FC = () => {
       try {
         const extractedQuestions = await parseQuestionsFromPDF(base64Str);
         setQuestions([...questions, ...extractedQuestions]);
-        alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi có kèm đáp án và lời giải từ file!`);
+        alert(`Đã nhập thành công ${extractedQuestions.length} câu hỏi!`);
         setActiveTab('create');
       } catch (e: any) {
         alert(e.message || "Lỗi đọc PDF.");
@@ -399,7 +389,7 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2"><Database className="text-blue-600" /> Quản Lý Hệ Thống Thi Online</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2"><Settings2 className="text-blue-600" /> Hệ Thống Quản Trị EduQuiz</h1>
 
       <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
         <button onClick={() => { setActiveTab('list'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'list' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><List size={20} /> Danh Sách Đề</button>
@@ -552,39 +542,43 @@ const AdminDashboard: React.FC = () => {
                 </div>
              </div>
              <div className="px-6 pb-4 flex items-center gap-2 text-amber-600 text-xs font-bold">
-                <AlertCircle size={14}/> Lưu ý: Công thức toán hãy để trong dấu $...$ (Ví dụ: $x^2 + \sqrt{y}$). AI sẽ tự động nhận diện và vẽ lại đẹp mắt.
+                <AlertCircle size={14}/> 
+                {/* FIX: Escaped y within a string literal to prevent TS2304 error on Vercel */}
+                <span>{'Lưu ý: Công thức toán hãy để trong dấu $...$ (Ví dụ: $x^2 + \\sqrt{y}$). AI sẽ tự động nhận diện.'}</span>
              </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             <div className="bg-white p-10 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-center relative overflow-hidden h-full min-h-[400px]">
               {isProcessing ? (
-                  <div className="py-20 flex flex-col items-center animate-pulse z-10">
+                  <div className="py-20 flex flex-col items-center z-10 animate-fade-in">
                       <div className="relative mb-8">
-                         <div className="w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-                         <FileText className="absolute inset-0 m-auto text-blue-500 w-10 h-10 animate-bounce" />
+                         {/* Biểu tượng xoay sinh động báo máy đang tải */}
+                         <div className="w-24 h-24 border-8 border-blue-50 border-t-blue-600 rounded-full animate-spin shadow-inner"></div>
+                         <div className="absolute inset-0 flex items-center justify-center">
+                            <FileText className="text-blue-500 w-10 h-10 animate-pulse" />
+                         </div>
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-800 mb-4">Đang xử lý dữ liệu...</h3>
-                      <div className="bg-blue-50 px-6 py-2 rounded-full border border-blue-100 mb-2">
-                        <p className="text-blue-700 font-bold text-sm flex items-center gap-2">
-                          <Loader2 className="animate-spin" size={16}/> {loadingMsg}
-                        </p>
+                      <h3 className="text-2xl font-black text-gray-800 mb-4 uppercase tracking-tighter">Đang xử lý đề thi PDF</h3>
+                      <div className="bg-blue-600 px-8 py-3 rounded-2xl shadow-2xl shadow-blue-200 flex items-center gap-3">
+                        <Loader2 className="animate-spin text-white" size={20}/>
+                        <span className="text-white font-black text-sm uppercase tracking-widest">{loadingMsg}</span>
                       </div>
-                      <p className="text-gray-400 text-xs max-w-xs mx-auto">Vui lòng không đóng trình duyệt lúc này. AI của chúng tôi đang làm việc hết công suất.</p>
+                      <p className="text-gray-400 text-[10px] max-w-xs mx-auto mt-6 italic">Hệ thống đang sử dụng trí tuệ nhân tạo để trích xuất dữ liệu. Vui lòng không đóng cửa sổ này.</p>
                   </div>
               ) : (
                   <>
                       <div className="bg-blue-50 w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-inner">
                           <Upload className="w-12 h-12 text-blue-500" />
                       </div>
-                      <h3 className="text-2xl font-black mb-4 text-gray-800">Tải đề PDF lên hệ thống</h3>
-                      <p className="text-gray-500 mb-8 max-w-sm mx-auto">Hỗ trợ trích xuất tự động cả đáp án và lời giải chi tiết. Hãy chọn file PDF đề thi của bạn.</p>
+                      <h3 className="text-2xl font-black mb-4 text-gray-800 uppercase">Nhập đề PDF tự động</h3>
+                      <p className="text-gray-500 mb-8 max-w-sm mx-auto">Tải file PDF đề thi của bạn lên, AI sẽ tự động tách câu hỏi, đáp án và lời giải.</p>
                       
                       <div className="w-full border-2 border-dashed border-gray-300 rounded-3xl p-16 hover:border-blue-500 transition-all cursor-pointer bg-gray-50 group relative">
                           <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
                           <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4 group-hover:text-blue-500 transition-all group-hover:scale-110" />
-                          <p className="font-extrabold text-gray-600 text-lg">{file ? file.name : "Kéo thả file PDF vào đây"}</p>
-                          <p className="text-gray-400 text-sm mt-2">Dung lượng tối đa 10MB</p>
+                          <p className="font-extrabold text-gray-600 text-lg">{file ? file.name : "Chọn hoặc kéo thả file PDF"}</p>
+                          <p className="text-gray-400 text-sm mt-2">Hỗ trợ PDF văn bản, công thức Toán học</p>
                       </div>
 
                       <button 
@@ -592,47 +586,44 @@ const AdminDashboard: React.FC = () => {
                           disabled={!file} 
                           className="w-full mt-10 bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl disabled:opacity-50 transition shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 transform active:scale-95"
                       >
-                          <Database size={20}/> BẮT ĐẦU TRÍCH XUẤT VỚI AI
+                          <Database size={20}/> TẢI LÊN & XỬ LÝ VỚI AI
                       </button>
                   </>
               )}
-              {/* Decorative elements */}
-              <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
-              <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-50 rounded-full blur-3xl opacity-50"></div>
             </div>
 
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 h-full">
                <div className="flex items-center gap-3 mb-8">
                   <div className="bg-amber-100 p-3 rounded-2xl text-amber-600"><HelpCircle size={28}/></div>
-                  <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Mẹo để AI đọc tốt nhất</h3>
+                  <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Mẹo để trích xuất chuẩn</h3>
                </div>
                <div className="space-y-6">
                   <div className="flex gap-4">
                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">01</div>
                      <div>
-                        <h4 className="font-bold text-gray-800 mb-1">Dấu hoa thị cho đáp án</h4>
-                        <p className="text-sm text-gray-500">Đặt dấu <span className="font-bold text-red-500">*</span> ngay trước phương án đúng. Ví dụ: *C. Đáp án này đúng.</p>
+                        <h4 className="font-bold text-gray-800 mb-1">Dấu (*) trước đáp án</h4>
+                        <p className="text-sm text-gray-500">{'Ví dụ: *C. Nội dung đáp án đúng. Máy sẽ tự động nhận diện câu trả lời.'}</p>
                      </div>
                   </div>
                   <div className="flex gap-4">
                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">02</div>
                      <div>
-                        <h4 className="font-bold text-gray-800 mb-1">Từ khóa "Lời giải"</h4>
-                        <p className="text-sm text-gray-500">AI sẽ tự động tìm các đoạn văn bắt đầu bằng "Lời giải:", "Hướng dẫn:" hoặc "Giải thích:" để đưa vào mục lời giải chi tiết.</p>
+                        <h4 className="font-bold text-gray-800 mb-1">Cụm từ "Lời giải:"</h4>
+                        <p className="text-sm text-gray-500">Mọi nội dung phía sau chữ "Lời giải:" sẽ được lưu vào phần hướng dẫn chi tiết cho học sinh.</p>
                      </div>
                   </div>
                   <div className="flex gap-4">
                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">03</div>
                      <div>
-                        <h4 className="font-bold text-gray-800 mb-1">Đánh số câu rõ ràng</h4>
-                        <p className="text-sm text-gray-500">Hãy ghi rõ "Câu 1.", "Câu 2." ở đầu mỗi câu hỏi để AI phân tách chính xác các phần của đề thi.</p>
+                        <h4 className="font-bold text-gray-800 mb-1">Đánh số "Câu X."</h4>
+                        <p className="text-sm text-gray-500">Bắt đầu mỗi câu bằng "Câu 1.", "Câu 2." để máy tách các câu hỏi một cách chính xác.</p>
                      </div>
                   </div>
                   <div className="flex gap-4">
                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">04</div>
                      <div>
                         <h4 className="font-bold text-gray-800 mb-1">Chất lượng PDF</h4>
-                        <p className="text-sm text-gray-500">Sử dụng file PDF xuất từ Word hoặc các phần mềm gõ công thức (MathType, LaTeX) thay vì file PDF là ảnh chụp để đảm bảo độ chính xác 100%.</p>
+                        <p className="text-sm text-gray-500">Sử dụng file PDF sạch (xuất từ Word) sẽ có độ chính xác 100% so với file PDF scan ảnh.</p>
                      </div>
                   </div>
                </div>
@@ -690,7 +681,7 @@ const AdminDashboard: React.FC = () => {
                           </tr>
                       ))}
                       {results.length === 0 && (
-                          <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic font-medium">Chưa có kết quả thi nào được ghi nhận.</td></tr>
+                          <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic font-medium">Chưa có kết quả thi nào.</td></tr>
                       )}
                   </tbody>
               </table>
@@ -720,13 +711,10 @@ const AdminDashboard: React.FC = () => {
                             <td className="p-4"><span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-extrabold uppercase">LỚP {u.grade}</span></td>
                             <td className="p-4 text-right flex justify-end gap-1">
                                 <button onClick={() => { setEditingUser(u); setUserForm({fullName:u.fullName, username:u.username, password:u.password, grade:u.grade||'12', role:u.role}); setShowUserModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={async () => { if(window.confirm('Xóa vĩnh viễn tài khoản học sinh này?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={async () => { if(window.confirm('Xóa vĩnh viễn tài khoản?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     ))}
-                    {users.filter(u=>u.role==='student').length === 0 && (
-                        <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic font-medium">Danh sách học sinh đang trống.</td></tr>
-                    )}
                     </tbody>
                 </table>
               </div>
@@ -737,13 +725,13 @@ const AdminDashboard: React.FC = () => {
       {showUserModal && (
         <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Quản lý Học Sinh</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div>
+            <div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Quản lý Tài Khoản</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div>
             <div className="p-6 space-y-4">
               <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Họ Tên</label><input type="text" className="w-full border rounded-lg p-2.5 font-bold" value={userForm.fullName} onChange={e=>setUserForm({...userForm, fullName:e.target.value})}/></div>
-              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Tên đăng nhập (viết liền)</label><input type="text" className="w-full border rounded-lg p-2.5 font-mono text-blue-600 font-bold" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div>
+              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Tên đăng nhập</label><input type="text" className="w-full border rounded-lg p-2.5 font-mono text-blue-600 font-bold" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div>
               <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Mật khẩu</label><input type="text" className="w-full border rounded-lg p-2.5 font-mono" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})}/></div>
               <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Khối lớp</label><select className="w-full border rounded-lg p-2.5 font-bold" value={userForm.grade} onChange={e=>setUserForm({...userForm, grade:e.target.value as Grade})}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
-              <button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">LƯU THÔNG TIN HỌC SINH</button>
+              <button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">LƯU THÔNG TIN</button>
             </div>
           </div>
         </div>
@@ -758,21 +746,16 @@ const AdminDashboard: React.FC = () => {
                       <button onClick={() => setShowBankModal(false)} className="hover:rotate-90 transition-transform duration-300"><XCircle size={28}/></button>
                   </div>
                   <div className="p-6 border-b bg-gray-50 shrink-0 flex flex-wrap gap-4 items-center">
-                      <span className="text-sm font-bold text-gray-500">Nguồn dữ liệu:</span>
+                      <span className="text-sm font-bold text-gray-500">Nguồn:</span>
                       <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 shadow-sm font-bold" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
-                          <option value="">-- Chọn đề thi cũ cùng khối {grade} --</option>
+                          <option value="">-- Chọn đề thi nguồn --</option>
                           {quizzes.filter(q => q.grade === grade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
-                          <option disabled>──────────</option>
-                          <option value="ALL">Xem toàn bộ ngân hàng (Tất cả các khối)</option>
+                          <option value="ALL">Xem tất cả</option>
                       </select>
-                      <div className="bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-2">
-                        <Filter size={14} className="text-indigo-600"/>
-                        <span className="text-[10px] font-bold text-indigo-700 uppercase">Loại đang lọc: {bankTargetType}</span>
-                      </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
                       {bankSelectedQuizId === '' ? (
-                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Vui lòng chọn đề thi nguồn từ danh sách trên</p></div>
+                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Vui lòng chọn đề thi nguồn</p></div>
                       ) : (
                           <>
                             {(() => {
@@ -780,44 +763,23 @@ const AdminDashboard: React.FC = () => {
                                 let allQs: Question[] = [];
                                 sourceQuizzes.forEach(sq => {
                                   sq.questions.filter(q => q.type === bankTargetType).forEach(q => {
-                                    allQs.push({ ...q, solution: q.solution || `(Đề gốc: ${sq.title})` });
+                                    allQs.push({ ...q, solution: q.solution || `(Đề: ${sq.title})` });
                                   });
                                 });
-                                
-                                const availableQs = allQs.filter(sq => !questions.some(currQ => currQ.text.trim().toLowerCase() === sq.text.trim().toLowerCase()));
-                                
-                                if (availableQs.length === 0) return (
-                                  <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed text-gray-400">
-                                    <CheckCircle size={48} className="mb-4 text-green-200"/>
-                                    <p className="font-bold text-center">Tất cả câu hỏi phù hợp đã được thêm vào đề hiện tại.</p>
-                                  </div>
-                                );
-                                
-                                return availableQs.map((q, qIdx) => (
+                                return allQs.map((q, qIdx) => (
                                     <div key={q.id || qIdx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-all flex justify-between items-start gap-4 group">
                                         <div className="flex-1 overflow-hidden">
-                                            <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase">
-                                              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{q.type}</span>
-                                              <span className="text-gray-400">{q.points}đ</span>
-                                              <span className="text-indigo-300 italic truncate max-w-[200px]">{q.solution}</span>
-                                            </div>
+                                            <div className="text-xs font-bold text-indigo-500 mb-1 uppercase tracking-tight">CÂU HỎI TỪ NGÂN HÀNG</div>
                                             <div className="text-sm text-gray-800 font-medium"><LatexText text={q.text}/></div>
-                                            {q.imageUrl && <img src={q.imageUrl} className="h-16 rounded border mt-2 object-contain bg-gray-50" alt=""/>}
                                         </div>
-                                        <button 
-                                          onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} 
-                                          className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-100 transform active:scale-90 transition-all"
-                                          title="Thêm câu này vào đề"
-                                        >
-                                          <Plus size={20}/>
-                                        </button>
+                                        <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 shadow-lg transform active:scale-90 transition-all"><Plus size={20}/></button>
                                     </div>
                                 ));
                             })()}
                           </>
                       )}
                   </div>
-                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-xl font-extrabold hover:bg-black transition-colors shadow-lg">ĐÓNG NGÂN HÀNG</button></div>
+                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-xl font-extrabold shadow-lg">ĐÓNG</button></div>
               </div>
           </div>
       )}
