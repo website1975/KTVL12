@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, User, Role } from '../types';
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet, AlertCircle, Loader2, Info, FileCheck, HelpCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -117,10 +117,8 @@ const AdminDashboard: React.FC = () => {
   const [isPublished, setIsPublished] = useState(false); 
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('Đang khởi tạo kết nối AI...');
   const [file, setFile] = useState<File | null>(null);
-
-  const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
-  const [viewHistoryData, setViewHistoryData] = useState<{ studentName: string, quizTitle: string, items: Result[] } | null>(null);
 
   const [showBankModal, setShowBankModal] = useState(false);
   const [bankTargetType, setBankTargetType] = useState<QuestionType>('mcq');
@@ -131,9 +129,31 @@ const AdminDashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userForm, setUserForm] = useState({ fullName: '', username: '', password: '', grade: '12' as Grade, role: 'student' as Role });
 
+  const loadingMessages = [
+    'Đang tải file lên máy chủ...',
+    'AI đang đọc nội dung PDF của bạn...',
+    'Đang trích xuất các công thức Toán học...',
+    'Đang phân loại các câu hỏi Trắc nghiệm...',
+    'Đang đối chiếu đáp án và lời giải...',
+    'Đang chuẩn hóa dữ liệu hiển thị...',
+    'Sắp xong rồi, vui lòng đợi thêm vài giây...'
+  ];
+
   useEffect(() => {
     refreshData();
   }, [activeTab]);
+
+  useEffect(() => {
+    let interval: any;
+    if (isProcessing) {
+      let step = 0;
+      interval = setInterval(() => {
+        step = (step + 1) % loadingMessages.length;
+        setLoadingMsg(loadingMessages[step]);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   const refreshData = async () => {
     const qData = await getQuizzes();
@@ -142,6 +162,17 @@ const AdminDashboard: React.FC = () => {
     setResults(rData);
     const uData = await getUsers();
     setUsers(uData);
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setTitle('');
+    setDescription('');
+    setQuestions([]);
+    setStartTime('');
+    setDuration(90);
+    setFile(null);
+    setIsPublished(false);
   };
 
   const handleSaveQuiz = async () => {
@@ -180,17 +211,6 @@ const AdminDashboard: React.FC = () => {
     setQuestions(quiz.questions);
     setIsPublished(quiz.isPublished);
     setActiveTab('create');
-  };
-
-  const resetForm = () => {
-    setEditingId(null);
-    setTitle('');
-    setDescription('');
-    setQuestions([]);
-    setStartTime('');
-    setDuration(90);
-    setFile(null);
-    setIsPublished(false);
   };
 
   const addManualQuestion = (type: QuestionType = 'mcq') => {
@@ -235,6 +255,8 @@ const AdminDashboard: React.FC = () => {
   const handleFileUpload = async () => {
     if (!file) return;
     setIsProcessing(true);
+    setLoadingMsg(loadingMessages[0]);
+    
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
@@ -242,7 +264,7 @@ const AdminDashboard: React.FC = () => {
       try {
         const extractedQuestions = await parseQuestionsFromPDF(base64Str);
         setQuestions([...questions, ...extractedQuestions]);
-        alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi!`);
+        alert(`Đã trích xuất thành công ${extractedQuestions.length} câu hỏi có kèm đáp án và lời giải từ file!`);
         setActiveTab('create');
       } catch (e: any) {
         alert(e.message || "Lỗi đọc PDF.");
@@ -302,18 +324,18 @@ const AdminDashboard: React.FC = () => {
             if (q.type !== type) return null;
             return (
               <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
-                <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed">
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={18}/></button>
-                      <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={18}/></button>
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed text-sm">
+                    <div className="flex items-center gap-3">
+                        <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">Câu {idx + 1}</span>
+                        <div className="flex gap-1">
+                            <button onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp size={18}/></button>
+                            <button onClick={() => moveQuestion(idx, 'down')} disabled={idx === questions.length - 1} className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown size={18}/></button>
+                        </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input type="text" className="w-14 border rounded p-1 text-center font-bold text-xs bg-gray-50" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
-                    <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full"><Trash2 size={16}/></button>
-                  </div>
+                    <div className="flex items-center gap-3">
+                        <input type="text" className="w-14 border rounded p-1 text-center font-bold text-xs bg-gray-50" value={q.points} onChange={(e) => updateQuestion(idx, 'points', e.target.value.replace(',', '.'))} />
+                        <button onClick={() => { if(window.confirm('Xóa câu này?')) { const n = [...questions]; n.splice(idx, 1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full"><Trash2 size={16}/></button>
+                    </div>
                 </div>
                 <div className="space-y-4">
                   <div>
@@ -377,47 +399,67 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2"><Database className="text-blue-600" /> Quản Lý Đề Thi Online</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2"><Database className="text-blue-600" /> Quản Lý Hệ Thống Thi Online</h1>
 
       <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
-        <button onClick={() => { setActiveTab('list'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><List size={20} /> Danh Sách</button>
-        <button onClick={() => setActiveTab('create')} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'create' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{editingId ? <Edit size={20} /> : <Plus size={20} />} {editingId ? 'Sửa Đề' : 'Soạn Đề'}</button>
-        <button onClick={() => { setActiveTab('import'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'import' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><Upload size={20} /> Nhập PDF</button>
-        <button onClick={() => { setActiveTab('results'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'results' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><BarChart3 size={20} /> Kết Quả</button>
-        <button onClick={() => { setActiveTab('students'); resetForm(); }} className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap ${activeTab === 'students' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}><Users size={20} /> Học Sinh</button>
+        <button onClick={() => { setActiveTab('list'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'list' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><List size={20} /> Danh Sách Đề</button>
+        <button onClick={() => setActiveTab('create')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>{editingId ? <Edit size={20} /> : <Plus size={20} />} {editingId ? 'Sửa Đề' : 'Soạn Đề Thủ Công'}</button>
+        <button onClick={() => { setActiveTab('import'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'import' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Upload size={20} /> Nhập Từ File PDF</button>
+        <button onClick={() => { setActiveTab('results'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'results' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><BarChart3 size={20} /> Kết Quả Thi</button>
+        <button onClick={() => { setActiveTab('students'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'students' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Users size={20} /> Quản Lý Học Sinh</button>
       </div>
 
       {activeTab === 'list' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
           <div className="bg-white p-4 rounded-xl shadow-sm border flex items-center gap-3">
              <span className="font-bold text-gray-700 flex items-center gap-1"><Filter size={18}/> Lọc Khối:</span>
              <div className="flex bg-gray-100 p-1 rounded-lg">
                 {(['all', '10', '11', '12'] as const).map(g => (
-                    <button key={g} onClick={() => setQuizFilterGrade(g)} className={`px-4 py-1.5 rounded-md text-sm font-bold ${quizFilterGrade === g ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>{g === 'all' ? 'Tất cả' : `Lớp ${g}`}</button>
+                    <button key={g} onClick={() => setQuizFilterGrade(g)} className={`px-4 py-1.5 rounded-md text-sm font-bold ${quizFilterGrade === g ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{g === 'all' ? 'Tất cả' : `Lớp ${g}`}</button>
                 ))}
              </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-3">
-               <h2 className="text-lg font-bold text-red-700 uppercase border-b border-red-200 pb-2">Đề Kiểm Tra</h2>
+               <h2 className="text-lg font-bold text-red-700 uppercase border-b-2 border-red-200 pb-2 flex items-center gap-2"><FileText size={20}/> Bài Kiểm Tra</h2>
                {quizzes.filter(q => q.type === 'test' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade)).map(q => (
-                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-red-300 transition flex justify-between items-center group">
-                      <div><h3 className="font-bold text-gray-800">{q.title}</h3><div className="text-xs text-gray-500 mt-1">Lớp {q.grade} • {q.durationMinutes} phút • {q.isPublished ? 'Đã đăng' : 'Nháp'}</div></div>
-                      <div className="flex gap-2">
-                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16}/></button>
-                          <button onClick={async () => { if(window.confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-red-300 hover:shadow-md transition flex justify-between items-center group">
+                      <div className="flex items-center gap-3">
+                          {q.isPublished ? <CheckCircle className="text-green-500" size={20}/> : <AlertCircle className="text-yellow-500" size={20}/>}
+                          <div>
+                            <h3 className="font-bold text-gray-800">{q.title}</h3>
+                            <div className="flex items-center gap-2 text-[10px] mt-1">
+                                <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-bold">LỚP {q.grade}</span>
+                                <span className="text-gray-400">|</span>
+                                <span className={`${q.isPublished ? 'text-green-600' : 'text-yellow-600'} font-bold uppercase`}>{q.isPublished ? 'Công bố' : 'Bản nháp'}</span>
+                            </div>
+                          </div>
+                      </div>
+                      <div className="flex gap-1">
+                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Chỉnh sửa"><Edit size={18}/></button>
+                          <button onClick={async () => { if(window.confirm('Xóa đề này vĩnh viễn?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition" title="Xóa"><Trash2 size={18}/></button>
                       </div>
                   </div>
                ))}
             </div>
             <div className="space-y-3">
-               <h2 className="text-lg font-bold text-green-700 uppercase border-b border-green-200 pb-2">Đề Luyện Tập</h2>
+               <h2 className="text-lg font-bold text-green-700 uppercase border-b-2 border-green-200 pb-2 flex items-center gap-2"><BookOpen size={20}/> Bài Luyện Tập</h2>
                {quizzes.filter(q => q.type === 'practice' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade)).map(q => (
-                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-300 transition flex justify-between items-center group">
-                      <div><h3 className="font-bold text-gray-800">{q.title}</h3><div className="text-xs text-gray-500 mt-1">Lớp {q.grade} • {q.questions.length} câu</div></div>
-                      <div className="flex gap-2">
-                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16}/></button>
-                          <button onClick={async () => { if(window.confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition flex justify-between items-center group">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle className="text-blue-400" size={20}/>
+                        <div>
+                          <h3 className="font-bold text-gray-800">{q.title}</h3>
+                          <div className="flex items-center gap-2 text-[10px] mt-1">
+                              <span className="bg-green-50 text-green-600 px-1.5 py-0.5 rounded font-bold">LỚP {q.grade}</span>
+                              <span className="text-gray-400">|</span>
+                              <span className="text-gray-500 uppercase font-bold">{q.questions.length} câu hỏi</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit size={18}/></button>
+                          <button onClick={async () => { if(window.confirm('Xóa đề luyện tập?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={18}/></button>
                       </div>
                   </div>
                ))}
@@ -427,85 +469,204 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {activeTab === 'create' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
            <div className="lg:col-span-2 space-y-6">
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-               <h3 className="text-xl font-semibold mb-4 text-gray-800">Thông Tin Chung</h3>
+               <h3 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2"><Info className="text-blue-500"/> Thông Tin Đề Thi</h3>
                <div className="space-y-4">
-                 <input type="text" className="w-full border rounded-lg p-2.5" placeholder="Tên đề thi" value={title} onChange={e => setTitle(e.target.value)}/>
-                 <textarea className="w-full border rounded-lg p-2.5" placeholder="Mô tả" value={description} onChange={e => setDescription(e.target.value)}/>
+                 <input type="text" className="w-full border-2 rounded-lg p-3 focus:border-blue-500 outline-none transition" placeholder="Nhập tên đề thi (ví dụ: Kiểm tra giữa kỳ 1 Toán 12)" value={title} onChange={e => setTitle(e.target.value)}/>
+                 <textarea className="w-full border-2 rounded-lg p-3 focus:border-blue-500 outline-none transition" rows={2} placeholder="Mô tả ngắn gọn về nội dung đề thi..." value={description} onChange={e => setDescription(e.target.value)}/>
                  <div className="grid grid-cols-2 gap-4">
-                    <select className="border rounded-lg p-2.5" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select>
-                    <select className="border rounded-lg p-2.5" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select>
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Loại đề</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select></div>
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Khối lớp</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
-                    <input type="number" className="border rounded-lg p-2.5" value={duration} onChange={e => setDuration(Number(e.target.value))} placeholder="Phút"/>
-                    {quizType === 'test' && <input type="datetime-local" className="border rounded-lg p-2.5" value={startTime} onChange={e => setStartTime(e.target.value)}/>}
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Thời gian (phút)</label><input type="number" className="w-full border rounded-lg p-2.5" value={duration} onChange={e => setDuration(Number(e.target.value))}/></div>
+                    {quizType === 'test' && <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Ngày giờ bắt đầu</label><input type="datetime-local" className="w-full border rounded-lg p-2.5" value={startTime} onChange={e => setStartTime(e.target.value)}/></div>}
                  </div>
                </div>
              </div>
-             {renderPartEditor('mcq', 'Phần I: Câu hỏi trắc nghiệm', 'border-blue-500')}
-             {renderPartEditor('group-tf', 'Phần II: Câu hỏi đúng sai', 'border-purple-500')}
-             {renderPartEditor('short', 'Phần III: Câu hỏi trả lời ngắn', 'border-green-500')}
+             {renderPartEditor('mcq', 'Phần I: Câu hỏi trắc nghiệm khách quan', 'border-blue-500')}
+             {renderPartEditor('group-tf', 'Phần II: Câu hỏi Đúng - Sai', 'border-purple-500')}
+             {renderPartEditor('short', 'Phần III: Câu hỏi Trả lời ngắn', 'border-green-500')}
            </div>
            <div className="space-y-6">
-               <div className="bg-white p-6 rounded-xl border shadow-lg sticky top-6">
-                  <div className="flex justify-between items-center mb-2 font-bold text-gray-500 uppercase text-xs"><span>Tổng câu:</span><span>{questions.length}</span></div>
-                  <div className="flex justify-between items-center mb-6 font-bold text-gray-500 uppercase text-xs"><span>Tổng điểm:</span><span className="text-blue-600 text-lg">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</span></div>
-                  <div className="mb-4 flex items-center justify-between bg-gray-50 p-3 rounded-lg"><span className="text-sm font-bold text-gray-700">Trạng thái:</span><button onClick={() => setIsPublished(!isPublished)} className={`px-3 py-1 rounded-full text-[10px] font-bold border transition ${isPublished ? 'bg-green-100 text-green-700 border-green-200' : 'bg-gray-200 text-gray-500 border-gray-300'}`}>{isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button></div>
-                  <button onClick={handleSaveQuiz} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-extrabold shadow-lg flex justify-center items-center gap-2 transition transform active:scale-95"><Save size={20} /> LƯU ĐỀ THI</button>
+               <div className="bg-white p-6 rounded-xl border shadow-xl sticky top-24">
+                  <h4 className="text-sm font-bold text-gray-400 uppercase mb-4 tracking-wider">Tổng quan đề thi</h4>
+                  <div className="flex justify-between items-center mb-2 font-bold text-gray-600"><span>Số lượng câu:</span><span className="text-blue-600">{questions.length}</span></div>
+                  <div className="flex justify-between items-center mb-6 font-bold text-gray-600"><span>Tổng điểm:</span><span className="text-blue-600 text-2xl">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</span></div>
+                  
+                  <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-dashed flex items-center justify-between">
+                      <span className="text-sm font-bold text-gray-700">Trạng thái đăng:</span>
+                      <button onClick={() => setIsPublished(!isPublished)} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold border transition-all shadow-sm ${isPublished ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-400 border-gray-300'}`}>
+                          {isPublished ? 'CÔNG KHAI' : 'LƯU NHÁP'}
+                      </button>
+                  </div>
+
+                  <button onClick={handleSaveQuiz} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-extrabold shadow-lg flex justify-center items-center gap-2 transition transform active:scale-95">
+                      <Save size={20} /> HOÀN TẤT & LƯU ĐỀ
+                  </button>
+                  <p className="mt-4 text-[10px] text-gray-400 text-center italic">Đề thi sẽ được lưu vào hệ thống và sẵn sàng để học sinh vào thi.</p>
                </div>
            </div>
         </div>
       )}
 
       {activeTab === 'import' && (
-        <div className="max-w-2xl mx-auto mt-10">
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center">
-            <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold mb-2">Nhập Đề Thi Từ PDF</h3>
-            <p className="text-gray-500 mb-6">Hệ thống AI sẽ tự động trích xuất câu hỏi từ file PDF của bạn.</p>
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 hover:border-blue-500 transition cursor-pointer bg-gray-50 relative group">
-              <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3 group-hover:text-blue-500 transition" />
-              <p className="font-medium text-gray-600">{file ? file.name : "Kéo thả hoặc nhấp để chọn file PDF"}</p>
+        <div className="space-y-8 animate-fade-in">
+          {/* HƯỚNG DẪN MẪU ĐỀ */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+             <div className="bg-indigo-600 px-6 py-4 flex items-center gap-2 text-white">
+                <FileCheck size={22}/>
+                <h3 className="font-bold uppercase tracking-wide">Mẫu đề thi chuẩn (Định dạng MOET 2025)</h3>
+             </div>
+             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 flex flex-col h-full">
+                   <div className="flex items-center gap-2 mb-3 text-blue-700 font-extrabold text-sm uppercase"><span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span> Phần I: Trắc nghiệm</div>
+                   <div className="bg-white p-3 rounded border font-mono text-[10px] leading-relaxed flex-1 shadow-sm">
+                      <p className="text-gray-400 mb-1">Câu 1. Nội dung câu hỏi...</p>
+                      <p>A. Lựa chọn 1</p>
+                      <p className="text-blue-600 font-bold">*B. Đáp án đúng (Có dấu *)</p>
+                      <p>C. Lựa chọn 3</p>
+                      <p>D. Lựa chọn 4</p>
+                      <p className="mt-2 text-indigo-500 italic">Lời giải: Giải thích chi tiết...</p>
+                   </div>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-4 border border-purple-100 flex flex-col h-full">
+                   <div className="flex items-center gap-2 mb-3 text-purple-700 font-extrabold text-sm uppercase"><span className="bg-purple-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span> Phần II: Đúng/Sai</div>
+                   <div className="bg-white p-3 rounded border font-mono text-[10px] leading-relaxed flex-1 shadow-sm">
+                      <p className="text-gray-400 mb-1">Câu 2. Nội dung câu hỏi...</p>
+                      <p>a) Mệnh đề 1 <span className="text-green-600 font-bold">(Đ)</span></p>
+                      <p>b) Mệnh đề 2 <span className="text-red-600 font-bold">(S)</span></p>
+                      <p>c) Mệnh đề 3 <span className="text-green-600 font-bold">(Đ)</span></p>
+                      <p>d) Mệnh đề 4 <span className="text-red-600 font-bold">(S)</span></p>
+                   </div>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4 border border-green-100 flex flex-col h-full">
+                   <div className="flex items-center gap-2 mb-3 text-green-700 font-extrabold text-sm uppercase"><span className="bg-green-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span> Phần III: Trả lời ngắn</div>
+                   <div className="bg-white p-3 rounded border font-mono text-[10px] leading-relaxed flex-1 shadow-sm">
+                      <p className="text-gray-400 mb-1">Câu 3. Nội dung câu hỏi...</p>
+                      <p className="font-bold text-green-600 mt-2">Đáp số: 12.5</p>
+                      <p className="mt-2 text-indigo-500 italic">Lời giải: Sử dụng công thức...</p>
+                   </div>
+                </div>
+             </div>
+             <div className="px-6 pb-4 flex items-center gap-2 text-amber-600 text-xs font-bold">
+                <AlertCircle size={14}/> Lưu ý: Công thức toán hãy để trong dấu $...$ (Ví dụ: $x^2 + \sqrt{y}$). AI sẽ tự động nhận diện và vẽ lại đẹp mắt.
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            <div className="bg-white p-10 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-center relative overflow-hidden h-full min-h-[400px]">
+              {isProcessing ? (
+                  <div className="py-20 flex flex-col items-center animate-pulse z-10">
+                      <div className="relative mb-8">
+                         <div className="w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+                         <FileText className="absolute inset-0 m-auto text-blue-500 w-10 h-10 animate-bounce" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-gray-800 mb-4">Đang xử lý dữ liệu...</h3>
+                      <div className="bg-blue-50 px-6 py-2 rounded-full border border-blue-100 mb-2">
+                        <p className="text-blue-700 font-bold text-sm flex items-center gap-2">
+                          <Loader2 className="animate-spin" size={16}/> {loadingMsg}
+                        </p>
+                      </div>
+                      <p className="text-gray-400 text-xs max-w-xs mx-auto">Vui lòng không đóng trình duyệt lúc này. AI của chúng tôi đang làm việc hết công suất.</p>
+                  </div>
+              ) : (
+                  <>
+                      <div className="bg-blue-50 w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-inner">
+                          <Upload className="w-12 h-12 text-blue-500" />
+                      </div>
+                      <h3 className="text-2xl font-black mb-4 text-gray-800">Tải đề PDF lên hệ thống</h3>
+                      <p className="text-gray-500 mb-8 max-w-sm mx-auto">Hỗ trợ trích xuất tự động cả đáp án và lời giải chi tiết. Hãy chọn file PDF đề thi của bạn.</p>
+                      
+                      <div className="w-full border-2 border-dashed border-gray-300 rounded-3xl p-16 hover:border-blue-500 transition-all cursor-pointer bg-gray-50 group relative">
+                          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4 group-hover:text-blue-500 transition-all group-hover:scale-110" />
+                          <p className="font-extrabold text-gray-600 text-lg">{file ? file.name : "Kéo thả file PDF vào đây"}</p>
+                          <p className="text-gray-400 text-sm mt-2">Dung lượng tối đa 10MB</p>
+                      </div>
+
+                      <button 
+                          onClick={handleFileUpload} 
+                          disabled={!file} 
+                          className="w-full mt-10 bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl disabled:opacity-50 transition shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 transform active:scale-95"
+                      >
+                          <Database size={20}/> BẮT ĐẦU TRÍCH XUẤT VỚI AI
+                      </button>
+                  </>
+              )}
+              {/* Decorative elements */}
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
+              <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-50 rounded-full blur-3xl opacity-50"></div>
             </div>
-            <button 
-              onClick={handleFileUpload} 
-              disabled={!file || isProcessing} 
-              className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl disabled:opacity-50 transition shadow-lg shadow-blue-200"
-            >
-              {isProcessing ? "Đang xử lý..." : "Bắt đầu trích xuất"}
-            </button>
+
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 h-full">
+               <div className="flex items-center gap-3 mb-8">
+                  <div className="bg-amber-100 p-3 rounded-2xl text-amber-600"><HelpCircle size={28}/></div>
+                  <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Mẹo để AI đọc tốt nhất</h3>
+               </div>
+               <div className="space-y-6">
+                  <div className="flex gap-4">
+                     <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">01</div>
+                     <div>
+                        <h4 className="font-bold text-gray-800 mb-1">Dấu hoa thị cho đáp án</h4>
+                        <p className="text-sm text-gray-500">Đặt dấu <span className="font-bold text-red-500">*</span> ngay trước phương án đúng. Ví dụ: *C. Đáp án này đúng.</p>
+                     </div>
+                  </div>
+                  <div className="flex gap-4">
+                     <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">02</div>
+                     <div>
+                        <h4 className="font-bold text-gray-800 mb-1">Từ khóa "Lời giải"</h4>
+                        <p className="text-sm text-gray-500">AI sẽ tự động tìm các đoạn văn bắt đầu bằng "Lời giải:", "Hướng dẫn:" hoặc "Giải thích:" để đưa vào mục lời giải chi tiết.</p>
+                     </div>
+                  </div>
+                  <div className="flex gap-4">
+                     <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">03</div>
+                     <div>
+                        <h4 className="font-bold text-gray-800 mb-1">Đánh số câu rõ ràng</h4>
+                        <p className="text-sm text-gray-500">Hãy ghi rõ "Câu 1.", "Câu 2." ở đầu mỗi câu hỏi để AI phân tách chính xác các phần của đề thi.</p>
+                     </div>
+                  </div>
+                  <div className="flex gap-4">
+                     <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 font-black text-gray-400">04</div>
+                     <div>
+                        <h4 className="font-bold text-gray-800 mb-1">Chất lượng PDF</h4>
+                        <p className="text-sm text-gray-500">Sử dụng file PDF xuất từ Word hoặc các phần mềm gõ công thức (MathType, LaTeX) thay vì file PDF là ảnh chụp để đảm bảo độ chính xác 100%.</p>
+                     </div>
+                  </div>
+               </div>
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === 'results' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
             <div className="p-4 bg-gray-50 border-b flex flex-wrap gap-4 items-center">
                 <span className="text-sm font-bold text-gray-700 uppercase flex items-center gap-1"><Filter size={16}/> Lọc:</span>
-                <select className="border rounded-lg p-2 text-sm" value={resultFilterGrade} onChange={e => { setResultFilterGrade(e.target.value as Grade | 'all'); setSelectedQuizId(''); }}>
+                <select className="border rounded-lg p-2 text-sm bg-white font-bold" value={resultFilterGrade} onChange={e => { setResultFilterGrade(e.target.value as Grade | 'all'); setSelectedQuizId(''); }}>
                     <option value="all">Tất cả Khối</option>
                     <option value="10">Lớp 10</option>
                     <option value="11">Lớp 11</option>
                     <option value="12">Lớp 12</option>
                 </select>
-                <select className="border rounded-lg p-2 text-sm flex-1 min-w-[200px]" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
+                <select className="border rounded-lg p-2 text-sm flex-1 min-w-[200px] bg-white font-bold" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
                     <option value="">-- Tất cả Đề Thi --</option>
                     {quizzes.filter(q => resultFilterGrade === 'all' || q.grade === resultFilterGrade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                 </select>
-                {selectedQuizId && <button onClick={handleExportExcel} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><FileSpreadsheet size={16}/> Xuất Excel</button>}
+                {selectedQuizId && <button onClick={handleExportExcel} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-extrabold flex items-center gap-2 shadow-sm hover:bg-green-700"><FileSpreadsheet size={16}/> XUẤT EXCEL</button>}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100 text-gray-500 uppercase text-[10px]">
+                  <thead className="bg-gray-100 text-gray-500 uppercase text-[10px] font-extrabold">
                       <tr>
-                          <th className="p-4">Học Sinh</th>
+                          <th className="p-4">STT</th>
+                          <th className="p-4">Họ và Tên Học Sinh</th>
                           <th className="p-4">Đề Thi</th>
-                          <th className="p-4 text-center">Điểm</th>
+                          <th className="p-4 text-center">Điểm số</th>
                           <th className="p-4">Thời gian nộp</th>
-                          <th className="p-4 text-right">Hành động</th>
+                          <th className="p-4 text-right">Thao tác</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -515,16 +676,22 @@ const AdminDashboard: React.FC = () => {
                           const matchesQuiz = !selectedQuizId || r.quizId === selectedQuizId;
                           return matchesGrade && matchesQuiz;
                       }).sort((a,b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()).map((r, i) => (
-                          <tr key={r.id} className="border-b hover:bg-gray-50">
-                              <td className="p-4 font-bold">{r.studentName}</td>
+                          <tr key={r.id} className="border-b hover:bg-gray-50 transition-colors">
+                              <td className="p-4 text-gray-400 font-mono">{i+1}</td>
+                              <td className="p-4 font-bold text-gray-800">{r.studentName}</td>
                               <td className="p-4 text-gray-600">{quizzes.find(q => q.id === r.quizId)?.title || "N/A"}</td>
-                              <td className="p-4 text-center font-bold text-blue-600">{r.score.toFixed(2)}</td>
-                              <td className="p-4 text-gray-500">{format(parseISO(r.submittedAt), "dd/MM HH:mm")}</td>
+                              <td className="p-4 text-center">
+                                  <span className={`font-extrabold text-lg ${r.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{r.score.toFixed(2)}</span>
+                              </td>
+                              <td className="p-4 text-gray-500">{format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")}</td>
                               <td className="p-4 text-right">
-                                  <button onClick={async () => { if(window.confirm('Xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                                  <button onClick={async () => { if(window.confirm('Xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                               </td>
                           </tr>
                       ))}
+                      {results.length === 0 && (
+                          <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic font-medium">Chưa có kết quả thi nào được ghi nhận.</td></tr>
+                      )}
                   </tbody>
               </table>
             </div>
@@ -532,23 +699,35 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {activeTab === 'students' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b flex flex-wrap justify-between items-center gap-4">
-                  <div className="relative flex-1 max-w-md"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="Tìm tên học sinh..." className="pl-10 pr-4 py-2 border rounded-lg w-full" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/></div>
-                  <button onClick={() => { setEditingUser(null); setUserForm({fullName:'', username:'', password:'', grade:'12', role:'student'}); setShowUserModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><UserPlus size={18} /> Thêm Học Sinh</button>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+              <div className="p-6 border-b flex flex-wrap justify-between items-center gap-4 bg-gray-50">
+                  <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <input type="text" placeholder="Tìm tên hoặc tài khoản học sinh..." className="pl-10 pr-4 py-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/>
+                  </div>
+                  <button onClick={() => { setEditingUser(null); setUserForm({fullName:'', username:'', password:'', grade:'12', role:'student'}); setShowUserModal(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-extrabold flex items-center gap-2 shadow-lg shadow-blue-100"><UserPlus size={18} /> THÊM HỌC SINH</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-gray-50 border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">Họ và Tên</th><th className="p-4">Tên đăng nhập</th><th className="p-4">Khối</th><th className="p-4 text-right">Thao tác</th></tr></thead>
-                    <tbody>{users.filter(u=>u.role==='student' && u.fullName.toLowerCase().includes(searchUser.toLowerCase())).map(u => (
-                        <tr key={u.id} className="border-b hover:bg-gray-50">
-                            <td className="p-4 font-bold">{u.fullName}</td><td className="p-4 font-mono text-blue-600">{u.username}</td><td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold">K{u.grade}</span></td>
-                            <td className="p-4 text-right flex justify-end gap-2">
-                                <button onClick={() => { setEditingUser(u); setUserForm({fullName:u.fullName, username:u.username, password:u.password, grade:u.grade||'12', role:u.role}); setShowUserModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16}/></button>
-                                <button onClick={async () => { if(window.confirm('Xóa tài khoản này?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                    <thead className="bg-gray-100 border-b text-gray-500 text-[10px] uppercase font-extrabold"><tr><th className="p-4">STT</th><th className="p-4">Họ và Tên</th><th className="p-4">Tên đăng nhập</th><th className="p-4">Mật khẩu</th><th className="p-4">Khối</th><th className="p-4 text-right">Thao tác</th></tr></thead>
+                    <tbody>
+                        {users.filter(u=>u.role==='student' && (u.fullName.toLowerCase().includes(searchUser.toLowerCase()) || u.username.toLowerCase().includes(searchUser.toLowerCase()))).map((u, i) => (
+                        <tr key={u.id} className="border-b hover:bg-gray-50 transition-colors">
+                            <td className="p-4 text-gray-400 font-mono">{i+1}</td>
+                            <td className="p-4 font-bold text-gray-800">{u.fullName}</td>
+                            <td className="p-4 font-mono text-blue-600 font-bold">{u.username}</td>
+                            <td className="p-4 font-mono text-gray-400">{u.password}</td>
+                            <td className="p-4"><span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-extrabold uppercase">LỚP {u.grade}</span></td>
+                            <td className="p-4 text-right flex justify-end gap-1">
+                                <button onClick={() => { setEditingUser(u); setUserForm({fullName:u.fullName, username:u.username, password:u.password, grade:u.grade||'12', role:u.role}); setShowUserModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={18}/></button>
+                                <button onClick={async () => { if(window.confirm('Xóa vĩnh viễn tài khoản học sinh này?')) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
-                    ))}</tbody>
+                    ))}
+                    {users.filter(u=>u.role==='student').length === 0 && (
+                        <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic font-medium">Danh sách học sinh đang trống.</td></tr>
+                    )}
+                    </tbody>
                 </table>
               </div>
           </div>
@@ -557,14 +736,14 @@ const AdminDashboard: React.FC = () => {
       {/* USER MODAL */}
       {showUserModal && (
         <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Hồ Sơ Học Sinh</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 bg-blue-600 text-white flex justify-between items-center"><h3 className="font-bold">Quản lý Học Sinh</h3><button onClick={() => setShowUserModal(false)}><XCircle size={24}/></button></div>
             <div className="p-6 space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Họ Tên</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.fullName} onChange={e=>setUserForm({...userForm, fullName:e.target.value})}/></div>
-              <div><label className="block text-sm font-medium mb-1">Tên đăng nhập</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div>
-              <div><label className="block text-sm font-medium mb-1">Mật khẩu</label><input type="text" className="w-full border rounded-lg p-2" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})}/></div>
-              <div><label className="block text-sm font-medium mb-1">Khối lớp</label><select className="w-full border rounded-lg p-2" value={userForm.grade} onChange={e=>setUserForm({...userForm, grade:e.target.value as Grade})}><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></div>
-              <button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">LƯU THÔNG TIN</button>
+              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Họ Tên</label><input type="text" className="w-full border rounded-lg p-2.5 font-bold" value={userForm.fullName} onChange={e=>setUserForm({...userForm, fullName:e.target.value})}/></div>
+              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Tên đăng nhập (viết liền)</label><input type="text" className="w-full border rounded-lg p-2.5 font-mono text-blue-600 font-bold" value={userForm.username} onChange={e=>setUserForm({...userForm, username:e.target.value})} disabled={!!editingUser}/></div>
+              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Mật khẩu</label><input type="text" className="w-full border rounded-lg p-2.5 font-mono" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})}/></div>
+              <div><label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Khối lớp</label><select className="w-full border rounded-lg p-2.5 font-bold" value={userForm.grade} onChange={e=>setUserForm({...userForm, grade:e.target.value as Grade})}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
+              <button onClick={handleSaveUser} className="w-full bg-blue-600 text-white font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">LƯU THÔNG TIN HỌC SINH</button>
             </div>
           </div>
         </div>
@@ -580,20 +759,20 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="p-6 border-b bg-gray-50 shrink-0 flex flex-wrap gap-4 items-center">
                       <span className="text-sm font-bold text-gray-500">Nguồn dữ liệu:</span>
-                      <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 shadow-sm" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
-                          <option value="">-- Chọn đề thi cùng khối {grade} --</option>
+                      <select className="flex-1 min-w-[300px] border rounded-lg p-2.5 shadow-sm font-bold" value={bankSelectedQuizId} onChange={e => setBankSelectedQuizId(e.target.value)}>
+                          <option value="">-- Chọn đề thi cũ cùng khối {grade} --</option>
                           {quizzes.filter(q => q.grade === grade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                           <option disabled>──────────</option>
-                          <option value="ALL">Xem tất cả các khối (Toàn bộ ngân hàng)</option>
+                          <option value="ALL">Xem toàn bộ ngân hàng (Tất cả các khối)</option>
                       </select>
                       <div className="bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-2">
                         <Filter size={14} className="text-indigo-600"/>
-                        <span className="text-[10px] font-bold text-indigo-700 uppercase">Loại: {bankTargetType}</span>
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase">Loại đang lọc: {bankTargetType}</span>
                       </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
                       {bankSelectedQuizId === '' ? (
-                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Chọn một đề thi cũ để xem danh sách câu hỏi</p></div>
+                          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><SearchCode size={64} className="mb-4"/><p className="font-bold">Vui lòng chọn đề thi nguồn từ danh sách trên</p></div>
                       ) : (
                           <>
                             {(() => {
@@ -601,35 +780,34 @@ const AdminDashboard: React.FC = () => {
                                 let allQs: Question[] = [];
                                 sourceQuizzes.forEach(sq => {
                                   sq.questions.filter(q => q.type === bankTargetType).forEach(q => {
-                                    allQs.push({ ...q, solution: q.solution || `(Đề: ${sq.title})` });
+                                    allQs.push({ ...q, solution: q.solution || `(Đề gốc: ${sq.title})` });
                                   });
                                 });
                                 
-                                // Lọc bỏ câu trùng nội dung
                                 const availableQs = allQs.filter(sq => !questions.some(currQ => currQ.text.trim().toLowerCase() === sq.text.trim().toLowerCase()));
                                 
                                 if (availableQs.length === 0) return (
                                   <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed text-gray-400">
                                     <CheckCircle size={48} className="mb-4 text-green-200"/>
-                                    <p className="font-bold text-center">Tất cả câu hỏi trong đề này đã có mặt trong đề hiện tại!</p>
+                                    <p className="font-bold text-center">Tất cả câu hỏi phù hợp đã được thêm vào đề hiện tại.</p>
                                   </div>
                                 );
                                 
                                 return availableQs.map((q, qIdx) => (
-                                    <div key={q.id || qIdx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-colors flex justify-between items-start gap-4 group">
+                                    <div key={q.id || qIdx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-400 transition-all flex justify-between items-start gap-4 group">
                                         <div className="flex-1 overflow-hidden">
                                             <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase">
                                               <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{q.type}</span>
                                               <span className="text-gray-400">{q.points}đ</span>
                                               <span className="text-indigo-300 italic truncate max-w-[200px]">{q.solution}</span>
                                             </div>
-                                            <div className="text-sm text-gray-800"><LatexText text={q.text}/></div>
+                                            <div className="text-sm text-gray-800 font-medium"><LatexText text={q.text}/></div>
                                             {q.imageUrl && <img src={q.imageUrl} className="h-16 rounded border mt-2 object-contain bg-gray-50" alt=""/>}
                                         </div>
                                         <button 
                                           onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} 
-                                          className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-100 transform active:scale-90 transition-transform"
-                                          title="Thêm vào đề"
+                                          className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-100 transform active:scale-90 transition-all"
+                                          title="Thêm câu này vào đề"
                                         >
                                           <Plus size={20}/>
                                         </button>
@@ -639,7 +817,7 @@ const AdminDashboard: React.FC = () => {
                           </>
                       )}
                   </div>
-                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-black transition shadow-lg">XONG</button></div>
+                  <div className="p-4 bg-gray-50 border-t text-right shrink-0"><button onClick={() => setShowBankModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-xl font-extrabold hover:bg-black transition-colors shadow-lg">ĐÓNG NGÂN HÀNG</button></div>
               </div>
           </div>
       )}
