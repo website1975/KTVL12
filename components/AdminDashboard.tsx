@@ -1,10 +1,10 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, SubQuestion, User, Role } from '../types';
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet, AlertCircle, Loader2, Info, FileCheck, HelpCircle, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, Image as ImageIcon, BarChart3, Eye, Edit, CheckCircle, XCircle, Filter, History, Search, BookOpen, GraduationCap, Lightbulb, UserPlus, Users, ChevronUp, ChevronDown, SortAsc, Database, SearchCode, Bold, Italic, Underline, CornerDownLeft, Sigma, FileSpreadsheet, AlertCircle, Loader2, Info, FileCheck, HelpCircle, Settings2, LayoutGrid, FolderTree, Layers, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -109,6 +109,7 @@ const AdminDashboard: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
   const [quizType, setQuizType] = useState<QuizType>('practice');
   const [grade, setGrade] = useState<Grade>('12');
   const [startTime, setStartTime] = useState('');
@@ -129,6 +130,9 @@ const AdminDashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userForm, setUserForm] = useState({ fullName: '', username: '', password: '', grade: '12' as Grade, role: 'student' as Role });
 
+  // Accordion state cho danh sách đề
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
   const loadingMessages = [
     'Máy đang tải dữ liệu PDF...',
     'Đang kết nối trí tuệ nhân tạo Gemini...',
@@ -138,6 +142,27 @@ const AdminDashboard: React.FC = () => {
     'Đang tổng hợp lời giải chi tiết...',
     'Sắp xong rồi, vui lòng đợi giây lát...'
   ];
+
+  // Lấy danh sách các chương mục đã tồn tại để gợi ý
+  const existingCategories = useMemo(() => {
+    const cats = new Set<string>();
+    quizzes.forEach(q => { if (q.category) cats.add(q.category); });
+    return Array.from(cats).sort();
+  }, [quizzes]);
+
+  // Gom nhóm đề thi theo chương mục
+  const groupedQuizzes = useMemo(() => {
+    const groups: Record<string, Quiz[]> = {};
+    const filtered = quizzes.filter(q => quizFilterGrade === 'all' || q.grade === quizFilterGrade);
+    
+    filtered.forEach(q => {
+      const cat = q.category || 'Chưa phân loại';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(q);
+    });
+    
+    return groups;
+  }, [quizzes, quizFilterGrade]);
 
   useEffect(() => {
     refreshData();
@@ -168,6 +193,7 @@ const AdminDashboard: React.FC = () => {
     setEditingId(null);
     setTitle('');
     setDescription('');
+    setCategory('');
     setQuestions([]);
     setStartTime('');
     setDuration(90);
@@ -183,6 +209,7 @@ const AdminDashboard: React.FC = () => {
       id: editingId || uuidv4(),
       title,
       description,
+      category: category.trim() || undefined,
       type: quizType,
       grade,
       startTime: quizType === 'test' ? startTime : undefined,
@@ -204,6 +231,7 @@ const AdminDashboard: React.FC = () => {
     setEditingId(quiz.id);
     setTitle(quiz.title);
     setDescription(quiz.description);
+    setCategory(quiz.category || '');
     setQuizType(quiz.type);
     setGrade(quiz.grade);
     setStartTime(quiz.startTime || '');
@@ -262,6 +290,10 @@ const AdminDashboard: React.FC = () => {
         setIsProcessing(false);
       }
     };
+  };
+
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
   const handleExportExcel = () => {
@@ -408,52 +440,68 @@ const AdminDashboard: React.FC = () => {
                     <button key={g} onClick={() => setQuizFilterGrade(g)} className={`px-4 py-1.5 rounded-md text-sm font-bold ${quizFilterGrade === g ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{g === 'all' ? 'Tất cả' : `Lớp ${g}`}</button>
                 ))}
              </div>
+             <div className="ml-auto text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border">
+                Tổng số: {quizzes.filter(q => quizFilterGrade === 'all' || q.grade === quizFilterGrade).length} đề thi
+             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-3">
-               <h2 className="text-lg font-bold text-red-700 uppercase border-b-2 border-red-200 pb-2 flex items-center gap-2"><FileText size={20}/> Bài Kiểm Tra</h2>
-               {quizzes.filter(q => q.type === 'test' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade)).map(q => (
-                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-red-300 hover:shadow-md transition flex justify-between items-center group">
-                      <div className="flex items-center gap-3">
-                          {q.isPublished ? <CheckCircle className="text-green-500" size={20}/> : <AlertCircle className="text-yellow-500" size={20}/>}
-                          <div>
-                            <h3 className="font-bold text-gray-800">{q.title}</h3>
+
+          <div className="space-y-4">
+            {Object.keys(groupedQuizzes).sort().map(cat => (
+              <div key={cat} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <button 
+                  onClick={() => toggleCategory(cat)}
+                  className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors border-b"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-600 text-white p-2 rounded-lg shadow-sm">
+                      <FolderTree size={20}/>
+                    </div>
+                    <div className="text-left">
+                      <h3 className="font-black text-gray-800 uppercase tracking-tight">{cat}</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{groupedQuizzes[cat].length} đề thi trong mục này</p>
+                    </div>
+                  </div>
+                  {expandedCategories[cat] ? <ChevronDown size={24} className="text-gray-400"/> : <ChevronRight size={24} className="text-gray-400"/>}
+                </button>
+
+                {(expandedCategories[cat] === undefined || expandedCategories[cat]) && (
+                  <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+                    {groupedQuizzes[cat].map(q => (
+                      <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all flex justify-between items-center group">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${q.type === 'test' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
+                            {q.type === 'test' ? <FileText size={20}/> : <BookOpen size={20}/>}
+                          </div>
+                          <div className="overflow-hidden">
+                            <h3 className="font-bold text-gray-800 truncate">{q.title}</h3>
                             <div className="flex items-center gap-2 text-[10px] mt-1">
-                                <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-bold">LỚP {q.grade}</span>
-                                <span className="text-gray-400">|</span>
-                                <span className={`${q.isPublished ? 'text-green-600' : 'text-yellow-600'} font-bold uppercase`}>{q.isPublished ? 'Công bố' : 'Bản nháp'}</span>
+                                <span className={`px-1.5 py-0.5 rounded font-bold ${q.type === 'test' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                  {q.type === 'test' ? 'KIỂM TRA' : 'LUYỆN TẬP'}
+                                </span>
+                                <span className="text-gray-300">|</span>
+                                <span className={`${q.isPublished ? 'text-green-600' : 'text-yellow-600'} font-bold uppercase`}>{q.isPublished ? 'Đã công bố' : 'Bản nháp'}</span>
+                                <span className="text-gray-300">|</span>
+                                <span className="text-gray-400">{q.questions.length} câu</span>
                             </div>
                           </div>
-                      </div>
-                      <div className="flex gap-1">
+                        </div>
+                        <div className="flex gap-1 shrink-0">
                           <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Chỉnh sửa"><Edit size={18}/></button>
                           <button onClick={async () => { if(window.confirm('Xóa đề này vĩnh viễn?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition" title="Xóa"><Trash2 size={18}/></button>
-                      </div>
-                  </div>
-               ))}
-            </div>
-            <div className="space-y-3">
-               <h2 className="text-lg font-bold text-green-700 uppercase border-b-2 border-green-200 pb-2 flex items-center gap-2"><BookOpen size={20}/> Bài Luyện Tập</h2>
-               {quizzes.filter(q => q.type === 'practice' && (quizFilterGrade === 'all' || q.grade === quizFilterGrade)).map(q => (
-                  <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition flex justify-between items-center group">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle className="text-blue-400" size={20}/>
-                        <div>
-                          <h3 className="font-bold text-gray-800">{q.title}</h3>
-                          <div className="flex items-center gap-2 text-[10px] mt-1">
-                              <span className="bg-green-50 text-green-600 px-1.5 py-0.5 rounded font-bold">LỚP {q.grade}</span>
-                              <span className="text-gray-400">|</span>
-                              <span className="text-gray-500 uppercase font-bold">{q.questions.length} câu hỏi</span>
-                          </div>
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit size={18}/></button>
-                          <button onClick={async () => { if(window.confirm('Xóa đề luyện tập?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={18}/></button>
-                      </div>
+                    ))}
                   </div>
-               ))}
-            </div>
+                )}
+              </div>
+            ))}
+
+            {Object.keys(groupedQuizzes).length === 0 && (
+              <div className="bg-white p-20 rounded-2xl border border-dashed text-center flex flex-col items-center">
+                <SearchCode size={64} className="text-gray-200 mb-4"/>
+                <p className="text-gray-400 font-bold">Không tìm thấy đề thi nào phù hợp với bộ lọc.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -464,15 +512,37 @@ const AdminDashboard: React.FC = () => {
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                <h3 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2"><Info className="text-blue-500"/> Thông Tin Đề Thi</h3>
                <div className="space-y-4">
-                 <input type="text" className="w-full border-2 rounded-lg p-3 focus:border-blue-500 outline-none transition" placeholder="Nhập tên đề thi (ví dụ: Kiểm tra giữa kỳ 1 Toán 12)" value={title} onChange={e => setTitle(e.target.value)}/>
+                 <input type="text" className="w-full border-2 rounded-lg p-3 focus:border-blue-500 outline-none transition font-bold" placeholder="Nhập tên đề thi (ví dụ: Kiểm tra giữa kỳ 1 Toán 12)" value={title} onChange={e => setTitle(e.target.value)}/>
+                 
+                 <div className="relative">
+                    <label className="text-xs font-bold text-gray-400 uppercase ml-1 block mb-1">Chương / Mục (Để phân nhóm đề)</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18}/>
+                        <input 
+                          list="category-suggestions"
+                          type="text" 
+                          className="w-full border rounded-lg pl-10 pr-3 py-2.5 focus:border-blue-500 outline-none transition font-medium bg-gray-50" 
+                          placeholder="Ví dụ: Chương 1: Động lực học..." 
+                          value={category} 
+                          onChange={e => setCategory(e.target.value)}
+                        />
+                        <datalist id="category-suggestions">
+                          {existingCategories.map(cat => <option key={cat} value={cat} />)}
+                        </datalist>
+                      </div>
+                    </div>
+                 </div>
+
                  <textarea className="w-full border-2 rounded-lg p-3 focus:border-blue-500 outline-none transition" rows={2} placeholder="Mô tả ngắn gọn về nội dung đề thi..." value={description} onChange={e => setDescription(e.target.value)}/>
+                 
                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Loại đề</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select></div>
-                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Khối lớp</label><select className="w-full border rounded-lg p-2.5 bg-gray-50" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Loại đề</label><select className="w-full border rounded-lg p-2.5 bg-gray-50 font-bold" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select></div>
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Khối lớp</label><select className="w-full border rounded-lg p-2.5 bg-gray-50 font-bold" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Thời gian (phút)</label><input type="number" className="w-full border rounded-lg p-2.5" value={duration} onChange={e => setDuration(Number(e.target.value))}/></div>
-                    {quizType === 'test' && <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Ngày giờ bắt đầu</label><input type="datetime-local" className="w-full border rounded-lg p-2.5" value={startTime} onChange={e => setStartTime(e.target.value)}/></div>}
+                    <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Thời gian (phút)</label><input type="number" className="w-full border rounded-lg p-2.5 font-bold" value={duration} onChange={e => setDuration(Number(e.target.value))}/></div>
+                    {quizType === 'test' && <div><label className="text-xs font-bold text-gray-500 uppercase ml-1">Ngày giờ bắt đầu</label><input type="datetime-local" className="w-full border rounded-lg p-2.5 font-bold" value={startTime} onChange={e => setStartTime(e.target.value)}/></div>}
                  </div>
                </div>
              </div>
@@ -543,7 +613,6 @@ const AdminDashboard: React.FC = () => {
              </div>
              <div className="px-6 pb-4 flex items-center gap-2 text-amber-600 text-xs font-bold">
                 <AlertCircle size={14}/> 
-                {/* FIX: Escaped y within a string literal to prevent TS2304 error on Vercel */}
                 <span>{'Lưu ý: Công thức toán hãy để trong dấu $...$ (Ví dụ: $x^2 + \\sqrt{y}$). AI sẽ tự động nhận diện.'}</span>
              </div>
           </div>
@@ -553,7 +622,6 @@ const AdminDashboard: React.FC = () => {
               {isProcessing ? (
                   <div className="py-20 flex flex-col items-center z-10 animate-fade-in">
                       <div className="relative mb-8">
-                         {/* Biểu tượng xoay sinh động báo máy đang tải */}
                          <div className="w-24 h-24 border-8 border-blue-50 border-t-blue-600 rounded-full animate-spin shadow-inner"></div>
                          <div className="absolute inset-0 flex items-center justify-center">
                             <FileText className="text-blue-500 w-10 h-10 animate-pulse" />
@@ -692,7 +760,7 @@ const AdminDashboard: React.FC = () => {
       {activeTab === 'students' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
               <div className="p-6 border-b flex flex-wrap justify-between items-center gap-4 bg-gray-50">
-                  <div className="relative flex-1 max-w-md">
+                  <div className="relative flex-1 max-md">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input type="text" placeholder="Tìm tên hoặc tài khoản học sinh..." className="pl-10 pr-4 py-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none" value={searchUser} onChange={(e) => setSearchUser(e.target.value)}/>
                   </div>
