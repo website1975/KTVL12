@@ -268,37 +268,64 @@ const AdminDashboard: React.FC = () => {
     if (!quiz) return;
 
     const getOptionChar = (i: number) => String.fromCharCode(65 + i);
+    
+    // Helper: Lọc bỏ chữ "Câu X" nếu nó đã tồn tại trong text để tránh lặp
+    const cleanQuestionText = (text: string) => {
+        return text.replace(/^Câu\s+\d+[:.]\s*/i, "").trim();
+    };
 
     let content = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset="utf-8">
         <style>
-          body { font-family: 'Times New Roman', serif; line-height: 1.4; font-size: 12pt; margin: 1in; }
-          .header { text-align: center; margin-bottom: 24px; }
-          .title { font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
-          .subtitle { font-size: 12pt; margin-bottom: 15px; }
-          .student-info { text-align: left; margin-bottom: 20px; font-weight: normal; }
-          .section-header { font-weight: bold; margin-top: 15px; margin-bottom: 8px; text-decoration: none; }
-          .question { margin-top: 10px; margin-bottom: 5px; }
+          /* CSS đặc biệt để MS Word hiểu khổ A4 và căn lề */
+          @page {
+            size: 21.0cm 29.7cm;
+            margin: 2.0cm 2.0cm 2.0cm 3.0cm; /* Lề trái 3cm cho đóng tập */
+            mso-page-orientation: portrait;
+          }
+          body { font-family: 'Times New Roman', serif; line-height: 1.3; font-size: 12pt; }
+          
+          /* Header phân cột chuyên nghiệp */
+          .header-table { width: 100%; border-collapse: collapse; border: none; margin-bottom: 20px; }
+          .header-table td { border: none; vertical-align: top; text-align: center; }
+          .school-info { font-weight: bold; width: 45%; }
+          .exam-info { font-weight: bold; width: 55%; }
+          .dotted-line { border-bottom: 1px dotted black; width: 100%; height: 15px; margin-bottom: 10px; }
+          
+          .section-header { font-weight: bold; margin-top: 15px; margin-bottom: 5px; text-align: justify; }
+          .question { margin-top: 10px; text-align: justify; }
           .question-num { font-weight: bold; }
-          .options { margin-left: 25px; margin-bottom: 10px; }
+          .options-table { width: 100%; margin-left: 15px; margin-top: 5px; border-collapse: collapse; }
+          .options-table td { width: 25%; padding: 2px; vertical-align: top; }
+          
           .image-container { text-align: center; margin: 10px 0; }
-          .image-container img { max-width: 4in; height: auto; border: 1pt solid #eee; }
-          .ans-table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+          .image-container img { max-width: 100%; height: auto; }
+          
+          .ans-table { border-collapse: collapse; width: 100%; margin-top: 20px; }
           .ans-table th, .ans-table td { border: 1pt solid black; padding: 4px; text-align: center; font-size: 10pt; }
-          .footer-note { font-style: italic; text-align: center; margin-top: 30px; font-size: 10pt; }
+          .footer-note { font-style: italic; text-align: center; margin-top: 20px; font-size: 10pt; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="title">${quiz.title}</div>
-          <div class="subtitle">Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</div>
-        </div>
+        <table class="header-table">
+          <tr>
+            <td class="school-info">
+              TRƯỜNG THPT .........................<br/>
+              MÃ ĐỀ THI: 10${quiz.grade}
+            </td>
+            <td class="exam-info">
+              ĐỀ ÔN TẬP KIỂM TRA - KHỐI ${quiz.grade}<br/>
+              Môn: Toán học | Thời gian: ${quiz.durationMinutes} phút<br/>
+              <i>(Đề thi gồm có ${quiz.questions.length} câu)</i>
+            </td>
+          </tr>
+        </table>
         
-        <div class="student-info">
-          Họ và tên thí sinh: ............................................................................................ <br/>
-          Số báo danh: .......................................................................................................
+        <div style="margin-bottom: 20px;">
+          Họ và tên thí sinh: ....................................................................................................<br/>
+          Số báo danh: .............................................................................................................
         </div>
     `;
 
@@ -307,14 +334,14 @@ const AdminDashboard: React.FC = () => {
     if (mcqQuestions.length > 0) {
       content += `<div class="section-header">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn. Thí sinh trả lời từ câu 1 đến câu ${mcqQuestions.length}. Mỗi câu hỏi thí sinh chỉ chọn một phương án.</div>`;
       mcqQuestions.forEach((q, i) => {
-        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${cleanQuestionText(q.text)}</div>`;
         if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
         if (q.options) {
-          content += `<div class="options">`;
+          content += `<table class="options-table"><tr>`;
           q.options.forEach((opt, oi) => {
-            content += `<div><b>${getOptionChar(oi)}.</b> ${opt}</div>`;
+            content += `<td><b>${getOptionChar(oi)}.</b> ${opt}</td>`;
           });
-          content += `</div>`;
+          content += `</tr></table>`;
         }
       });
     }
@@ -322,16 +349,14 @@ const AdminDashboard: React.FC = () => {
     // Phần II: True/False
     const tfQuestions = quiz.questions.filter(q => q.type === 'group-tf');
     if (tfQuestions.length > 0) {
-      content += `<div class="section-header">PHẦN II. Câu trắc nghiệm đúng sai. Thí sinh trả lời từ câu 1 đến câu ${tfQuestions.length}. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai.</div>`;
+      content += `<div class="section-header" style="margin-top:20px;">PHẦN II. Câu trắc nghiệm đúng sai. Thí sinh trả lời từ câu 1 đến câu ${tfQuestions.length}. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai.</div>`;
       tfQuestions.forEach((q, i) => {
-        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${cleanQuestionText(q.text)}</div>`;
         if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
         if (q.subQuestions) {
-          content += `<div class="options">`;
           q.subQuestions.forEach((sq, si) => {
-            content += `<div><b>${String.fromCharCode(97 + si)})</b> ${sq.text}</div>`;
+            content += `<div style="margin-left: 25px;"><b>${String.fromCharCode(97 + si)})</b> ${cleanQuestionText(sq.text)}</div>`;
           });
-          content += `</div>`;
         }
       });
     }
@@ -339,28 +364,29 @@ const AdminDashboard: React.FC = () => {
     // Phần III: Short
     const shortQuestions = quiz.questions.filter(q => q.type === 'short');
     if (shortQuestions.length > 0) {
-      content += `<div class="section-header">PHẦN III. Câu trắc nghiệm trả lời ngắn. Thí sinh trả lời từ câu 1 đến câu ${shortQuestions.length}.</div>`;
+      content += `<div class="section-header" style="margin-top:20px;">PHẦN III. Câu trắc nghiệm trả lời ngắn. Thí sinh trả lời từ câu 1 đến câu ${shortQuestions.length}.</div>`;
       shortQuestions.forEach((q, i) => {
-        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${cleanQuestionText(q.text)}</div>`;
         if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
       });
     }
 
-    // Bảng đáp án gọn gàng (Nhiều cột)
+    // Bảng đáp án gọn gàng
     content += `
       <div style="page-break-before: always;"></div>
-      <div class="section-header" style="text-align: center;">BẢNG ĐÁP ÁN</div>
+      <div style="font-weight: bold; text-align: center; font-size: 14pt; margin-top: 20px;">BẢNG ĐÁP ÁN THAM KHẢO</div>
       <table class="ans-table">
         <tr>
+          <th>Câu</th><th>Đáp án</th>
           <th>Câu</th><th>Đáp án</th>
           <th>Câu</th><th>Đáp án</th>
           <th>Câu</th><th>Đáp án</th>
         </tr>
     `;
     
-    for (let i = 0; i < quiz.questions.length; i += 3) {
+    for (let i = 0; i < quiz.questions.length; i += 4) {
       content += '<tr>';
-      for (let j = 0; j < 3; j++) {
+      for (let j = 0; j < 4; j++) {
         const qIdx = i + j;
         if (qIdx < quiz.questions.length) {
           const q = quiz.questions[qIdx];
@@ -391,7 +417,7 @@ const AdminDashboard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `De_thi_${quiz.title.replace(/\s+/g, '_')}.doc`;
+    link.download = `De_Thi_${quiz.title.replace(/\s+/g, '_')}.doc`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -626,7 +652,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {viewingQuiz && (
-          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
                   <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
                       <div className="flex items-center gap-4">
