@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogOut, GraduationCap, Key, XCircle, Database } from 'lucide-react';
+import { LogOut, GraduationCap, Key, XCircle, Database, Sparkles } from 'lucide-react';
 import { changePassword, isDatabaseConnected } from '../services/storage';
 
 interface LayoutProps {
@@ -17,8 +17,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const [msg, setMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Kiểm tra kết nối Database ngay khi render
+  // Kiểm tra kết nối
   const isOnline = isDatabaseConnected();
+  const isAIReady = process.env.API_KEY && process.env.API_KEY !== "undefined";
 
   const handleChangePass = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -26,7 +27,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       setMsg(null);
       setIsSubmitting(true);
 
-      // Kiểm tra mật khẩu cũ (đối chiếu với user hiện tại trong session)
       if (currentPassInput !== user.password) {
           setMsg({ text: 'Mật khẩu hiện tại không đúng!', type: 'error' });
           setIsSubmitting(false);
@@ -92,11 +92,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         {children}
       </main>
       <footer className="bg-white border-t mt-auto py-6">
-         <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm flex flex-col items-center gap-2">
-            <span>© 2024 EduQuiz VN. Hệ thống thi trắc nghiệm - LH Thạnh 0909091634</span>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-600 animate-pulse' : 'bg-red-600'}`}></div>
-                {isOnline ? 'Đã kết nối Database (Online)' : 'Mất kết nối Database (Vui lòng nhập Key trên Vercel)'}
+         <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm flex flex-col items-center gap-3">
+            <span>© 2024 EduQuiz VN. LH Thạnh 0909091634</span>
+            <div className="flex flex-wrap justify-center gap-3">
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                    <Database size={12}/> {isOnline ? 'DB Online' : 'DB Offline'}
+                </div>
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isAIReady ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                    <Sparkles size={12}/> {isAIReady ? 'AI Ready' : 'AI No Key'}
+                </div>
             </div>
          </div>
       </footer>
