@@ -91,10 +91,8 @@ const AdminDashboard: React.FC = () => {
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  // Student details modal
+  // Modal states
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<User | null>(null);
-  
-  // View Quiz State
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
 
   // AI Auto Gen State
@@ -269,43 +267,52 @@ const AdminDashboard: React.FC = () => {
   const handleExportWord = (quiz: Quiz) => {
     if (!quiz) return;
 
-    // Helper: Trả về ký tự A, B, C, D dựa vào index
     const getOptionChar = (i: number) => String.fromCharCode(65 + i);
 
-    // Xây dựng nội dung HTML cho Word
     let content = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset="utf-8">
         <style>
-          body { font-family: 'Times New Roman', serif; line-height: 1.5; }
-          .header { text-align: center; font-weight: bold; margin-bottom: 20px; }
-          .title { font-size: 16pt; text-transform: uppercase; }
-          .section-header { font-weight: bold; margin-top: 15px; text-decoration: underline; }
-          .question { margin-top: 10px; }
-          .options { margin-left: 20px; }
-          .footer { margin-top: 30px; border-top: 1px solid black; pt: 10px; }
-          table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-          th, td { border: 1px solid black; padding: 5px; text-align: center; font-size: 10pt; }
+          body { font-family: 'Times New Roman', serif; line-height: 1.4; font-size: 12pt; margin: 1in; }
+          .header { text-align: center; margin-bottom: 24px; }
+          .title { font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+          .subtitle { font-size: 12pt; margin-bottom: 15px; }
+          .student-info { text-align: left; margin-bottom: 20px; font-weight: normal; }
+          .section-header { font-weight: bold; margin-top: 15px; margin-bottom: 8px; text-decoration: none; }
+          .question { margin-top: 10px; margin-bottom: 5px; }
+          .question-num { font-weight: bold; }
+          .options { margin-left: 25px; margin-bottom: 10px; }
+          .image-container { text-align: center; margin: 10px 0; }
+          .image-container img { max-width: 4in; height: auto; border: 1pt solid #eee; }
+          .ans-table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+          .ans-table th, .ans-table td { border: 1pt solid black; padding: 4px; text-align: center; font-size: 10pt; }
+          .footer-note { font-style: italic; text-align: center; margin-top: 30px; font-size: 10pt; }
         </style>
       </head>
       <body>
         <div class="header">
           <div class="title">${quiz.title}</div>
-          <div>Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</div>
+          <div class="subtitle">Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</div>
+        </div>
+        
+        <div class="student-info">
+          Họ và tên thí sinh: ............................................................................................ <br/>
+          Số báo danh: .......................................................................................................
         </div>
     `;
 
     // Phần I: MCQ
     const mcqQuestions = quiz.questions.filter(q => q.type === 'mcq');
     if (mcqQuestions.length > 0) {
-      content += `<div class="section-header">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn.</div>`;
+      content += `<div class="section-header">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn. Thí sinh trả lời từ câu 1 đến câu ${mcqQuestions.length}. Mỗi câu hỏi thí sinh chỉ chọn một phương án.</div>`;
       mcqQuestions.forEach((q, i) => {
-        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
         if (q.options) {
           content += `<div class="options">`;
           q.options.forEach((opt, oi) => {
-            content += `<div>${getOptionChar(oi)}. ${opt}</div>`;
+            content += `<div><b>${getOptionChar(oi)}.</b> ${opt}</div>`;
           });
           content += `</div>`;
         }
@@ -315,13 +322,14 @@ const AdminDashboard: React.FC = () => {
     // Phần II: True/False
     const tfQuestions = quiz.questions.filter(q => q.type === 'group-tf');
     if (tfQuestions.length > 0) {
-      content += `<div class="section-header">PHẦN II. Câu trắc nghiệm đúng sai.</div>`;
+      content += `<div class="section-header">PHẦN II. Câu trắc nghiệm đúng sai. Thí sinh trả lời từ câu 1 đến câu ${tfQuestions.length}. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai.</div>`;
       tfQuestions.forEach((q, i) => {
-        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
         if (q.subQuestions) {
           content += `<div class="options">`;
           q.subQuestions.forEach((sq, si) => {
-            content += `<div>${String.fromCharCode(97 + si)}) ${sq.text}</div>`;
+            content += `<div><b>${String.fromCharCode(97 + si)})</b> ${sq.text}</div>`;
           });
           content += `</div>`;
         }
@@ -331,36 +339,54 @@ const AdminDashboard: React.FC = () => {
     // Phần III: Short
     const shortQuestions = quiz.questions.filter(q => q.type === 'short');
     if (shortQuestions.length > 0) {
-      content += `<div class="section-header">PHẦN III. Câu trắc nghiệm trả lời ngắn.</div>`;
+      content += `<div class="section-header">PHẦN III. Câu trắc nghiệm trả lời ngắn. Thí sinh trả lời từ câu 1 đến câu ${shortQuestions.length}.</div>`;
       shortQuestions.forEach((q, i) => {
-        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        content += `<div class="question"><span class="question-num">Câu ${i + 1}.</span> ${q.text}</div>`;
+        if (q.imageUrl) content += `<div class="image-container"><img src="${q.imageUrl}" /></div>`;
       });
     }
 
-    // Bảng đáp án ở cuối
-    content += `<div class="footer">
-      <div class="section-header">BẢNG ĐÁP ÁN</div>
-      <table>
-        <tr><th>Câu</th><th>Đáp án</th></tr>
+    // Bảng đáp án gọn gàng (Nhiều cột)
+    content += `
+      <div style="page-break-before: always;"></div>
+      <div class="section-header" style="text-align: center;">BẢNG ĐÁP ÁN</div>
+      <table class="ans-table">
+        <tr>
+          <th>Câu</th><th>Đáp án</th>
+          <th>Câu</th><th>Đáp án</th>
+          <th>Câu</th><th>Đáp án</th>
+        </tr>
     `;
     
-    quiz.questions.forEach((q, i) => {
-      let ans = "";
-      if (q.type === 'mcq') ans = q.correctAnswer || "";
-      else if (q.type === 'short') ans = q.correctAnswer || "";
-      else if (q.type === 'group-tf' && q.subQuestions) {
-        ans = q.subQuestions.map(sq => (sq.correctAnswer === 'True' ? 'Đ' : 'S')).join(' | ');
+    for (let i = 0; i < quiz.questions.length; i += 3) {
+      content += '<tr>';
+      for (let j = 0; j < 3; j++) {
+        const qIdx = i + j;
+        if (qIdx < quiz.questions.length) {
+          const q = quiz.questions[qIdx];
+          let ans = "";
+          if (q.type === 'mcq') {
+              const optIdx = q.options?.indexOf(q.correctAnswer || "");
+              ans = optIdx !== undefined && optIdx >= 0 ? getOptionChar(optIdx) : (q.correctAnswer || "");
+          } else if (q.type === 'short') {
+              ans = q.correctAnswer || "";
+          } else if (q.type === 'group-tf' && q.subQuestions) {
+              ans = q.subQuestions.map((sq, si) => `${String.fromCharCode(97+si)}:${sq.correctAnswer === 'True' ? 'Đ' : 'S'}`).join(' ');
+          }
+          content += `<td style="font-weight:bold">${qIdx + 1}</td><td>${ans}</td>`;
+        } else {
+          content += '<td></td><td></td>';
+        }
       }
-      content += `<tr><td>${i + 1}</td><td>${ans}</td></tr>`;
-    });
+      content += '</tr>';
+    }
 
     content += `
       </table>
-      <div style="margin-top: 20px; font-style: italic; text-align: right;">--- Hết ---</div>
+      <div class="footer-note">--- HẾT ---</div>
       </body></html>
     `;
 
-    // Tạo Blob và tải xuống
     const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -402,12 +428,10 @@ const AdminDashboard: React.FC = () => {
                     </div>
                 </div>
                 <div className="space-y-6">
-                  {/* Editor for Text */}
                   <div className="space-y-3">
                     <label className="text-[11px] font-black text-slate-800 uppercase flex items-center gap-1 tracking-tight">Câu {actualIdx + 1}: Nội dung chính</label>
                     <RichTextEditor rows={3} value={q.text} onChange={(val) => { const n = [...questions]; n[actualIdx].text = val; setQuestions(n); }} placeholder="Nhập nội dung câu hỏi..." />
                     
-                    {/* UPLOAD IMAGE BUTTON BELOW TEXT */}
                     <div className="flex flex-wrap items-center gap-3">
                         <input type="file" accept="image/*" className="hidden" id={`img-upload-${q.id}`} onChange={(e) => handleQuestionImageUpload(e, actualIdx)} />
                         <label htmlFor={`img-upload-${q.id}`} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase cursor-pointer hover:bg-blue-700 transition-all shadow-md">
@@ -420,7 +444,6 @@ const AdminDashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* IMAGE LINK DISPLAY */}
                     {q.imageUrl && (
                         <div className="flex items-center gap-2 text-xs text-blue-500 font-medium p-2 bg-blue-50 rounded-lg border border-blue-100 overflow-hidden">
                             <LinkIcon size={14} className="shrink-0"/>
@@ -428,7 +451,6 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     )}
 
-                    {/* MAIN PREVIEW FRAME */}
                     {(q.text.trim() || q.imageUrl) && (
                         <div className="p-4 bg-blue-50/20 border border-blue-200 rounded-2xl relative shadow-inner overflow-hidden">
                            <span className="absolute top-2 right-2 text-[9px] font-black text-blue-400 uppercase flex items-center gap-1 bg-white px-2 py-0.5 rounded shadow-sm border border-blue-100"><Eye size={10}/> Preview Hiển Thị</span>
@@ -444,7 +466,6 @@ const AdminDashboard: React.FC = () => {
                     )}
                   </div>
 
-                  {/* MCQ OPTIONS */}
                   {q.type === 'mcq' && q.options && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {q.options.map((opt, optIdx) => (
@@ -461,7 +482,6 @@ const AdminDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  {/* TRUE/FALSE SUB-QUESTIONS - NEW FORMAT */}
                   {q.type === 'group-tf' && q.subQuestions && (
                       <div className="space-y-6">
                           {q.subQuestions.map((sq, sqIdx) => (
@@ -504,7 +524,6 @@ const AdminDashboard: React.FC = () => {
                                       </div>
                                   </div>
 
-                                  {/* PREVIEW FOR THIS SUB-QUESTION */}
                                   {sq.text.trim() && (
                                       <div className="ml-9 p-3 bg-white/60 border border-white rounded-xl text-xs font-medium text-gray-600 relative">
                                           <span className="absolute top-1 right-2 text-[8px] font-black text-gray-300 uppercase tracking-widest">Preview {String.fromCharCode(97+sqIdx)}</span>
@@ -516,7 +535,6 @@ const AdminDashboard: React.FC = () => {
                       </div>
                   )}
 
-                  {/* SHORT ANSWER */}
                   {q.type === 'short' && (
                       <div className="flex items-center gap-3 bg-green-50/50 p-4 rounded-2xl border border-green-100 shadow-inner">
                           <span className="text-sm font-bold text-green-700 whitespace-nowrap">Đáp án đúng (số):</span>
@@ -524,12 +542,10 @@ const AdminDashboard: React.FC = () => {
                       </div>
                   )}
 
-                  {/* SOLUTION */}
                   <div className="mt-6 p-4 bg-yellow-50 rounded-2xl border-2 border-yellow-100 relative overflow-hidden group">
                     <h5 className="text-[10px] font-black text-yellow-700 uppercase flex items-center gap-1 mb-3 tracking-widest"><Lightbulb size={12}/> Giải chi tiết câu {actualIdx + 1}:</h5>
                     <RichTextEditor rows={3} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[actualIdx].solution = val; setQuestions(n); }} placeholder="Hướng dẫn giải cho câu này..." />
                     
-                    {/* PREVIEW FRAME FOR SOLUTION */}
                     {q.solution && q.solution.trim() && (
                         <div className="mt-3 p-4 bg-white/80 border border-yellow-200 rounded-xl shadow-sm relative backdrop-blur-sm">
                             <span className="absolute top-2 right-2 text-[9px] font-black text-yellow-300 uppercase flex items-center gap-1 px-1.5 py-0.5 rounded border border-yellow-100 bg-white"><Eye size={10}/> Preview Giải</span>
@@ -609,7 +625,6 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: XEM ĐỀ THI & XUẤT WORD */}
       {viewingQuiz && (
           <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
@@ -623,10 +638,11 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <div className="flex gap-3">
                           <button onClick={() => handleExportWord(viewingQuiz)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-blue-900/20"><FileDown size={18}/> Xuất File Word (.doc)</button>
+                          <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all"><Printer size={18}/> In nhanh</button>
                           <button onClick={() => setViewingQuiz(null)} className="p-2 hover:bg-white/10 rounded-full transition-all"><XCircle size={28}/></button>
                       </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50 print-area">
                       <div className="max-w-3xl mx-auto bg-white p-10 shadow-xl rounded-2xl min-h-screen border">
                           <div className="text-center mb-10 pb-6 border-b-2 border-slate-100">
                               <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-2">{viewingQuiz.title}</h2>
@@ -642,7 +658,7 @@ const AdminDashboard: React.FC = () => {
                                           {viewingQuiz.questions.filter(q => q.type === 'mcq').map((q, i) => (
                                               <div key={q.id}>
                                                   <div className="font-bold text-gray-800 mb-3"><span className="text-blue-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border block" />}
                                                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 ml-6">
                                                       {q.options?.map((opt, oi) => (
                                                           <div key={oi} className="text-sm text-gray-700"><span className="font-bold mr-2">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>
@@ -662,7 +678,7 @@ const AdminDashboard: React.FC = () => {
                                           {viewingQuiz.questions.filter(q => q.type === 'group-tf').map((q, i) => (
                                               <div key={q.id}>
                                                   <div className="font-bold text-gray-800 mb-4"><span className="text-purple-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border block" />}
                                                   <div className="space-y-2 ml-6">
                                                       {q.subQuestions?.map((sq, si) => (
                                                           <div key={sq.id} className="text-sm text-gray-700 flex gap-2">
@@ -685,7 +701,7 @@ const AdminDashboard: React.FC = () => {
                                           {viewingQuiz.questions.filter(q => q.type === 'short').map((q, i) => (
                                               <div key={q.id}>
                                                   <div className="font-bold text-gray-800 mb-3"><span className="text-green-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border block" />}
                                               </div>
                                           ))}
                                       </div>
@@ -948,7 +964,6 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: CHI TIẾT RÈN LUYỆN HỌC SINH */}
       {selectedStudentForDetails && (
           <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
