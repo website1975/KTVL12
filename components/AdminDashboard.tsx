@@ -4,7 +4,8 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2 } from 'lucide-react';
+// Fix: Added ListChecks to the lucide-react import list
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -109,6 +110,23 @@ const AdminDashboard: React.FC = () => {
     return Array.from(cats).sort();
   }, [quizzes]);
 
+  // Thống kê dữ liệu
+  const stats = useMemo(() => {
+      const totalResults = results.length;
+      const avgScore = totalResults > 0 ? results.reduce((sum, r) => sum + r.score, 0) / totalResults : 0;
+      const totalStudents = users.filter(u => u.role === 'student').length;
+      
+      // Tìm đề thi được làm nhiều nhất
+      const quizCounts: Record<string, number> = {};
+      results.forEach(r => {
+          quizCounts[r.quizId] = (quizCounts[r.quizId] || 0) + 1;
+      });
+      const topQuizId = Object.entries(quizCounts).sort((a,b) => b[1] - a[1])[0]?.[0];
+      const topQuizTitle = quizzes.find(q => q.id === topQuizId)?.title || "Chưa có dữ liệu";
+
+      return { totalResults, avgScore, totalStudents, topQuizTitle };
+  }, [results, users, quizzes]);
+
   useEffect(() => { refreshData(); }, [activeTab]);
 
   useEffect(() => {
@@ -182,7 +200,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleFileUpload = async () => {
-    if (!file) return;
+    if (!file) { alert("Vui lòng chọn file PDF."); return; }
     setIsProcessing(true);
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -191,6 +209,7 @@ const AdminDashboard: React.FC = () => {
       try {
         const extracted = await parseQuestionsFromPDF(base64Str);
         setQuestions([...questions, ...extracted]);
+        alert("Đã phân tích xong câu hỏi từ PDF!");
         setActiveTab('create');
       } catch (e: any) { alert(e.message); } finally { setIsProcessing(false); }
     };
@@ -238,6 +257,12 @@ const AdminDashboard: React.FC = () => {
                       ))}
                     </div>
                   )}
+                  {q.type === 'short' && (
+                      <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-gray-600">Đáp án đúng (số):</span>
+                          <input type="text" className="border rounded-lg p-2 flex-1 focus:ring-2 focus:ring-blue-100 outline-none" value={q.correctAnswer || ''} onChange={(e) => { const n = [...questions]; n[idx].correctAnswer = e.target.value; setQuestions(n); }} placeholder="Ví dụ: 6.5" />
+                      </div>
+                  )}
                   <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-100">
                     <h5 className="text-[10px] font-bold text-yellow-700 uppercase flex items-center gap-1 mb-2"><Lightbulb size={12}/> Lời giải:</h5>
                     <RichTextEditor rows={2} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[idx].solution = val; setQuestions(n); }} placeholder="Giải thích chi tiết..." />
@@ -259,9 +284,9 @@ const AdminDashboard: React.FC = () => {
         <button onClick={() => { setActiveTab('list'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'list' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><List size={20} /> Danh Sách Đề</button>
         <button onClick={() => setActiveTab('auto')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'auto' ? 'bg-purple-600 text-white shadow-lg shadow-purple-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><BrainCircuit size={20} /> Trợ Lý Soạn Đề AI</button>
         <button onClick={() => setActiveTab('create')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>{editingId ? <Edit size={20} /> : <Plus size={20} />} {editingId ? 'Sửa Đề' : 'Soạn Đề Mới'}</button>
-        <button onClick={() => { setActiveTab('import'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'import' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Upload size={20} /> Nhập Từ File PDF</button>
-        <button onClick={() => { setActiveTab('results'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'results' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><BarChart3 size={20} /> Kết Quả Thi</button>
-        <button onClick={() => { setActiveTab('students'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'students' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Users size={20} /> Quản Lý Học Sinh</button>
+        <button onClick={() => { setActiveTab('import'); resetForm(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'import' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Upload size={20} /> Nhập Từ PDF</button>
+        <button onClick={() => { setActiveTab('results'); refreshData(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'results' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><BarChart3 size={20} /> Kết Quả & Thống Kê</button>
+        <button onClick={() => { setActiveTab('students'); refreshData(); }} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap transition ${activeTab === 'students' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><Users size={20} /> Quản Lý Học Sinh</button>
       </div>
 
       {activeTab === 'list' && (
@@ -342,12 +367,126 @@ const AdminDashboard: React.FC = () => {
                       </div>
                   </div>
               </div>
-              {isProcessing && (
-                  <div className="fixed inset-0 bg-white/90 z-[200] flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm">
-                      <div className="w-32 h-32 border-[12px] border-purple-50 border-t-purple-600 rounded-full animate-spin shadow-2xl mb-8"></div>
-                      <h2 className="text-3xl font-black text-gray-800 mb-4 uppercase">{loadingMsg}</h2>
+          </div>
+      )}
+
+      {activeTab === 'import' && (
+          <div className="max-w-2xl mx-auto mt-10 animate-fade-in">
+              <div className="bg-white p-10 rounded-3xl shadow-xl border-2 border-dashed border-blue-200 text-center">
+                  <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Upload size={40}/>
                   </div>
-              )}
+                  <h2 className="text-2xl font-black text-gray-800 mb-2">Nhập Đề Từ PDF</h2>
+                  <p className="text-gray-500 mb-8">Hỗ trợ trích xuất câu hỏi từ file PDF đề thi định dạng 2025.</p>
+                  
+                  <div className="mb-8">
+                      <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="pdf-upload" />
+                      <label htmlFor="pdf-upload" className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold transition-all border border-gray-200">
+                          {file ? file.name : "Chọn file PDF từ máy tính"}
+                      </label>
+                  </div>
+
+                  <button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-100 hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                      {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles size={20}/>}
+                      {isProcessing ? "ĐANG PHÂN TÍCH PDF..." : "BẮT ĐẦU XỬ LÝ"}
+                  </button>
+              </div>
+          </div>
+      )}
+
+      {activeTab === 'results' && (
+          <div className="space-y-8 animate-fade-in">
+              {/* Thẻ thống kê nhanh */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><TrendingUp size={24}/></div>
+                      <div><p className="text-xs font-bold text-gray-400 uppercase">Tổng lượt thi</p><p className="text-2xl font-black">{stats.totalResults}</p></div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                      <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><PieChart size={24}/></div>
+                      <div><p className="text-xs font-bold text-gray-400 uppercase">Điểm TB</p><p className="text-2xl font-black">{stats.avgScore.toFixed(2)}</p></div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                      <div className="p-3 bg-green-50 text-green-600 rounded-xl"><UserCheck size={24}/></div>
+                      <div><p className="text-xs font-bold text-gray-400 uppercase">Học sinh</p><p className="text-2xl font-black">{stats.totalStudents}</p></div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                      <div className="p-3 bg-orange-50 text-orange-600 rounded-xl"><Zap size={24}/></div>
+                      <div><p className="text-xs font-bold text-gray-400 uppercase">Đề hot nhất</p><p className="text-sm font-black truncate max-w-[120px]">{stats.topQuizTitle}</p></div>
+                  </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+                      <h3 className="font-black text-gray-800 uppercase flex items-center gap-2"><ListChecks className="text-blue-600"/> Bảng Điểm Chi Tiết</h3>
+                      <button onClick={refreshData} className="p-2 hover:bg-white rounded-lg border transition-all shadow-sm"><RefreshCw size={18}/></button>
+                  </div>
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                          <thead className="bg-gray-100/50 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b">
+                              <tr>
+                                  <th className="px-6 py-4">Học sinh</th>
+                                  <th className="px-6 py-4">Đề thi</th>
+                                  <th className="px-6 py-4">Thời gian làm</th>
+                                  <th className="px-6 py-4">Ngày nộp</th>
+                                  <th className="px-6 py-4 text-right">Điểm</th>
+                                  <th className="px-6 py-4 text-center">Thao tác</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y text-sm">
+                              {results.map(r => (
+                                  <tr key={r.id} className="hover:bg-blue-50/30 transition-all">
+                                      <td className="px-6 py-4 font-bold text-gray-800">{r.studentName}</td>
+                                      <td className="px-6 py-4 font-medium text-gray-500">{quizzes.find(q => q.id === r.quizId)?.title || "Đề đã xóa"}</td>
+                                      <td className="px-6 py-4 font-mono text-gray-400">{Math.floor(r.durationSeconds/60)}p {r.durationSeconds%60}s</td>
+                                      <td className="px-6 py-4 text-gray-400 flex items-center gap-1"><Calendar size={14}/> {format(parseISO(r.submittedAt), "HH:mm dd/MM")}</td>
+                                      <td className="px-6 py-4 text-right"><span className={`font-black text-lg ${r.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{r.score.toFixed(2)}</span></td>
+                                      <td className="px-6 py-4 text-center">
+                                          <button onClick={async () => { if(window.confirm('Xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="p-2 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {activeTab === 'students' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+              <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center">
+                  <h3 className="font-black text-gray-800 uppercase flex items-center gap-2"><Users className="text-blue-600"/> Danh Sách Học Sinh</h3>
+                  <div className="text-xs font-bold text-gray-400 uppercase">Tổng cộng: {users.filter(u => u.role === 'student').length} học sinh</div>
+              </div>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                      <thead className="bg-gray-100/50 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b">
+                          <tr>
+                              <th className="px-6 py-4">Họ và Tên</th>
+                              <th className="px-6 py-4">Tên đăng nhập</th>
+                              <th className="px-6 py-4">Khối lớp</th>
+                              <th className="px-6 py-4">Vai trò</th>
+                              <th className="px-6 py-4 text-center">Thao tác</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y text-sm">
+                          {users.map(u => (
+                              <tr key={u.id} className="hover:bg-blue-50/30 transition-all">
+                                  <td className="px-6 py-4 font-bold text-gray-800">{u.fullName}</td>
+                                  <td className="px-6 py-4 font-mono text-gray-500">{u.username}</td>
+                                  <td className="px-6 py-4"><span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold">Lớp {u.grade || 'Admin'}</span></td>
+                                  <td className="px-6 py-4 text-xs font-black uppercase text-gray-400">{u.role === 'admin' ? 'Giáo Viên' : 'Học Sinh'}</td>
+                                  <td className="px-6 py-4 text-center">
+                                      <div className="flex justify-center gap-1">
+                                          <button onClick={() => { if(window.confirm('Xóa tài khoản?')) { deleteUser(u.id); refreshData(); } }} className="p-2 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                                      </div>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
           </div>
       )}
 
@@ -376,6 +515,12 @@ const AdminDashboard: React.FC = () => {
                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl"><span className="font-bold text-gray-500 text-xs uppercase">Số câu</span><span className="text-blue-600 font-black text-xl">{questions.length}</span></div>
                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl"><span className="font-bold text-gray-500 text-xs uppercase">Điểm</span><span className="text-blue-600 font-black text-xl">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</span></div>
                   </div>
+                  <div className="mb-4">
+                      <label className="flex items-center justify-center gap-2 cursor-pointer p-3 bg-gray-50 rounded-xl font-bold text-sm text-gray-600 border border-transparent hover:border-blue-200">
+                          <input type="checkbox" checked={isPublished} onChange={e => setIsPublished(e.target.checked)} className="w-4 h-4 rounded text-blue-600" />
+                          Công bố đề thi cho học sinh
+                      </label>
+                  </div>
                   <button onClick={handleSaveQuiz} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-black shadow-xl transform active:scale-95 transition-all"><Save size={20} className="inline-block mr-2" /> LƯU ĐỀ THI</button>
                </div>
            </div>
@@ -396,6 +541,14 @@ const AdminDashboard: React.FC = () => {
                     ))}
                   </div>
               </div>
+          </div>
+      )}
+
+      {isProcessing && (
+          <div className="fixed inset-0 bg-white/90 z-[1000] flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm">
+              <div className="w-32 h-32 border-[12px] border-blue-50 border-t-blue-600 rounded-full animate-spin shadow-2xl mb-8"></div>
+              <h2 className="text-3xl font-black text-gray-800 mb-4 uppercase text-center max-w-xl">{loadingMsg}</h2>
+              <p className="text-gray-400 font-bold animate-pulse">Vui lòng không đóng trình duyệt...</p>
           </div>
       )}
     </div>
