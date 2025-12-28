@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X, Link as LinkIcon } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X, Link as LinkIcon, Printer, FileDown } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -93,6 +93,9 @@ const AdminDashboard: React.FC = () => {
 
   // Student details modal
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<User | null>(null);
+  
+  // View Quiz State
+  const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
 
   // AI Auto Gen State
   const [aiTopic, setAiTopic] = useState('');
@@ -261,6 +264,111 @@ const AdminDashboard: React.FC = () => {
     } finally {
         setIsProcessing(false);
     }
+  };
+
+  const handleExportWord = (quiz: Quiz) => {
+    if (!quiz) return;
+
+    // Helper: Trả về ký tự A, B, C, D dựa vào index
+    const getOptionChar = (i: number) => String.fromCharCode(65 + i);
+
+    // Xây dựng nội dung HTML cho Word
+    let content = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Times New Roman', serif; line-height: 1.5; }
+          .header { text-align: center; font-weight: bold; margin-bottom: 20px; }
+          .title { font-size: 16pt; text-transform: uppercase; }
+          .section-header { font-weight: bold; margin-top: 15px; text-decoration: underline; }
+          .question { margin-top: 10px; }
+          .options { margin-left: 20px; }
+          .footer { margin-top: 30px; border-top: 1px solid black; pt: 10px; }
+          table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+          th, td { border: 1px solid black; padding: 5px; text-align: center; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">${quiz.title}</div>
+          <div>Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</div>
+        </div>
+    `;
+
+    // Phần I: MCQ
+    const mcqQuestions = quiz.questions.filter(q => q.type === 'mcq');
+    if (mcqQuestions.length > 0) {
+      content += `<div class="section-header">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn.</div>`;
+      mcqQuestions.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        if (q.options) {
+          content += `<div class="options">`;
+          q.options.forEach((opt, oi) => {
+            content += `<div>${getOptionChar(oi)}. ${opt}</div>`;
+          });
+          content += `</div>`;
+        }
+      });
+    }
+
+    // Phần II: True/False
+    const tfQuestions = quiz.questions.filter(q => q.type === 'group-tf');
+    if (tfQuestions.length > 0) {
+      content += `<div class="section-header">PHẦN II. Câu trắc nghiệm đúng sai.</div>`;
+      tfQuestions.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        if (q.subQuestions) {
+          content += `<div class="options">`;
+          q.subQuestions.forEach((sq, si) => {
+            content += `<div>${String.fromCharCode(97 + si)}) ${sq.text}</div>`;
+          });
+          content += `</div>`;
+        }
+      });
+    }
+
+    // Phần III: Short
+    const shortQuestions = quiz.questions.filter(q => q.type === 'short');
+    if (shortQuestions.length > 0) {
+      content += `<div class="section-header">PHẦN III. Câu trắc nghiệm trả lời ngắn.</div>`;
+      shortQuestions.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+      });
+    }
+
+    // Bảng đáp án ở cuối
+    content += `<div class="footer">
+      <div class="section-header">BẢNG ĐÁP ÁN</div>
+      <table>
+        <tr><th>Câu</th><th>Đáp án</th></tr>
+    `;
+    
+    quiz.questions.forEach((q, i) => {
+      let ans = "";
+      if (q.type === 'mcq') ans = q.correctAnswer || "";
+      else if (q.type === 'short') ans = q.correctAnswer || "";
+      else if (q.type === 'group-tf' && q.subQuestions) {
+        ans = q.subQuestions.map(sq => (sq.correctAnswer === 'True' ? 'Đ' : 'S')).join(' | ');
+      }
+      content += `<tr><td>${i + 1}</td><td>${ans}</td></tr>`;
+    });
+
+    content += `
+      </table>
+      <div style="margin-top: 20px; font-style: italic; text-align: right;">--- Hết ---</div>
+      </body></html>
+    `;
+
+    // Tạo Blob và tải xuống
+    const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `De_thi_${quiz.title.replace(/\s+/g, '_')}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
@@ -487,8 +595,9 @@ const AdminDashboard: React.FC = () => {
                           <div className="overflow-hidden"><h3 className="font-bold text-gray-800 truncate">{q.title}</h3><div className="flex gap-2 items-center mt-1"><span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${q.isPublished ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>{q.isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</span><span className="text-[9px] text-gray-400 font-bold">LỚP {q.grade} | {q.questions.length} CÂU</span></div></div>
                         </div>
                         <div className="flex gap-1">
-                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit size={18}/></button>
-                          <button onClick={async () => { if(window.confirm('Xóa đề thi này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={18}/></button>
+                          <button onClick={() => setViewingQuiz(q)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all" title="Xem đề & Xuất file"><Eye size={18}/></button>
+                          <button onClick={() => handleEditQuiz(q)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Chỉnh sửa"><Edit size={18}/></button>
+                          <button onClick={async () => { if(window.confirm('Xóa đề thi này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-all" title="Xóa"><Trash2 size={18}/></button>
                         </div>
                       </div>
                     ))}
@@ -498,6 +607,95 @@ const AdminDashboard: React.FC = () => {
             ))
           )}
         </div>
+      )}
+
+      {/* MODAL: XEM ĐỀ THI & XUẤT WORD */}
+      {viewingQuiz && (
+          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-md">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
+                  <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                      <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg"><BookOpen size={24}/></div>
+                          <div>
+                              <h3 className="text-xl font-black uppercase tracking-tight">Xem trước đề thi</h3>
+                              <p className="text-[10px] font-bold text-blue-300">NỘI DUNG HIỂN THỊ CHUẨN</p>
+                          </div>
+                      </div>
+                      <div className="flex gap-3">
+                          <button onClick={() => handleExportWord(viewingQuiz)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-blue-900/20"><FileDown size={18}/> Xuất File Word (.doc)</button>
+                          <button onClick={() => setViewingQuiz(null)} className="p-2 hover:bg-white/10 rounded-full transition-all"><XCircle size={28}/></button>
+                      </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+                      <div className="max-w-3xl mx-auto bg-white p-10 shadow-xl rounded-2xl min-h-screen border">
+                          <div className="text-center mb-10 pb-6 border-b-2 border-slate-100">
+                              <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-2">{viewingQuiz.title}</h2>
+                              <div className="text-gray-500 font-bold uppercase text-xs tracking-[0.2em]">Khối {viewingQuiz.grade} | {viewingQuiz.durationMinutes} Phút | {viewingQuiz.questions.length} Câu hỏi</div>
+                          </div>
+
+                          <div className="space-y-12">
+                              {/* PHẦN I */}
+                              {viewingQuiz.questions.filter(q => q.type === 'mcq').length > 0 && (
+                                  <div>
+                                      <h4 className="font-black text-slate-900 mb-6 flex items-center gap-2 border-l-4 border-blue-500 pl-3 uppercase text-sm tracking-widest bg-blue-50 py-2">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn</h4>
+                                      <div className="space-y-8">
+                                          {viewingQuiz.questions.filter(q => q.type === 'mcq').map((q, i) => (
+                                              <div key={q.id}>
+                                                  <div className="font-bold text-gray-800 mb-3"><span className="text-blue-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 ml-6">
+                                                      {q.options?.map((opt, oi) => (
+                                                          <div key={oi} className="text-sm text-gray-700"><span className="font-bold mr-2">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>
+                                                      ))}
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+
+                              {/* PHẦN II */}
+                              {viewingQuiz.questions.filter(q => q.type === 'group-tf').length > 0 && (
+                                  <div>
+                                      <h4 className="font-black text-slate-900 mb-6 flex items-center gap-2 border-l-4 border-purple-500 pl-3 uppercase text-sm tracking-widest bg-purple-50 py-2">PHẦN II. Câu trắc nghiệm đúng sai</h4>
+                                      <div className="space-y-8">
+                                          {viewingQuiz.questions.filter(q => q.type === 'group-tf').map((q, i) => (
+                                              <div key={q.id}>
+                                                  <div className="font-bold text-gray-800 mb-4"><span className="text-purple-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                                  <div className="space-y-2 ml-6">
+                                                      {q.subQuestions?.map((sq, si) => (
+                                                          <div key={sq.id} className="text-sm text-gray-700 flex gap-2">
+                                                              <span className="font-bold text-gray-400 shrink-0">{String.fromCharCode(97+si)})</span>
+                                                              <LatexText text={sq.text}/>
+                                                          </div>
+                                                      ))}
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+
+                              {/* PHẦN III */}
+                              {viewingQuiz.questions.filter(q => q.type === 'short').length > 0 && (
+                                  <div>
+                                      <h4 className="font-black text-slate-900 mb-6 flex items-center gap-2 border-l-4 border-green-500 pl-3 uppercase text-sm tracking-widest bg-green-50 py-2">PHẦN III. Câu trắc nghiệm trả lời ngắn</h4>
+                                      <div className="space-y-8">
+                                          {viewingQuiz.questions.filter(q => q.type === 'short').map((q, i) => (
+                                              <div key={q.id}>
+                                                  <div className="font-bold text-gray-800 mb-3"><span className="text-green-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
+                                                  {q.imageUrl && <img src={q.imageUrl} className="max-h-64 mx-auto my-4 rounded border" />}
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
       {activeTab === 'import' && (
