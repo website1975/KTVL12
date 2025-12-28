@@ -1,18 +1,20 @@
+
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
+  // Load env từ file .env (nếu có)
   const env = loadEnv(mode, (process as any).cwd(), '')
+  
+  // Lấy API_KEY: Ưu tiên từ môi trường hệ thống (Vercel) rồi mới đến file .env
+  const apiKey = process.env.API_KEY || env.API_KEY || '';
 
   return {
     plugins: [react()],
-    // Chỉ định nghĩa lại API_KEY vì nó không có prefix VITE_
-    // Các biến VITE_SUPABASE_... sẽ được Vite tự động xử lý, không cần define thủ công để tránh lỗi build
     define: {
-      'import.meta.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Đẩy biến này vào code chạy ở trình duyệt
+      'process.env.API_KEY': JSON.stringify(apiKey)
     }
   }
 })
