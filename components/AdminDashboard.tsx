@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -91,13 +91,15 @@ const AdminDashboard: React.FC = () => {
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
+  // Student details modal
+  const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<User | null>(null);
+
   // AI Auto Gen State
   const [aiTopic, setAiTopic] = useState('');
   const [aiConfig, setAiConfig] = useState({ p1: 10, p2: 4, p3: 6, diff: 'Thông hiểu' });
 
   const loadingMessages = ['Đang trích xuất dữ liệu...', 'Đang nhận diện công thức toán học...', 'Đang phân tích lời giải chi tiết...', 'Đang hoàn tất cấu trúc đề thi...'];
 
-  // FIX: Đảm bảo lọc khối lớp hoạt động chính xác cho danh sách đề
   const groupedQuizzes = useMemo(() => {
     const groups: Record<string, Quiz[]> = {};
     const filtered = quizzes.filter(q => quizFilterGrade === 'all' || q.grade === quizFilterGrade);
@@ -184,7 +186,6 @@ const AdminDashboard: React.FC = () => {
     setEditingId(quiz.id); setTitle(quiz.title); setDescription(quiz.description); setCategory(quiz.category || ''); setQuizType(quiz.type); setGrade(quiz.grade); setStartTime(quiz.startTime || ''); setDuration(quiz.durationMinutes); setQuestions(quiz.questions); setIsPublished(quiz.isPublished); setActiveTab('create');
   };
 
-  // CẬP NHẬT: AI Sẽ cộng dồn (Append) vào Workspace hiện tại
   const handleAutoGenerate = async () => {
       if (!aiTopic.trim()) { alert("Vui lòng nhập chủ đề."); return; }
       setIsProcessing(true);
@@ -198,13 +199,8 @@ const AdminDashboard: React.FC = () => {
               part3Count: aiConfig.p3,
               difficulty: aiConfig.diff
           });
-          // Cộng dồn vào danh sách câu hỏi hiện có trong Workspace
           setQuestions(prev => [...prev, ...generated]);
-          
-          if (!title.trim()) {
-            setTitle(`Đề thi AI - ${aiTopic}`);
-          }
-          
+          if (!title.trim()) setTitle(`Đề thi AI - ${aiTopic}`);
           alert(`Đã soạn thêm ${generated.length} câu hỏi. Hãy kiểm tra lại ở Tab Soạn Đề!`);
           setActiveTab('create');
       } catch (e: any) {
@@ -214,7 +210,6 @@ const AdminDashboard: React.FC = () => {
       }
   };
 
-  // CẬP NHẬT: Nhập PDF cũng sẽ cộng dồn (Append)
   const handleFileUpload = async () => {
     if (!file) { alert("Vui lòng chọn file PDF."); return; }
     setIsProcessing(true);
@@ -229,6 +224,23 @@ const AdminDashboard: React.FC = () => {
         setActiveTab('create');
       } catch (e: any) { alert(e.message); } finally { setIsProcessing(false); }
     };
+  };
+
+  const exportResultsToCSV = () => {
+    if (filteredResults.length === 0) return;
+    const header = "Học sinh,Đề thi,Ngày nộp,Điểm số,Thời gian (giây)\n";
+    const rows = filteredResults.map(r => {
+        const qTitle = quizzes.find(q => q.id === r.quizId)?.title || "N/A";
+        return `"${r.studentName}","${qTitle}","${format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")}","${r.score}","${r.durationSeconds}"`;
+    }).join("\n");
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + header + rows;
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `ket_qua_thi_khoi_${quizFilterGrade}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
@@ -361,9 +373,7 @@ const AdminDashboard: React.FC = () => {
                       <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><Upload size={32}/></div>
                       <div><h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Nhập đề từ PDF thông minh</h2><p className="text-gray-400 text-sm font-medium">Hệ thống AI tự động bóc tách Câu hỏi, Đáp án và Lời giải.</p></div>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                      {/* Mẫu file PDF tiêu chuẩn */}
                       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
                           <h4 className="text-xs font-black text-blue-600 uppercase mb-4 tracking-widest flex items-center gap-2"><HelpCircle size={14}/> Mẫu cấu trúc file PDF chuẩn</h4>
                           <div className="space-y-4">
@@ -375,14 +385,12 @@ const AdminDashboard: React.FC = () => {
                                   <p className="ml-2">D. Phương án 4</p>
                                   <div className="mt-2 pt-2 border-t border-dashed border-slate-100 text-blue-600 italic">
                                       <p>HƯỚNG DẪN GIẢI</p>
-                                      <p>Bước 1: ...</p>
-                                      <p>Bước 2: ... Kết quả chọn B.</p>
+                                      <p>Bước 1: ... Kết quả chọn B.</p>
                                   </div>
                               </div>
                               <ul className="text-[10px] text-slate-500 space-y-2 font-bold uppercase">
                                   <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> Đánh dấu * vào đáp án đúng (Phần I).</li>
-                                  <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> Đặt từ khóa "LỜI GIẢI" hoặc "HƯỚNG DẪN GIẢI" trước mỗi lời giải.</li>
-                                  <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> Giữ công thức trong cặp $...$.</li>
+                                  <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> Đặt từ khóa "LỜI GIẢI" hoặc "HƯỚNG DẪN GIẢI".</li>
                               </ul>
                           </div>
                       </div>
@@ -390,11 +398,9 @@ const AdminDashboard: React.FC = () => {
                           <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
                           <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform"><FileText size={40}/></div>
                           <span className="font-black text-blue-600 text-lg">{file ? file.name : "KÉO THẢ FILE PDF VÀO ĐÂY"}</span>
-                          <p className="text-gray-400 text-xs font-bold mt-2">Dung lượng tối đa 10MB</p>
                       </div>
                   </div>
-
-                  <button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-100 disabled:opacity-50 transition-all flex items-center justify-center gap-3">
+                  <button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-100 disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-widest">
                       {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles size={24}/>}
                       {isProcessing ? "ĐANG PHÂN TÍCH FILE..." : "BẮT ĐẦU TRÍCH XUẤT CÂU HỎI"}
                   </button>
@@ -427,7 +433,10 @@ const AdminDashboard: React.FC = () => {
                           {quizzes.filter(q => quizFilterGrade === 'all' || q.grade === quizFilterGrade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                       </select>
                   </div>
-                  <button onClick={refreshData} className="p-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all self-end shadow-inner"><RefreshCw size={20}/></button>
+                  <div className="flex gap-2 self-end">
+                    <button onClick={exportResultsToCSV} className="p-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all shadow-md flex items-center gap-2 text-xs font-bold uppercase tracking-wider"><Download size={18}/> Xuất Excel (CSV)</button>
+                    <button onClick={refreshData} className="p-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all shadow-inner"><RefreshCw size={18}/></button>
+                  </div>
               </div>
 
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -445,7 +454,7 @@ const AdminDashboard: React.FC = () => {
                           </thead>
                           <tbody className="divide-y text-sm">
                               {filteredResults.length === 0 ? (
-                                  <tr><td colSpan={6} className="px-6 py-20 text-center text-gray-400 font-bold">Chưa có kết quả nào trong khối này.</td></tr>
+                                  <tr><td colSpan={6} className="px-6 py-20 text-center text-gray-400 font-bold">Chưa có kết quả nào.</td></tr>
                               ) : (
                                 filteredResults.map(r => (
                                     <tr key={r.id} className="hover:bg-blue-50/30 transition-all group">
@@ -484,28 +493,38 @@ const AdminDashboard: React.FC = () => {
                                   <th className="px-6 py-5">Học sinh</th>
                                   <th className="px-6 py-5">Tên đăng nhập</th>
                                   <th className="px-6 py-5">Khối</th>
+                                  <th className="px-6 py-5 text-center">Thống kê rèn luyện</th>
                                   <th className="px-6 py-5 text-center">Thao tác</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y text-sm">
                               {filteredStudents.length === 0 ? (
-                                  <tr><td colSpan={4} className="px-6 py-20 text-center text-gray-400 font-bold">Không có học sinh nào.</td></tr>
+                                  <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-400 font-bold">Không có học sinh nào.</td></tr>
                               ) : (
-                                filteredStudents.map(u => (
-                                    <tr key={u.id} className="hover:bg-indigo-50/20 transition-all">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-black"><GraduationCap size={20}/></div>
-                                                <span className="font-bold text-gray-800">{u.fullName}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 font-mono text-gray-500">{u.username}</td>
-                                        <td className="px-6 py-4"><span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase">Lớp {u.grade}</span></td>
-                                        <td className="px-6 py-4 text-center">
-                                            <button onClick={() => { if(window.confirm('Xóa tài khoản này khỏi hệ thống?')) { deleteUser(u.id); refreshData(); } }} className="p-2.5 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={18}/></button>
-                                        </td>
-                                    </tr>
-                                ))
+                                filteredStudents.map(u => {
+                                    const studentResults = results.filter(r => r.studentId === u.id);
+                                    const avg = studentResults.length > 0 ? (studentResults.reduce((s,r) => s+r.score, 0) / studentResults.length).toFixed(2) : "0.00";
+                                    return (
+                                        <tr key={u.id} className="hover:bg-indigo-50/20 transition-all group">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-black"><GraduationCap size={20}/></div>
+                                                    <span className="font-bold text-gray-800">{u.fullName}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 font-mono text-gray-500">{u.username}</td>
+                                            <td className="px-6 py-4"><span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase">Lớp {u.grade}</span></td>
+                                            <td className="px-6 py-4 text-center">
+                                                <button onClick={() => setSelectedStudentForDetails(u)} className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all">
+                                                    <Trophy size={14}/> {studentResults.length} Đề | Avg: {avg}
+                                                </button>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <button onClick={() => { if(window.confirm('Xóa tài khoản này khỏi hệ thống?')) { deleteUser(u.id); refreshData(); } }} className="p-2.5 text-gray-300 group-hover:text-red-500 transition-all"><Trash2 size={18}/></button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                               )}
                           </tbody>
                       </table>
@@ -537,8 +556,8 @@ const AdminDashboard: React.FC = () => {
                   <div className="lg:col-span-2 space-y-6">
                       <div className="bg-white p-8 rounded-3xl shadow-xl border border-purple-100 relative overflow-hidden group">
                           <h3 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tighter">Bạn muốn AI soạn đề gì?</h3>
-                          <p className="text-gray-400 text-sm mb-6 font-medium">Nhập chi tiết yêu cầu về kiến thức cần kiểm tra. AI sẽ tự động thêm vào danh sách đang soạn.</p>
-                          <textarea className="w-full border-2 border-purple-50 rounded-2xl p-6 text-lg focus:border-purple-300 outline-none transition-all bg-purple-50/5 min-h-[220px]" placeholder="Ví dụ: Đề cương ôn thi giữa học kỳ 2, tập trung kiến thức về logarit và đồ thị hàm số..." value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
+                          <p className="text-gray-400 text-sm mb-6 font-medium">Nhập chi tiết yêu cầu về kiến thức. AI sẽ tự động thêm vào danh sách đang soạn.</p>
+                          <textarea className="w-full border-2 border-purple-50 rounded-2xl p-6 text-lg focus:border-purple-300 outline-none transition-all bg-purple-50/5 min-h-[220px]" placeholder="Ví dụ: Đề cương ôn tập Chương 1: Hàm số lớp 12..." value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
                           <div className="mt-8 flex flex-col md:flex-row gap-4">
                               <button onClick={()=>{setAiTopic(''); setQuestions([]);}} className="px-8 py-4 rounded-2xl font-black text-gray-400 hover:bg-gray-100 transition-all uppercase text-xs tracking-widest flex items-center justify-center gap-2"><RefreshCw size={18}/> Làm lại</button>
                               <button onClick={handleAutoGenerate} disabled={isProcessing} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-lg py-5 rounded-2xl shadow-2xl transform active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 tracking-widest">
@@ -559,7 +578,7 @@ const AdminDashboard: React.FC = () => {
                <div className="space-y-6">
                  <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Tên bài thi / Đề kiểm tra</label>
-                    <input type="text" className="w-full border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-500 outline-none transition font-black text-xl bg-gray-50/30" placeholder="VD: Kiểm tra cuối kỳ 1 - Lớp 12..." value={title} onChange={e => setTitle(e.target.value)}/>
+                    <input type="text" className="w-full border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-500 outline-none transition font-black text-xl bg-gray-50/30" placeholder="VD: Kiểm tra cuối kỳ 1..." value={title} onChange={e => setTitle(e.target.value)}/>
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -597,6 +616,57 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL: CHI TIẾT RÈN LUYỆN HỌC SINH */}
+      {selectedStudentForDetails && (
+          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
+              <div className="p-6 bg-slate-800 text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-lg"><Users size={24}/></div>
+                    <div><h3 className="text-xl font-black uppercase tracking-tight">Chi tiết rèn luyện: {selectedStudentForDetails.fullName}</h3><p className="text-[10px] font-bold text-indigo-200">KẾT QUẢ TỪNG BÀI THI</p></div>
+                </div>
+                <button onClick={() => setSelectedStudentForDetails(null)} className="p-2 hover:bg-white/10 rounded-full transition-all"><XCircle size={28}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                  <table className="w-full text-left border-collapse bg-white rounded-2xl overflow-hidden shadow-sm">
+                      <thead className="bg-gray-100 text-[10px] font-black uppercase text-gray-500 tracking-widest border-b">
+                          <tr>
+                              <th className="px-6 py-4">Tên bài thi</th>
+                              <th className="px-6 py-4">Khối</th>
+                              <th className="px-6 py-4">Ngày thi</th>
+                              <th className="px-6 py-4 text-center">Thời gian làm</th>
+                              <th className="px-6 py-4 text-right">Điểm</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y text-sm">
+                          {results.filter(r => r.studentId === selectedStudentForDetails.id).length === 0 ? (
+                              <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-[10px]">Chưa có dữ liệu rèn luyện</td></tr>
+                          ) : (
+                            results.filter(r => r.studentId === selectedStudentForDetails.id)
+                              .sort((a,b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+                              .map(r => {
+                                  const quizObj = quizzes.find(q => q.id === r.quizId);
+                                  return (
+                                    <tr key={r.id} className="hover:bg-indigo-50/30 transition-all">
+                                        <td className="px-6 py-4 font-bold text-gray-800">{quizObj?.title || "Đề đã xóa"}</td>
+                                        <td className="px-6 py-4"><span className="text-[10px] font-black bg-gray-100 px-2 py-0.5 rounded">KHỐI {quizObj?.grade || "?"}</span></td>
+                                        <td className="px-6 py-4 text-gray-400 font-medium">{format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")}</td>
+                                        <td className="px-6 py-4 text-center text-gray-500 font-mono">{Math.floor(r.durationSeconds/60)}p {r.durationSeconds%60}s</td>
+                                        <td className="px-6 py-4 text-right"><span className={`font-black text-lg ${r.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{r.score.toFixed(2)}</span></td>
+                                    </tr>
+                                  );
+                              })
+                          )}
+                      </tbody>
+                  </table>
+              </div>
+              <div className="p-4 bg-gray-100 border-t flex justify-end">
+                <button onClick={() => setSelectedStudentForDetails(null)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-black transition-all">Đóng cửa sổ</button>
+              </div>
+            </div>
+          </div>
+      )}
+
       {showBankModal && (
           <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up">
@@ -621,12 +691,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="absolute inset-0 flex items-center justify-center text-blue-600"><Sparkles size={36}/></div>
               </div>
               <h2 className="text-3xl font-black text-gray-800 mt-12 mb-4 uppercase tracking-tighter text-center max-w-xl">{loadingMsg}</h2>
-              <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-bounce"></div>
-              </div>
-              <p className="mt-8 text-gray-400 font-black animate-pulse text-[10px] tracking-[0.2em] uppercase">Hệ thống AI đang xử lý dữ liệu phức tạp...</p>
+              <p className="mt-8 text-gray-400 font-black animate-pulse text-[10px] tracking-[0.2em] uppercase text-center">Hệ thống AI đang xử lý dữ liệu phức tạp...</p>
           </div>
       )}
     </div>
