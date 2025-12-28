@@ -2,41 +2,33 @@
 export type Role = 'admin' | 'student';
 export type Grade = '10' | '11' | '12';
 export type QuizType = 'practice' | 'test';
-export type QuestionType = 'mcq' | 'group-tf' | 'short'; // Updated types for MOET format
+export type QuestionType = 'mcq' | 'group-tf' | 'short';
 
 export interface User {
   id: string;
   username: string;
-  password: string; // In real app, hash this!
+  password: string;
   role: Role;
   fullName: string;
-  grade?: Grade; // Only for students
+  grade?: Grade;
 }
 
 export interface SubQuestion {
   id: string;
-  text: string; // The statement (e.g., "a) Hàm số đồng biến...")
+  text: string;
   correctAnswer: 'True' | 'False';
 }
 
 export interface Question {
   id: string;
   type: QuestionType;
-  text: string; // The main question stem
-  points: number | string; // Teacher manually sets points - allow string for flexible input
+  text: string;
+  points: number | string;
   imageUrl?: string;
-  
-  // New field: Detailed Solution / Explanation
   solution?: string; 
-  
-  // For MCQ (Part I)
   options?: string[]; 
   correctAnswer?: string; 
-
-  // For Group True/False (Part II)
   subQuestions?: SubQuestion[];
-
-  // For Short Answer (Part III) - uses correctAnswer field
 }
 
 export interface Quiz {
@@ -45,11 +37,12 @@ export interface Quiz {
   description: string;
   type: QuizType;
   grade: Grade;
+  category?: string; // Trường phân loại theo chương/mục (VD: Chương 1, Chương 2...)
   startTime?: string;
   durationMinutes: number;
   questions: Question[];
   createdAt: string;
-  isPublished: boolean; // New field: determines if students can see the quiz
+  isPublished: boolean;
 }
 
 export interface Result {
@@ -60,8 +53,8 @@ export interface Result {
   score: number;
   totalQuestions: number;
   submittedAt: string;
-  durationSeconds: number; // Time taken in seconds
-  detailScores?: number[]; // Score per question
+  durationSeconds: number;
+  detailScores?: number[];
 }
 
 export interface AuthState {
