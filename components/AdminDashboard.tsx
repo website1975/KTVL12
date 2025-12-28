@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X, Link as LinkIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -293,108 +293,138 @@ const AdminDashboard: React.FC = () => {
                         <button onClick={() => { if(window.confirm('Xóa câu hỏi này?')) { const n = [...questions]; n.splice(actualIdx,1); setQuestions(n); }}} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-full transition-all"><Trash2 size={16}/></button>
                     </div>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {/* Editor for Text */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1"><FileText size={12}/> Nội dung câu hỏi:</label>
-                        <div className="flex items-center gap-2">
-                            <input type="file" accept="image/*" className="hidden" id={`img-upload-${q.id}`} onChange={(e) => handleQuestionImageUpload(e, actualIdx)} />
-                            <label htmlFor={`img-upload-${q.id}`} className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase border border-blue-100 cursor-pointer hover:bg-blue-100 transition-all">
-                                <ImageIcon size={14}/> {q.imageUrl ? "Đổi ảnh" : "Tải ảnh lên"}
-                            </label>
-                            {q.imageUrl && (
-                                <button onClick={() => { const n = [...questions]; n[actualIdx].imageUrl = undefined; setQuestions(n); }} className="text-red-400 hover:text-red-600">
-                                    <X size={14}/>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    <RichTextEditor rows={2} value={q.text} onChange={(val) => { const n = [...questions]; n[actualIdx].text = val; setQuestions(n); }} placeholder="Nhập nội dung câu hỏi..." />
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-black text-slate-800 uppercase flex items-center gap-1 tracking-tight">Câu {actualIdx + 1}: Nội dung chính</label>
+                    <RichTextEditor rows={3} value={q.text} onChange={(val) => { const n = [...questions]; n[actualIdx].text = val; setQuestions(n); }} placeholder="Nhập nội dung câu hỏi..." />
                     
-                    {/* IMAGE PREVIEW IN EDITOR */}
+                    {/* UPLOAD IMAGE BUTTON BELOW TEXT */}
+                    <div className="flex flex-wrap items-center gap-3">
+                        <input type="file" accept="image/*" className="hidden" id={`img-upload-${q.id}`} onChange={(e) => handleQuestionImageUpload(e, actualIdx)} />
+                        <label htmlFor={`img-upload-${q.id}`} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase cursor-pointer hover:bg-blue-700 transition-all shadow-md">
+                            <ImageIcon size={16}/> {q.imageUrl ? "Đổi hình ảnh" : "Tải hình ảnh lên"}
+                        </label>
+                        {q.imageUrl && (
+                            <button onClick={() => { const n = [...questions]; n[actualIdx].imageUrl = undefined; setQuestions(n); }} className="p-2 text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-all border border-red-100">
+                                <X size={16}/>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* IMAGE LINK DISPLAY */}
                     {q.imageUrl && (
-                        <div className="mt-2 border rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center p-2">
-                            <img src={q.imageUrl} className="max-h-48 object-contain rounded-lg" alt="Preview" />
+                        <div className="flex items-center gap-2 text-xs text-blue-500 font-medium p-2 bg-blue-50 rounded-lg border border-blue-100 overflow-hidden">
+                            <LinkIcon size={14} className="shrink-0"/>
+                            <span className="truncate">{q.imageUrl}</span>
                         </div>
                     )}
 
-                    {/* PREVIEW FRAME FOR TEXT & SUB-QUESTIONS */}
-                    {(q.text.trim() || (q.type === 'group-tf' && q.subQuestions?.some(sq => sq.text.trim()))) && (
-                        <div className="mt-2 p-4 bg-blue-50/30 border border-blue-100 rounded-lg relative shadow-inner">
-                           <span className="absolute top-2 right-2 text-[9px] font-black text-blue-400 uppercase flex items-center gap-1 bg-white px-1.5 py-0.5 rounded shadow-sm border border-blue-100"><Eye size={10}/> Preview Hiển Thị</span>
+                    {/* MAIN PREVIEW FRAME */}
+                    {(q.text.trim() || q.imageUrl) && (
+                        <div className="p-4 bg-blue-50/20 border border-blue-200 rounded-2xl relative shadow-inner overflow-hidden">
+                           <span className="absolute top-2 right-2 text-[9px] font-black text-blue-400 uppercase flex items-center gap-1 bg-white px-2 py-0.5 rounded shadow-sm border border-blue-100"><Eye size={10}/> Preview Hiển Thị</span>
                            <div className="text-sm text-gray-800 leading-relaxed font-medium">
                                <LatexText text={q.text || '...'}/>
-                               
-                               {/* Special rendering for True/False sub-questions in preview */}
-                               {q.type === 'group-tf' && q.subQuestions && (
-                                   <div className="mt-4 space-y-2 pl-4 border-l-2 border-blue-200">
-                                       {q.subQuestions.map((sq, sqIdx) => (
-                                           <div key={sq.id} className="flex gap-2">
-                                               <span className="font-bold text-blue-600 whitespace-nowrap">{String.fromCharCode(97+sqIdx)})</span>
-                                               <div className="flex-1"><LatexText text={sq.text || '...'}/></div>
-                                           </div>
-                                       ))}
-                                   </div>
+                               {q.imageUrl && (
+                                    <div className="mt-4 flex justify-center bg-white p-2 rounded-xl border">
+                                        <img src={q.imageUrl} className="max-h-64 object-contain rounded-lg" alt="Preview" />
+                                    </div>
                                )}
                            </div>
                         </div>
                     )}
                   </div>
 
+                  {/* MCQ OPTIONS */}
                   {q.type === 'mcq' && q.options && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {q.options.map((opt, optIdx) => (
-                        <div key={optIdx} className="flex items-center gap-2 bg-gray-50 p-2 rounded border">
-                          <input type="radio" name={`correct-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const n = [...questions]; n[actualIdx].correctAnswer = opt; setQuestions(n); }} />
-                          <RichTextEditor className="flex-1 border-none bg-transparent" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; const n = [...questions]; n[actualIdx].options=o; setQuestions(n); }} />
+                        <div key={optIdx} className="space-y-2">
+                            <div className="flex items-center gap-2 bg-gray-100/50 p-2 rounded-xl border border-gray-200">
+                                <input type="radio" name={`correct-${q.id}`} className="w-5 h-5 accent-blue-600" checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const n = [...questions]; n[actualIdx].correctAnswer = opt; setQuestions(n); }} />
+                                <RichTextEditor className="flex-1 border-none bg-transparent" value={opt} onChange={(val) => { const o = [...(q.options||[])]; o[optIdx]=val; const n = [...questions]; n[actualIdx].options=o; setQuestions(n); }} placeholder={`Đáp án ${String.fromCharCode(65+optIdx)}...`} />
+                            </div>
+                            {opt.trim() && (
+                                <div className="text-[11px] bg-white px-3 py-1 border rounded-lg text-gray-500 font-medium"><LatexText text={opt}/></div>
+                            )}
                         </div>
                       ))}
                     </div>
                   )}
 
+                  {/* TRUE/FALSE SUB-QUESTIONS - NEW FORMAT */}
                   {q.type === 'group-tf' && q.subQuestions && (
-                      <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-dashed border-purple-200 shadow-inner">
+                      <div className="space-y-6">
                           {q.subQuestions.map((sq, sqIdx) => (
-                              <div key={sq.id} className="flex items-center gap-3">
-                                  <span className="text-xs font-bold text-gray-400 w-4">{String.fromCharCode(97+sqIdx)})</span>
-                                  <input type="text" className="flex-1 border rounded p-1.5 text-xs outline-none focus:ring-1 focus:ring-purple-200" value={sq.text} onChange={(e) => {
-                                      const n = [...questions];
-                                      const sub = [...(q.subQuestions||[])];
-                                      sub[sqIdx] = {...sub[sqIdx], text: e.target.value};
-                                      n[actualIdx].subQuestions = sub;
-                                      setQuestions(n);
-                                  }} placeholder="Nội dung ý nhỏ..."/>
-                                  <select className="border rounded text-xs p-1 font-bold outline-none bg-white cursor-pointer" value={sq.correctAnswer} onChange={(e) => {
-                                      const n = [...questions];
-                                      const sub = [...(q.subQuestions||[])];
-                                      sub[sqIdx] = {...sub[sqIdx], correctAnswer: e.target.value as 'True' | 'False'};
-                                      n[actualIdx].subQuestions = sub;
-                                      setQuestions(n);
-                                  }}>
-                                      <option value="True">ĐÚNG</option>
-                                      <option value="False">SAI</option>
-                                  </select>
+                              <div key={sq.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-inner space-y-3">
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                      <span className="text-xs font-black text-blue-600 w-6 uppercase tracking-widest">{String.fromCharCode(97+sqIdx)})</span>
+                                      <input type="text" className="flex-1 w-full border-2 border-white rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-100 shadow-sm transition-all" value={sq.text} onChange={(e) => {
+                                          const n = [...questions];
+                                          const sub = [...(q.subQuestions||[])];
+                                          sub[sqIdx] = {...sub[sqIdx], text: e.target.value};
+                                          n[actualIdx].subQuestions = sub;
+                                          setQuestions(n);
+                                      }} placeholder={`Nội dung ý ${String.fromCharCode(97+sqIdx)}...`}/>
+                                      
+                                      <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => {
+                                                const n = [...questions];
+                                                const sub = [...(q.subQuestions||[])];
+                                                sub[sqIdx] = {...sub[sqIdx], correctAnswer: 'True'};
+                                                n[actualIdx].subQuestions = sub;
+                                                setQuestions(n);
+                                            }}
+                                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${sq.correctAnswer === 'True' ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-white border-gray-100 text-gray-400'}`}
+                                        >
+                                            ĐÚNG
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                const n = [...questions];
+                                                const sub = [...(q.subQuestions||[])];
+                                                sub[sqIdx] = {...sub[sqIdx], correctAnswer: 'False'};
+                                                n[actualIdx].subQuestions = sub;
+                                                setQuestions(n);
+                                            }}
+                                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${sq.correctAnswer === 'False' ? 'bg-orange-600 border-orange-600 text-white shadow-md' : 'bg-white border-gray-100 text-gray-400'}`}
+                                        >
+                                            SAI
+                                        </button>
+                                      </div>
+                                  </div>
+
+                                  {/* PREVIEW FOR THIS SUB-QUESTION */}
+                                  {sq.text.trim() && (
+                                      <div className="ml-9 p-3 bg-white/60 border border-white rounded-xl text-xs font-medium text-gray-600 relative">
+                                          <span className="absolute top-1 right-2 text-[8px] font-black text-gray-300 uppercase tracking-widest">Preview {String.fromCharCode(97+sqIdx)}</span>
+                                          <LatexText text={sq.text}/>
+                                      </div>
+                                  )}
                               </div>
                           ))}
                       </div>
                   )}
 
+                  {/* SHORT ANSWER */}
                   {q.type === 'short' && (
-                      <div className="flex items-center gap-3 bg-green-50/50 p-3 rounded-xl border border-green-100">
+                      <div className="flex items-center gap-3 bg-green-50/50 p-4 rounded-2xl border border-green-100 shadow-inner">
                           <span className="text-sm font-bold text-green-700 whitespace-nowrap">Đáp án đúng (số):</span>
-                          <input type="text" className="border-2 border-green-100 rounded-lg p-2 flex-1 focus:border-green-400 outline-none font-bold" value={q.correctAnswer || ''} onChange={(e) => { const n = [...questions]; n[actualIdx].correctAnswer = e.target.value; setQuestions(n); }} placeholder="Ví dụ: 6.5" />
+                          <input type="text" className="border-2 border-green-100 rounded-xl p-3 flex-1 focus:border-green-400 outline-none font-black text-lg bg-white shadow-sm" value={q.correctAnswer || ''} onChange={(e) => { const n = [...questions]; n[actualIdx].correctAnswer = e.target.value; setQuestions(n); }} placeholder="Ví dụ: 6.5" />
                       </div>
                   )}
 
-                  <div className="mt-4 p-3 bg-yellow-50 rounded-xl border border-yellow-200 relative overflow-hidden group">
-                    <h5 className="text-[10px] font-black text-yellow-700 uppercase flex items-center gap-1 mb-2 tracking-widest"><Lightbulb size={12}/> Lời giải chi tiết:</h5>
-                    <RichTextEditor rows={2} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[actualIdx].solution = val; setQuestions(n); }} placeholder="Giải thích các bước thực hiện..." />
+                  {/* SOLUTION */}
+                  <div className="mt-6 p-4 bg-yellow-50 rounded-2xl border-2 border-yellow-100 relative overflow-hidden group">
+                    <h5 className="text-[10px] font-black text-yellow-700 uppercase flex items-center gap-1 mb-3 tracking-widest"><Lightbulb size={12}/> Giải chi tiết câu {actualIdx + 1}:</h5>
+                    <RichTextEditor rows={3} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[actualIdx].solution = val; setQuestions(n); }} placeholder="Hướng dẫn giải cho câu này..." />
                     
                     {/* PREVIEW FRAME FOR SOLUTION */}
                     {q.solution && q.solution.trim() && (
-                        <div className="mt-3 p-4 bg-white border border-yellow-100 rounded-lg shadow-sm relative">
-                            <span className="absolute top-2 right-2 text-[9px] font-black text-yellow-400 uppercase flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded shadow-sm"><Eye size={10}/> Preview Giải</span>
+                        <div className="mt-3 p-4 bg-white/80 border border-yellow-200 rounded-xl shadow-sm relative backdrop-blur-sm">
+                            <span className="absolute top-2 right-2 text-[9px] font-black text-yellow-300 uppercase flex items-center gap-1 px-1.5 py-0.5 rounded border border-yellow-100 bg-white"><Eye size={10}/> Preview Giải</span>
                             <div className="text-sm text-gray-700 leading-relaxed"><LatexText text={q.solution}/></div>
                         </div>
                     )}
