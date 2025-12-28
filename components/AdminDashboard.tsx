@@ -184,6 +184,7 @@ const AdminDashboard: React.FC = () => {
     setEditingId(quiz.id); setTitle(quiz.title); setDescription(quiz.description); setCategory(quiz.category || ''); setQuizType(quiz.type); setGrade(quiz.grade); setStartTime(quiz.startTime || ''); setDuration(quiz.durationMinutes); setQuestions(quiz.questions); setIsPublished(quiz.isPublished); setActiveTab('create');
   };
 
+  // CẬP NHẬT: AI Sẽ cộng dồn (Append) vào Workspace hiện tại
   const handleAutoGenerate = async () => {
       if (!aiTopic.trim()) { alert("Vui lòng nhập chủ đề."); return; }
       setIsProcessing(true);
@@ -197,9 +198,14 @@ const AdminDashboard: React.FC = () => {
               part3Count: aiConfig.p3,
               difficulty: aiConfig.diff
           });
-          setQuestions(generated);
-          setTitle(`Đề thi AI - ${aiTopic}`);
-          alert(`Đã soạn xong ${generated.length} câu hỏi. Hãy kiểm tra lại ở Tab Soạn Đề!`);
+          // Cộng dồn vào danh sách câu hỏi hiện có trong Workspace
+          setQuestions(prev => [...prev, ...generated]);
+          
+          if (!title.trim()) {
+            setTitle(`Đề thi AI - ${aiTopic}`);
+          }
+          
+          alert(`Đã soạn thêm ${generated.length} câu hỏi. Hãy kiểm tra lại ở Tab Soạn Đề!`);
           setActiveTab('create');
       } catch (e: any) {
           alert(e.message);
@@ -208,6 +214,7 @@ const AdminDashboard: React.FC = () => {
       }
   };
 
+  // CẬP NHẬT: Nhập PDF cũng sẽ cộng dồn (Append)
   const handleFileUpload = async () => {
     if (!file) { alert("Vui lòng chọn file PDF."); return; }
     setIsProcessing(true);
@@ -217,8 +224,8 @@ const AdminDashboard: React.FC = () => {
       const base64Str = (reader.result as string).split(',')[1];
       try {
         const extracted = await parseQuestionsFromPDF(base64Str);
-        setQuestions([...questions, ...extracted]);
-        alert(`Đã phân tích xong ${extracted.length} câu hỏi từ PDF!`);
+        setQuestions(prev => [...prev, ...extracted]);
+        alert(`Đã phân tích và thêm ${extracted.length} câu hỏi từ PDF!`);
         setActiveTab('create');
       } catch (e: any) { alert(e.message); } finally { setIsProcessing(false); }
     };
@@ -298,7 +305,7 @@ const AdminDashboard: React.FC = () => {
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
         <button onClick={() => { setActiveTab('list'); resetForm(); }} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'list' ? 'bg-slate-800 text-white border-slate-800 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><List size={18} /> QUẢN LÝ ĐỀ</button>
-        <button onClick={() => { setActiveTab('create'); resetForm(); }} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'create' && !editingId ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><Plus size={18} /> SOẠN ĐỀ MỚI</button>
+        <button onClick={() => { setActiveTab('create'); if(!editingId && questions.length === 0) resetForm(); }} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'create' ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><Plus size={18} /> SOẠN ĐỀ MỚI</button>
         <button onClick={() => setActiveTab('auto')} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'auto' ? 'bg-purple-600 text-white border-purple-600 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><BrainCircuit size={18} /> SOẠN ĐỀ AI</button>
         <button onClick={() => setActiveTab('import')} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'import' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><Upload size={18} /> NHẬP TỪ PDF</button>
         <button onClick={() => setActiveTab('results')} className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 whitespace-nowrap transition-all border ${activeTab === 'results' ? 'bg-green-600 text-white border-green-600 shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50'}`}><BarChart3 size={18} /> KẾT QUẢ</button>
@@ -517,7 +524,7 @@ const AdminDashboard: React.FC = () => {
                               <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Khối lớp</label><select className="w-full border-2 rounded-xl p-3 bg-gray-50 font-bold focus:border-purple-300 outline-none" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
                               <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Độ khó</label><select className="w-full border-2 rounded-xl p-3 bg-gray-50 font-bold focus:border-purple-300 outline-none" value={aiConfig.diff} onChange={e=>setAiConfig({...aiConfig, diff:e.target.value})}><option value="Nhận biết">Nhận biết</option><option value="Thông hiểu">Thông hiểu</option><option value="Vận dụng">Vận dụng</option><option value="Vận dụng cao">Vận dụng cao</option></select></div>
                               <div className="pt-4 border-t border-dashed">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase block mb-3">Ma trận câu hỏi</label>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase block mb-3">Số lượng câu cần soạn</label>
                                   <div className="grid grid-cols-3 gap-2 text-center">
                                       <div><span className="text-[9px] text-gray-400 font-bold uppercase">Phần I</span><input type="number" className="w-full border rounded-lg p-2 text-center font-bold" value={aiConfig.p1} onChange={e=>setAiConfig({...aiConfig, p1:Number(e.target.value)})}/></div>
                                       <div><span className="text-[9px] text-gray-400 font-bold uppercase">Phần II</span><input type="number" className="w-full border rounded-lg p-2 text-center font-bold" value={aiConfig.p2} onChange={e=>setAiConfig({...aiConfig, p2:Number(e.target.value)})}/></div>
@@ -530,12 +537,12 @@ const AdminDashboard: React.FC = () => {
                   <div className="lg:col-span-2 space-y-6">
                       <div className="bg-white p-8 rounded-3xl shadow-xl border border-purple-100 relative overflow-hidden group">
                           <h3 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tighter">Bạn muốn AI soạn đề gì?</h3>
-                          <p className="text-gray-400 text-sm mb-6 font-medium">Nhập chi tiết yêu cầu về kiến thức cần kiểm tra.</p>
+                          <p className="text-gray-400 text-sm mb-6 font-medium">Nhập chi tiết yêu cầu về kiến thức cần kiểm tra. AI sẽ tự động thêm vào danh sách đang soạn.</p>
                           <textarea className="w-full border-2 border-purple-50 rounded-2xl p-6 text-lg focus:border-purple-300 outline-none transition-all bg-purple-50/5 min-h-[220px]" placeholder="Ví dụ: Đề cương ôn thi giữa học kỳ 2, tập trung kiến thức về logarit và đồ thị hàm số..." value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
                           <div className="mt-8 flex flex-col md:flex-row gap-4">
                               <button onClick={()=>{setAiTopic(''); setQuestions([]);}} className="px-8 py-4 rounded-2xl font-black text-gray-400 hover:bg-gray-100 transition-all uppercase text-xs tracking-widest flex items-center justify-center gap-2"><RefreshCw size={18}/> Làm lại</button>
                               <button onClick={handleAutoGenerate} disabled={isProcessing} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-lg py-5 rounded-2xl shadow-2xl transform active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 tracking-widest">
-                                  {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles />} {isProcessing ? "ĐANG SOẠN ĐỀ..." : "BẮT ĐẦU SOẠN ĐỀ TỰ ĐỘNG"}
+                                  {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles />} {isProcessing ? "ĐANG SOẠN THÊM..." : "BẮT ĐẦU SOẠN THÊM BẰNG AI"}
                               </button>
                           </div>
                       </div>
