@@ -27,13 +27,18 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDel
             lastError = error;
             const errorStr = (error.message || '') + ' ' + JSON.stringify(error);
             const msg = errorStr.toLowerCase();
-            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('429') || msg.includes('quota') || msg.includes('500') || msg.includes('apikey');
             
-            if (msg.includes('apikey') || msg.includes('key not found')) {
-                throw new Error("API Key không hợp lệ hoặc đã hết hạn.");
+            // Kiểm tra các lỗi phổ biến
+            const isQuotaError = msg.includes('429') || msg.includes('quota');
+            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('500');
+            const isAuthError = msg.includes('apikey') || msg.includes('key not found') || msg.includes('invalid');
+
+            if (isAuthError) {
+                throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại cấu hình trên Vercel.");
             }
 
-            if (isServerBusy && i < retries - 1) {
+            // Nếu hết hạn mức hoặc server bận, thử lại sau một khoảng thời gian
+            if ((isQuotaError || isServerBusy) && i < retries - 1) {
                 await delay(initialDelay);
                 initialDelay *= 2; 
                 continue;
@@ -59,7 +64,8 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   try {
     const response = await withRetry(async () => {
         return await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            // Chuyển sang Flash để có hạn mức (Quota) cao hơn và tốc độ nhanh hơn
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: "application/pdf", data: base64Data } },
@@ -107,6 +113,9 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
     }));
   } catch (error: any) {
+     if (error.message.includes('429')) {
+         throw new Error("Lỗi: Bạn đã dùng quá số lượt miễn phí của Google hôm nay. Vui lòng thử lại sau hoặc nâng cấp tài khoản.");
+     }
      throw new Error(error.message || "Lỗi xử lý file.");
   }
 };
@@ -141,7 +150,8 @@ export const generateQuizFromPrompt = async (config: {
     try {
         const response = await withRetry(async () => {
             return await ai.models.generateContent({
-                model: 'gemini-3-pro-preview',
+                // Sử dụng Gemini 3 Flash cho soạn đề nhanh và ổn định
+                model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: {
                     responseMimeType: "application/json",
@@ -185,6 +195,9 @@ export const generateQuizFromPrompt = async (config: {
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
         }));
     } catch (e: any) {
+        if (e.message.includes('429')) {
+            throw new Error("Lỗi: Hết lượt sử dụng AI miễn phí (Google Quota Exceeded). Vui lòng thử lại sau.");
+        }
         throw new Error(e.message || "Lỗi soạn đề AI");
     }
 };
