@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -243,6 +243,26 @@ const AdminDashboard: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionIndex: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    setLoadingMsg("Đang tải ảnh lên...");
+    try {
+        const url = await uploadImage(file);
+        if (url) {
+            const n = [...questions];
+            n[questionIndex].imageUrl = url;
+            setQuestions(n);
+        }
+    } catch (err) {
+        alert("Lỗi khi tải ảnh lên.");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
     return (
       <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
@@ -274,7 +294,54 @@ const AdminDashboard: React.FC = () => {
                     </div>
                 </div>
                 <div className="space-y-4">
-                  <RichTextEditor rows={2} value={q.text} onChange={(val) => { const n = [...questions]; n[actualIdx].text = val; setQuestions(n); }} placeholder="Nội dung câu hỏi..." />
+                  {/* Editor for Text */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1"><FileText size={12}/> Nội dung câu hỏi:</label>
+                        <div className="flex items-center gap-2">
+                            <input type="file" accept="image/*" className="hidden" id={`img-upload-${q.id}`} onChange={(e) => handleQuestionImageUpload(e, actualIdx)} />
+                            <label htmlFor={`img-upload-${q.id}`} className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase border border-blue-100 cursor-pointer hover:bg-blue-100 transition-all">
+                                <ImageIcon size={14}/> {q.imageUrl ? "Đổi ảnh" : "Tải ảnh lên"}
+                            </label>
+                            {q.imageUrl && (
+                                <button onClick={() => { const n = [...questions]; n[actualIdx].imageUrl = undefined; setQuestions(n); }} className="text-red-400 hover:text-red-600">
+                                    <X size={14}/>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <RichTextEditor rows={2} value={q.text} onChange={(val) => { const n = [...questions]; n[actualIdx].text = val; setQuestions(n); }} placeholder="Nhập nội dung câu hỏi..." />
+                    
+                    {/* IMAGE PREVIEW IN EDITOR */}
+                    {q.imageUrl && (
+                        <div className="mt-2 border rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center p-2">
+                            <img src={q.imageUrl} className="max-h-48 object-contain rounded-lg" alt="Preview" />
+                        </div>
+                    )}
+
+                    {/* PREVIEW FRAME FOR TEXT & SUB-QUESTIONS */}
+                    {(q.text.trim() || (q.type === 'group-tf' && q.subQuestions?.some(sq => sq.text.trim()))) && (
+                        <div className="mt-2 p-4 bg-blue-50/30 border border-blue-100 rounded-lg relative shadow-inner">
+                           <span className="absolute top-2 right-2 text-[9px] font-black text-blue-400 uppercase flex items-center gap-1 bg-white px-1.5 py-0.5 rounded shadow-sm border border-blue-100"><Eye size={10}/> Preview Hiển Thị</span>
+                           <div className="text-sm text-gray-800 leading-relaxed font-medium">
+                               <LatexText text={q.text || '...'}/>
+                               
+                               {/* Special rendering for True/False sub-questions in preview */}
+                               {q.type === 'group-tf' && q.subQuestions && (
+                                   <div className="mt-4 space-y-2 pl-4 border-l-2 border-blue-200">
+                                       {q.subQuestions.map((sq, sqIdx) => (
+                                           <div key={sq.id} className="flex gap-2">
+                                               <span className="font-bold text-blue-600 whitespace-nowrap">{String.fromCharCode(97+sqIdx)})</span>
+                                               <div className="flex-1"><LatexText text={sq.text || '...'}/></div>
+                                           </div>
+                                       ))}
+                                   </div>
+                               )}
+                           </div>
+                        </div>
+                    )}
+                  </div>
+
                   {q.type === 'mcq' && q.options && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {q.options.map((opt, optIdx) => (
@@ -285,15 +352,52 @@ const AdminDashboard: React.FC = () => {
                       ))}
                     </div>
                   )}
-                  {q.type === 'short' && (
-                      <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-gray-600">Đáp án đúng (số):</span>
-                          <input type="text" className="border rounded-lg p-2 flex-1 focus:ring-2 focus:ring-blue-100 outline-none" value={q.correctAnswer || ''} onChange={(e) => { const n = [...questions]; n[actualIdx].correctAnswer = e.target.value; setQuestions(n); }} placeholder="Ví dụ: 6.5" />
+
+                  {q.type === 'group-tf' && q.subQuestions && (
+                      <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-dashed border-purple-200 shadow-inner">
+                          {q.subQuestions.map((sq, sqIdx) => (
+                              <div key={sq.id} className="flex items-center gap-3">
+                                  <span className="text-xs font-bold text-gray-400 w-4">{String.fromCharCode(97+sqIdx)})</span>
+                                  <input type="text" className="flex-1 border rounded p-1.5 text-xs outline-none focus:ring-1 focus:ring-purple-200" value={sq.text} onChange={(e) => {
+                                      const n = [...questions];
+                                      const sub = [...(q.subQuestions||[])];
+                                      sub[sqIdx] = {...sub[sqIdx], text: e.target.value};
+                                      n[actualIdx].subQuestions = sub;
+                                      setQuestions(n);
+                                  }} placeholder="Nội dung ý nhỏ..."/>
+                                  <select className="border rounded text-xs p-1 font-bold outline-none bg-white cursor-pointer" value={sq.correctAnswer} onChange={(e) => {
+                                      const n = [...questions];
+                                      const sub = [...(q.subQuestions||[])];
+                                      sub[sqIdx] = {...sub[sqIdx], correctAnswer: e.target.value as 'True' | 'False'};
+                                      n[actualIdx].subQuestions = sub;
+                                      setQuestions(n);
+                                  }}>
+                                      <option value="True">ĐÚNG</option>
+                                      <option value="False">SAI</option>
+                                  </select>
+                              </div>
+                          ))}
                       </div>
                   )}
-                  <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-100">
-                    <h5 className="text-[10px] font-bold text-yellow-700 uppercase flex items-center gap-1 mb-2"><Lightbulb size={12}/> Lời giải chi tiết:</h5>
-                    <RichTextEditor rows={2} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[actualIdx].solution = val; setQuestions(n); }} placeholder="Giải thích các bước..." />
+
+                  {q.type === 'short' && (
+                      <div className="flex items-center gap-3 bg-green-50/50 p-3 rounded-xl border border-green-100">
+                          <span className="text-sm font-bold text-green-700 whitespace-nowrap">Đáp án đúng (số):</span>
+                          <input type="text" className="border-2 border-green-100 rounded-lg p-2 flex-1 focus:border-green-400 outline-none font-bold" value={q.correctAnswer || ''} onChange={(e) => { const n = [...questions]; n[actualIdx].correctAnswer = e.target.value; setQuestions(n); }} placeholder="Ví dụ: 6.5" />
+                      </div>
+                  )}
+
+                  <div className="mt-4 p-3 bg-yellow-50 rounded-xl border border-yellow-200 relative overflow-hidden group">
+                    <h5 className="text-[10px] font-black text-yellow-700 uppercase flex items-center gap-1 mb-2 tracking-widest"><Lightbulb size={12}/> Lời giải chi tiết:</h5>
+                    <RichTextEditor rows={2} value={q.solution || ''} onChange={(val) => { const n = [...questions]; n[actualIdx].solution = val; setQuestions(n); }} placeholder="Giải thích các bước thực hiện..." />
+                    
+                    {/* PREVIEW FRAME FOR SOLUTION */}
+                    {q.solution && q.solution.trim() && (
+                        <div className="mt-3 p-4 bg-white border border-yellow-100 rounded-lg shadow-sm relative">
+                            <span className="absolute top-2 right-2 text-[9px] font-black text-yellow-400 uppercase flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded shadow-sm"><Eye size={10}/> Preview Giải</span>
+                            <div className="text-sm text-gray-700 leading-relaxed"><LatexText text={q.solution}/></div>
+                        </div>
+                    )}
                   </div>
                 </div>
               </div>
