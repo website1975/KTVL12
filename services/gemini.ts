@@ -1,23 +1,15 @@
 
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { Question, QuestionType, Grade } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+import { Question } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
-// Đọc key từ import.meta.env
-const API_KEY = (import.meta as any).env.API_KEY || ''; 
-
 const getAIClient = () => {
-    if (!API_KEY) {
-        throw new Error("Vui lòng cấu hình API Key trong file .env");
-    }
-    return new GoogleGenAI({ apiKey: API_KEY });
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Hàm dọn dẹp chuỗi JSON trước khi parse
 const cleanJsonString = (str: string): string => {
-    // Loại bỏ markdown code blocks nếu có
     let cleaned = str.replace(/```json/g, "").replace(/```/g, "").trim();
     return cleaned;
 };
@@ -44,74 +36,25 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDel
     throw lastError;
 }
 
-export const generateQuestions = async (
-  topic: string,
-  grade: Grade,
-  count: number,
-  difficulty: string
-): Promise<Question[]> => {
-  const ai = getAIClient();
-  const prompt = `Tạo ${count} câu hỏi trắc nghiệm khách quan lớp ${grade}, chủ đề "${topic}". Định dạng JSON siêu gọn.`;
-
-  try {
-    const response = await withRetry(async () => {
-        return await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            question_text: { type: Type.STRING },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            correct_answer: { type: Type.STRING }
-                        },
-                        required: ["question_text", "options", "correct_answer"]
-                    }
-                }
-            }
-        });
-    });
-
-    const rawData = JSON.parse(cleanJsonString(response.text || '[]'));
-    return rawData.map((item: any) => ({
-      id: uuidv4(),
-      type: 'mcq',
-      text: item.question_text,
-      options: item.options,
-      correctAnswer: item.correct_answer,
-      solution: "",
-      points: 0.25
-    }));
-  } catch (error) {
-    throw new Error("Không thể tạo câu hỏi tự động.");
-  }
-};
-
+/**
+ * Trích xuất câu hỏi từ file PDF (Định dạng MOET 2025)
+ */
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
-
-  // Prompt tối ưu hóa: Yêu cầu AI viết cực kỳ ngắn gọn để tránh bị cắt cụt JSON
   const prompt = `
-    Nhiệm vụ: Chuyển PDF đề thi sang JSON. 
-    QUY TẮC ĐÁP ÁN: 
-    - Dấu sao (*) ở lựa chọn nào thì đó là 'correctAnswer'. Ví dụ: "*A. Nội dung" -> options xóa "*", correctAnswer = "A. Nội dung".
-    - Phần II (Đúng/Sai): Nhận diện (Đ)/(S).
-    - Phần III: Lấy giá trị sau "Đáp án:".
-    
-    YÊU CẦU QUAN TRỌNG:
-    - Trả về JSON NGUYÊN BẢN, KHÔNG khoảng trắng thừa, KHÔNG giải thích.
-    - Nếu file quá dài, chỉ ưu tiên trích xuất nội dung text chính xác.
-    - Giữ LaTeX trong $...$.
+    Nhiệm vụ: Chuyển đổi PDF đề thi (định dạng mới 2025) sang JSON. 
+    QUY TẮC TRÍCH XUẤT:
+    1. Phần I (MCQ): Lấy correctAnswer từ dấu (*) hoặc text.
+    2. Phần II (True/False): Trích xuất chính xác a-Đ, b-S...
+    3. Phần III (Short): Đáp số là giá trị số.
+    4. LỜI GIẢI: Trích xuất từ file nếu có trường lời giải/hướng dẫn.
+    Giữ nguyên công thức Toán trong cặp ký hiệu $...$.
   `;
 
   try {
     const response = await withRetry(async () => {
         return await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: 'gemini-3-pro-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: "application/pdf", data: base64Data } },
@@ -119,12 +62,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                 ]
             },
             config: {
-                safetySettings: [
-                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                ],
                 responseMimeType: "application/json",
-                // Thiết kế Schema tối giản để giảm dung lượng text trả về
                 responseSchema: {
                     type: Type.ARRAY,
                     items: {
@@ -135,6 +73,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                             points: { type: Type.NUMBER },
                             options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             correctAnswer: { type: Type.STRING, nullable: true },
+                            solution: { type: Type.STRING, nullable: true },
                             subQuestions: {
                                 type: Type.ARRAY,
                                 nullable: true,
@@ -156,31 +95,106 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 
     const text = response.text;
     if (!text) throw new Error("AI không trả về dữ liệu.");
-
     const cleanedText = cleanJsonString(text);
 
-    try {
-        const rawData = JSON.parse(cleanedText);
-        return rawData.map((item: any) => ({
+    const rawData = JSON.parse(cleanedText);
+    return rawData.map((item: any) => ({
+        id: uuidv4(),
+        type: item.type,
+        text: item.text,
+        points: item.points,
+        solution: item.solution || "",
+        options: item.options || undefined,
+        correctAnswer: item.correctAnswer || undefined,
+        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
             id: uuidv4(),
-            type: item.type,
-            text: item.text,
-            points: item.points,
-            solution: "",
-            options: item.options || undefined,
-            correctAnswer: item.correctAnswer || undefined,
-            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
-                id: uuidv4(),
-                text: sq.text,
-                correctAnswer: sq.correctAnswer
-            })) : undefined
-        }));
-    } catch (parseError: any) {
-        console.error("JSON Parse Error. Raw Text Snippet:", cleanedText.substring(cleanedText.length - 100));
-        throw new Error("Dữ liệu PDF quá lớn khiến kết quả bị cắt cụt. Vui lòng chia nhỏ PDF (dưới 5 trang) và thử lại.");
-    }
-
+            text: sq.text,
+            correctAnswer: sq.correctAnswer
+        })) : undefined
+    }));
   } catch (error: any) {
      throw new Error(error.message || "Lỗi xử lý file.");
   }
+};
+
+/**
+ * Soạn đề thi mới tự động bằng AI dựa trên yêu cầu (prompt)
+ */
+export const generateQuizFromPrompt = async (config: {
+    grade: string,
+    category: string,
+    topic: string,
+    part1Count: number,
+    part2Count: number,
+    part3Count: number,
+    difficulty: string
+}): Promise<Question[]> => {
+    const ai = getAIClient();
+    const prompt = `
+        Hãy đóng vai một chuyên gia soạn đề thi trắc nghiệm theo định dạng MOET 2025.
+        YÊU CẦU: Soạn đề cho Lớp ${config.grade}, thuộc Chương/Mục: ${config.category}.
+        CHỦ ĐỀ CHI TIẾT: ${config.topic}.
+        MỨC ĐỘ TƯ DUY CHỦ ĐẠO: ${config.difficulty}.
+
+        CẤU TRÚC ĐỀ CẦN SOẠN:
+        1. Phần I: ${config.part1Count} câu trắc nghiệm 4 lựa chọn (mcq).
+        2. Phần II: ${config.part2Count} câu Đúng/Sai (group-tf), mỗi câu 4 ý nhỏ.
+        3. Phần III: ${config.part3Count} câu trả lời ngắn (short) - đáp án là số.
+
+        YÊU CẦU KỸ THUẬT:
+        - Các công thức toán lý hóa bắt buộc để trong dấu $...$ (VD: $x^2 + y = 0$).
+        - Mỗi câu hỏi phải có trường 'solution' giải thích cực kỳ chi tiết cách giải.
+        - 'points' mặc định: Phần I (0.25/câu), Phần II (1.0/câu), Phần III (0.5/câu).
+        - Trả về JSON mảng Question.
+    `;
+
+    try {
+        const response = await withRetry(async () => {
+            return await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
+                                text: { type: Type.STRING },
+                                points: { type: Type.NUMBER },
+                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                                correctAnswer: { type: Type.STRING, nullable: true },
+                                solution: { type: Type.STRING, nullable: true },
+                                subQuestions: {
+                                    type: Type.ARRAY,
+                                    nullable: true,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            text: { type: Type.STRING },
+                                            correctAnswer: { type: Type.STRING, enum: ["True", "False"] }
+                                        }
+                                    }
+                                }
+                            },
+                            required: ["type", "text", "points", "solution"]
+                        }
+                    }
+                }
+            });
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("AI không phản hồi.");
+        const rawData = JSON.parse(cleanJsonString(text));
+        
+        return rawData.map((item: any) => ({
+            id: uuidv4(),
+            ...item,
+            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
+        }));
+    } catch (e: any) {
+        throw new Error("Lỗi soạn đề AI: " + e.message);
+    }
 };
