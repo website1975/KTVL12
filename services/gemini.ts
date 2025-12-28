@@ -4,7 +4,11 @@ import { Question } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
 const getAIClient = () => {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === "undefined" || apiKey === "") {
+        throw new Error("Chưa cấu hình Gemini API Key. Vui lòng thêm biến API_KEY vào Vercel.");
+    }
+    return new GoogleGenAI({ apiKey });
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -23,8 +27,12 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDel
             lastError = error;
             const errorStr = (error.message || '') + ' ' + JSON.stringify(error);
             const msg = errorStr.toLowerCase();
-            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('429') || msg.includes('quota') || msg.includes('500');
+            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('429') || msg.includes('quota') || msg.includes('500') || msg.includes('apikey');
             
+            if (msg.includes('apikey') || msg.includes('key not found')) {
+                throw new Error("API Key không hợp lệ hoặc đã hết hạn.");
+            }
+
             if (isServerBusy && i < retries - 1) {
                 await delay(initialDelay);
                 initialDelay *= 2; 
@@ -36,9 +44,6 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDel
     throw lastError;
 }
 
-/**
- * Trích xuất câu hỏi từ file PDF (Định dạng MOET 2025)
- */
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
   const prompt = `
@@ -95,31 +100,17 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 
     const text = response.text;
     if (!text) throw new Error("AI không trả về dữ liệu.");
-    const cleanedText = cleanJsonString(text);
-
-    const rawData = JSON.parse(cleanedText);
+    const rawData = JSON.parse(cleanJsonString(text));
     return rawData.map((item: any) => ({
         id: uuidv4(),
-        type: item.type,
-        text: item.text,
-        points: item.points,
-        solution: item.solution || "",
-        options: item.options || undefined,
-        correctAnswer: item.correctAnswer || undefined,
-        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({
-            id: uuidv4(),
-            text: sq.text,
-            correctAnswer: sq.correctAnswer
-        })) : undefined
+        ...item,
+        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
     }));
   } catch (error: any) {
      throw new Error(error.message || "Lỗi xử lý file.");
   }
 };
 
-/**
- * Soạn đề thi mới tự động bằng AI dựa trên yêu cầu (prompt)
- */
 export const generateQuizFromPrompt = async (config: {
     grade: string,
     category: string,
@@ -143,8 +134,7 @@ export const generateQuizFromPrompt = async (config: {
 
         YÊU CẦU KỸ THUẬT:
         - Các công thức toán lý hóa bắt buộc để trong dấu $...$ (VD: $x^2 + y = 0$).
-        - Mỗi câu hỏi phải có trường 'solution' giải thích cực kỳ chi tiết cách giải.
-        - 'points' mặc định: Phần I (0.25/câu), Phần II (1.0/câu), Phần III (0.5/câu).
+        - Mỗi câu hỏi phải có trường 'solution' giải thích chi tiết cách giải.
         - Trả về JSON mảng Question.
     `;
 
@@ -195,6 +185,6 @@ export const generateQuizFromPrompt = async (config: {
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
         }));
     } catch (e: any) {
-        throw new Error("Lỗi soạn đề AI: " + e.message);
+        throw new Error(e.message || "Lỗi soạn đề AI");
     }
 };
