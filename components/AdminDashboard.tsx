@@ -4,7 +4,7 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } fro
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X, Link as LinkIcon, Printer, FileDown, Shuffle } from 'lucide-react';
+import { Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, XCircle, Filter, BookOpen, Lightbulb, Users, ChevronRight, Database, Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, FolderTree, Layers, Sparkles, Zap, BrainCircuit, RefreshCw, Loader2, PieChart, TrendingUp, UserCheck, Calendar, ListChecks, Search, GraduationCap, CheckCircle, Trophy, HelpCircle, Download, ExternalLink, Eye, Image as ImageIcon, X, Link as LinkIcon, Printer, FileDown, Shuffle, CheckSquare, Clock as ClockIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -110,6 +110,13 @@ const AdminDashboard: React.FC = () => {
   const [bankSelectedQuizId, setBankSelectedQuizId] = useState('');
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+  // Batch point logic
+  const [batchPoints, setBatchPoints] = useState<Record<QuestionType, string>>({
+      'mcq': '0.25',
+      'group-tf': '1.0',
+      'short': '0.5'
+  });
 
   // Modal states
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<User | null>(null);
@@ -227,11 +234,11 @@ const AdminDashboard: React.FC = () => {
               part3Count: aiConfig.p3,
               difficulty: aiConfig.diff
           });
-          // Tự động sắp xếp lại mảng sau khi thêm từ AI
+          // Tự động sắp xếp lại mảng sau khi thêm từ AI để đồng nhất số thứ tự
           const merged = sortQuestionsByType([...questions, ...generated]);
           setQuestions(merged);
           if (!title.trim()) setTitle(`Đề thi AI - ${aiTopic}`);
-          alert(`Đã soạn thêm ${generated.length} câu hỏi và sắp xếp lại đề thi.`);
+          alert(`Đã soạn thêm ${generated.length} câu hỏi. Đề thi đã được sắp xếp lại đúng trình tự các phần.`);
           setActiveTab('create');
       } catch (e: any) {
           alert(e.message);
@@ -257,21 +264,18 @@ const AdminDashboard: React.FC = () => {
     };
   };
 
-  const exportResultsToCSV = () => {
-    if (filteredResults.length === 0) return;
-    const header = "Học sinh,Đề thi,Ngày nộp,Điểm số,Thời gian (giây)\n";
-    const rows = filteredResults.map(r => {
-        const qTitle = quizzes.find(q => q.id === r.quizId)?.title || "N/A";
-        return `"${r.studentName}","${qTitle}","${format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")}","${r.score}","${r.durationSeconds}"`;
-    }).join("\n");
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + header + rows;
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ket_qua_thi_khoi_${quizFilterGrade}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const setPointsForType = (type: QuestionType) => {
+      const val = batchPoints[type];
+      if (!val || isNaN(parseFloat(val))) {
+          alert("Điểm nhập vào không hợp lệ.");
+          return;
+      }
+      const newQuestions = questions.map(q => {
+          if (q.type === type) return { ...q, points: val };
+          return q;
+      });
+      setQuestions(newQuestions);
+      alert(`Đã cập nhật ${val} điểm cho tất cả câu thuộc phần này.`);
   };
 
   const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionIndex: number) => {
@@ -315,8 +319,6 @@ const AdminDashboard: React.FC = () => {
     if (!quiz) return;
 
     const getOptionChar = (i: number) => String.fromCharCode(65 + i);
-    
-    // Helper: Lọc bỏ chữ "Câu X" nếu nó đã tồn tại trong text để tránh lặp
     const cleanQuestionText = (text: string) => {
         return text.replace(/^Câu\s+\d+[:.]\s*/i, "").trim();
     };
@@ -462,15 +464,29 @@ const AdminDashboard: React.FC = () => {
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => {
     return (
       <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
-        <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
-          <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">{label}</h3>
+        <div className="bg-gray-50 px-6 py-4 border-b flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">{label}</h3>
+            {/* Batch Points Control */}
+            <div className="flex items-center gap-1 bg-white border rounded-lg p-1 shadow-inner">
+                <input 
+                    type="text" 
+                    className="w-10 text-center font-bold text-xs bg-transparent outline-none text-blue-600" 
+                    value={batchPoints[type]} 
+                    onChange={e => setBatchPoints({...batchPoints, [type]: e.target.value})} 
+                />
+                <button onClick={() => setPointsForType(type)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Áp dụng điểm này cho tất cả câu trong phần này">
+                    <CheckSquare size={14}/>
+                </button>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button onClick={() => { setBankTargetType(type); setShowBankModal(true); setBankSelectedQuizId(''); }} className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 transition-all"><Database size={14}/> Ngân hàng</button>
             <button onClick={() => {
                 let q: Question;
-                if (type === 'mcq') q = { id: uuidv4(), type: 'mcq', text: '', points: 0.25, options: ['', '', '', ''], correctAnswer: '', solution: '' };
-                else if (type === 'group-tf') q = { id: uuidv4(), type: 'group-tf', text: '', points: 1.0, subQuestions: [{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'}], solution: '' };
-                else q = { id: uuidv4(), type: 'short', text: '', points: 0.5, correctAnswer: '', solution: '' };
+                if (type === 'mcq') q = { id: uuidv4(), type: 'mcq', text: '', points: batchPoints['mcq'], options: ['', '', '', ''], correctAnswer: '', solution: '' };
+                else if (type === 'group-tf') q = { id: uuidv4(), type: 'group-tf', text: '', points: batchPoints['group-tf'], subQuestions: [{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'}], solution: '' };
+                else q = { id: uuidv4(), type: 'short', text: '', points: batchPoints['short'], correctAnswer: '', solution: '' };
                 const sorted = sortQuestionsByType([...questions, q]);
                 setQuestions(sorted);
             }} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm transition-all"><Plus size={14}/> Thêm câu</button>
@@ -965,12 +981,33 @@ const AdminDashboard: React.FC = () => {
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Chương / Mục kiến thức</label>
-                        <input list="cat-list" type="text" className="w-full border-2 border-gray-100 rounded-2xl p-3 focus:border-blue-500 outline-none transition bg-white font-bold" placeholder="VD: Chương 2..." value={category} onChange={e => setCategory(e.target.value)}/><datalist id="cat-list">{existingCategories.map(c => <option key={c} value={c} />)}</datalist>
+                        <div className="relative">
+                            <Layers className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18}/>
+                            <input list="cat-list" type="text" className="w-full border-2 border-gray-100 rounded-2xl pl-12 pr-4 py-3 focus:border-blue-500 outline-none transition bg-white font-bold" placeholder="VD: Chương 2..." value={category} onChange={e => setCategory(e.target.value)}/>
+                            <datalist id="cat-list">{existingCategories.map(c => <option key={c} value={c} />)}</datalist>
+                        </div>
                     </div>
                     <div className="flex gap-4">
                         <div className="flex-1"><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Hình thức</label><select className="w-full border-2 border-gray-100 rounded-2xl p-3 bg-white font-bold outline-none focus:border-blue-500" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện Tập</option><option value="test">Kiểm Tra</option></select></div>
                         <div className="flex-1"><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Khối lớp</label><select className="w-full border-2 border-gray-100 rounded-2xl p-3 bg-white font-bold outline-none focus:border-blue-500" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
                     </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                        <label className="text-[10px] font-black text-blue-600 uppercase block mb-2 tracking-widest flex items-center gap-2"><ClockIcon size={14}/> Thời gian làm bài (Phút)</label>
+                        <div className="flex items-center gap-4">
+                            <input type="range" min="5" max="180" step="5" className="flex-1 accent-blue-600" value={duration} onChange={e => setDuration(parseInt(e.target.value))} />
+                            <input type="number" className="w-20 text-center font-black text-lg text-blue-700 bg-white border border-blue-200 rounded-xl py-1" value={duration} onChange={e => setDuration(parseInt(e.target.value) || 0)} />
+                        </div>
+                    </div>
+
+                    {quizType === 'test' && (
+                        <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 animate-fade-in">
+                            <label className="text-[10px] font-black text-orange-600 uppercase block mb-2 tracking-widest flex items-center gap-2"><Calendar size={14}/> Thời gian bắt đầu thi</label>
+                            <input type="datetime-local" className="w-full bg-white border border-orange-200 rounded-xl p-2.5 font-bold text-orange-700 outline-none focus:ring-2 focus:ring-orange-100 transition-all" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                        </div>
+                    )}
                  </div>
                </div>
              </div>
