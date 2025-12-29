@@ -52,10 +52,10 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   const prompt = `
     Nhiệm vụ: Chuyển đổi PDF đề thi sang JSON. 
     QUY TẮC CỰC KỲ NGHIÊM NGẶT:
-    1. KHÔNG được để chữ "Câu 1", "Câu 2..." hay các phương án "A.", "B." vào trong trường 'text'.
-    2. Nội dung câu hỏi chỉ chứa phần văn bản đề bài.
-    3. Các phương án A,B,C,D phải nằm tách biệt trong mảng 'options'.
-    4. Giữ nguyên công thức Toán trong cặp ký hiệu $...$.
+    1. 'text': CHỈ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG chứa "Câu 1.", "Câu 2:" hay các ký tự phương án "A.", "B.".
+    2. 'options': Cho MCQ, phải là mảng 4 chuỗi sạch. KHÔNG chứa "A.", "B." bên trong chuỗi.
+    3. 'correctAnswer': Phải khớp 100% với nội dung trong mảng options.
+    4. Tự động gán điểm mặc định: MCQ (0.25), Group-TF (1.0), Short (0.5).
   `;
 
   try {
@@ -93,7 +93,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                                 }
                             }
                         },
-                        required: ["type", "text", "points"]
+                        required: ["type", "text"]
                     }
                 }
             }
@@ -106,6 +106,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
     return rawData.map((item: any) => ({
         id: uuidv4(),
         ...item,
+        points: item.points || (item.type === 'mcq' ? 0.25 : (item.type === 'group-tf' ? 1.0 : 0.5)),
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
     }));
   } catch (error: any) {
@@ -124,15 +125,15 @@ export const generateQuizFromPrompt = async (config: {
 }): Promise<Question[]> => {
     const ai = getAIClient();
     const prompt = `
-        Soạn đề thi trắc nghiệm Toán học Lớp ${config.grade} - ${config.topic}.
-        YÊU CẦU ĐỊNH DẠNG (BẮT BUỘC):
-        1. 'text': CHỈ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG ghi "Câu 1:", "Câu 2:"... hay các phương án "A.", "B." vào đây.
-        2. 'options': Mảng 4 chuỗi chứa nội dung 4 đáp án (cho mcq). KHÔNG ghi chữ "A.", "B." vào trong chuỗi.
-        3. 'correctAnswer': Giá trị CHÍNH XÁC của đáp án đúng (phải trùng khớp với 1 phần tử trong mảng options hoặc là số nếu là trả lời ngắn).
-        4. 'solution': BẮT BUỘC phải có hướng dẫn giải chi tiết cho từng câu.
-        5. 'subQuestions': Cho group-tf, soạn đúng 4 ý nhỏ a,b,c,d.
+        Soạn đề thi Toán học Lớp ${config.grade} - Chủ đề: ${config.topic}.
+        YÊU CẦU DỮ LIỆU SẠCH (BẮT BUỘC):
+        1. 'text': KHÔNG chứa "Câu X:" hay "A.", "B.". Chỉ chứa nội dung câu hỏi.
+        2. 'options': Mảng 4 chuỗi sạch. KHÔNG chứa "A. ", "B. ".
+        3. 'correctAnswer': Phải khớp 100% với một phần tử trong 'options'.
+        4. 'solution': Giải thích chi tiết cách làm.
         
-        MỨC ĐỘ: ${config.difficulty}. Công thức toán để trong $...$.
+        SỐ LƯỢNG: ${config.part1Count} câu MCQ, ${config.part2Count} câu Đúng/Sai, ${config.part3Count} câu Trả lời ngắn.
+        ĐỘ KHÓ: ${config.difficulty}.
     `;
 
     try {
@@ -165,7 +166,7 @@ export const generateQuizFromPrompt = async (config: {
                                     }
                                 }
                             },
-                            required: ["type", "text", "points", "solution", "correctAnswer"]
+                            required: ["type", "text", "solution", "correctAnswer"]
                         }
                     }
                 }
@@ -179,6 +180,7 @@ export const generateQuizFromPrompt = async (config: {
         return rawData.map((item: any) => ({
             id: uuidv4(),
             ...item,
+            points: item.points || (item.type === 'mcq' ? 0.25 : (item.type === 'group-tf' ? 1.0 : 0.5)),
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
         }));
     } catch (e: any) {
