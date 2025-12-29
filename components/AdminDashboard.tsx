@@ -18,6 +18,16 @@ const shuffleArray = <T,>(array: T[]): T[] => {
     return newArr;
 };
 
+// Hàm sắp xếp câu hỏi theo chuẩn: MCQ -> Group-TF -> Short
+const sortQuestionsByType = (qs: Question[]): Question[] => {
+    const typeOrder: Record<QuestionType, number> = {
+        'mcq': 1,
+        'group-tf': 2,
+        'short': 3
+    };
+    return [...qs].sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
+};
+
 // --- HELPER COMPONENTS ---
 interface ToolbarButtonProps { onClick: () => void; icon?: React.ReactNode; label?: string; tooltip: string; }
 const ToolbarBtn: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, tooltip }) => (
@@ -217,9 +227,11 @@ const AdminDashboard: React.FC = () => {
               part3Count: aiConfig.p3,
               difficulty: aiConfig.diff
           });
-          setQuestions(prev => [...prev, ...generated]);
+          // Tự động sắp xếp lại mảng sau khi thêm từ AI
+          const merged = sortQuestionsByType([...questions, ...generated]);
+          setQuestions(merged);
           if (!title.trim()) setTitle(`Đề thi AI - ${aiTopic}`);
-          alert(`Đã soạn thêm ${generated.length} câu hỏi. Hãy kiểm tra lại ở Tab Soạn Đề!`);
+          alert(`Đã soạn thêm ${generated.length} câu hỏi và sắp xếp lại đề thi.`);
           setActiveTab('create');
       } catch (e: any) {
           alert(e.message);
@@ -237,8 +249,9 @@ const AdminDashboard: React.FC = () => {
       const base64Str = (reader.result as string).split(',')[1];
       try {
         const extracted = await parseQuestionsFromPDF(base64Str);
-        setQuestions(prev => [...prev, ...extracted]);
-        alert(`Đã phân tích và thêm ${extracted.length} câu hỏi từ PDF!`);
+        const merged = sortQuestionsByType([...questions, ...extracted]);
+        setQuestions(merged);
+        alert(`Đã thêm ${extracted.length} câu hỏi và sắp xếp lại đề thi.`);
         setActiveTab('create');
       } catch (e: any) { alert(e.message); } finally { setIsProcessing(false); }
     };
@@ -458,13 +471,13 @@ const AdminDashboard: React.FC = () => {
                 if (type === 'mcq') q = { id: uuidv4(), type: 'mcq', text: '', points: 0.25, options: ['', '', '', ''], correctAnswer: '', solution: '' };
                 else if (type === 'group-tf') q = { id: uuidv4(), type: 'group-tf', text: '', points: 1.0, subQuestions: [{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'},{id:uuidv4(),text:'',correctAnswer:'True'}], solution: '' };
                 else q = { id: uuidv4(), type: 'short', text: '', points: 0.5, correctAnswer: '', solution: '' };
-                setQuestions([...questions, q]);
+                const sorted = sortQuestionsByType([...questions, q]);
+                setQuestions(sorted);
             }} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm transition-all"><Plus size={14}/> Thêm câu</button>
           </div>
         </div>
         <div className="p-4 space-y-4">
           {questions.filter(q => q.type === type).map((q, idx) => {
-            // Logic đánh số câu hỏi toàn bộ đề (Global Index)
             const globalIdx = questions.findIndex(item => item.id === q.id);
             return (
               <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
@@ -1028,7 +1041,7 @@ const AdminDashboard: React.FC = () => {
                     {bankSelectedQuizId && quizzes.find(q => q.id === bankSelectedQuizId)?.questions.filter(q => q.type === bankTargetType).map((q: Question, i: number) => (
                         <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-transparent hover:border-indigo-400 flex justify-between items-start gap-4 transition-all group">
                             <div className="flex-1 text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div>
-                            <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); }} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg group-active:scale-90 transition-all"><Plus size={20}/></button>
+                            <button onClick={() => { setQuestions(sortQuestionsByType([...questions, { ...q, id: uuidv4() }])); }} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg group-active:scale-90 transition-all"><Plus size={20}/></button>
                         </div>
                     ))}
                   </div>
