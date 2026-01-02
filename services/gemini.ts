@@ -6,192 +6,133 @@ import { v4 as uuidv4 } from 'uuid';
 const getAIClient = () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey || apiKey === "undefined" || apiKey === "") {
-        throw new Error("Chưa cấu hình Gemini API Key. Vui lòng thêm biến API_KEY vào Vercel.");
+        throw new Error("Chưa cấu hình Gemini API Key.");
     }
     return new GoogleGenAI({ apiKey });
 };
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const cleanJsonString = (str: string): string => {
-    let cleaned = str.replace(/```json/g, "").replace(/```/g, "").trim();
-    return cleaned;
+    return str.replace(/```json/g, "").replace(/```/g, "").trim();
 };
-
-async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDelay = 3000): Promise<T> {
-    let lastError: any;
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await operation();
-        } catch (error: any) {
-            lastError = error;
-            const errorStr = (error.message || '') + ' ' + JSON.stringify(error);
-            const msg = errorStr.toLowerCase();
-            
-            const isQuotaError = msg.includes('429') || msg.includes('quota');
-            const isServerBusy = msg.includes('503') || msg.includes('overloaded') || msg.includes('500');
-            const isAuthError = msg.includes('apikey') || msg.includes('key not found') || msg.includes('invalid');
-
-            if (isAuthError) {
-                throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại cấu hình trên Vercel.");
-            }
-
-            if ((isQuotaError || isServerBusy) && i < retries - 1) {
-                await delay(initialDelay);
-                initialDelay *= 2; 
-                continue;
-            }
-            throw error;
-        }
-    }
-    throw lastError;
-}
 
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
   const prompt = `
-    Nhiệm vụ: Chuyển đổi PDF đề thi sang JSON. Đề thi thường có 3 phần:
-    - PHẦN I: Câu trắc nghiệm 4 lựa chọn (mcq).
-    - PHẦN II: Câu trắc nghiệm Đúng/Sai (group-tf) - mỗi câu có 4 ý a,b,c,d.
-    - PHẦN III: Câu trắc nghiệm trả lời ngắn (short) - đáp án là một số.
+    Nhiệm vụ: Chuyển đổi nội dung PDF đề thi Toán sang JSON theo cấu trúc 3 phần mới.
+    
+    QUY TẮC NHẬN DIỆN ĐÁP ÁN & LỜI GIẢI:
+    1. PHẦN I (MCQ): Phương án nào có dấu '*' phía trước (VD: *B. Nội dung) là đáp án đúng.
+    2. PHẦN II (Đúng/Sai): Mỗi ý a, b, c, d nếu có (Đ) ở cuối là Đúng, (S) ở cuối là Sai.
+    3. PHẦN III (Ngắn): Đáp án sau từ "Đáp án:" hoặc "Kết quả:".
+    4. LỜI GIẢI: Mọi nội dung nằm sau từ khóa "Lời giải:" hoặc "Hướng dẫn giải:" của mỗi câu PHẢI được đưa vào trường 'solution'. 
+       Nội dung câu hỏi (field 'text') phải dừng lại TRƯỚC từ khóa "Lời giải:".
 
-    QUY TẮC BÓC TÁCH:
-    1. Nhận diện tiêu đề "PHẦN I", "PHẦN II", "PHẦN III" để gán đúng 'type'.
-    2. 'text': CHỈ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG chứa "Câu 1.", "Câu 2:" hay các ký tự phương án "A.", "B.".
-    3. 'options': Cho MCQ, phải là mảng 4 chuỗi sạch.
-    4. 'correctAnswer': 
-       - MCQ: Nội dung chuỗi khớp 100% với options.
-       - Short: Giá trị số (chuỗi).
-    5. 'subQuestions': Cho Phần II, tạo mảng 4 đối tượng {text, correctAnswer: "True"/"False"}.
-    6. Điểm mặc định: Phần I (0.25), Phần II (1.0), Phần III (0.5).
+    CẤU TRÚC JSON:
+    - type: "mcq" | "group-tf" | "short"
+    - text: Nội dung câu hỏi (đã bỏ "Câu X:", đã bỏ phần lời giải).
+    - points: Mặc định P1: 0.25, P2: 1.0, P3: 0.5.
+    - options: (Chỉ P1) Mảng 4 chuỗi phương án (đã bỏ dấu '*').
+    - correctAnswer: (P1) Nội dung phương án đúng; (P3) Giá trị số.
+    - subQuestions: (Chỉ P2) Mảng 4 đối tượng {text, correctAnswer: "True" | "False"}.
+    - solution: Nội dung sau chữ "Lời giải:".
   `;
 
-  try {
-    const response = await withRetry(async () => {
-        return await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "application/pdf", data: base64Data } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
-                            text: { type: Type.STRING },
-                            points: { type: Type.NUMBER },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                            correctAnswer: { type: Type.STRING, nullable: true },
-                            solution: { type: Type.STRING, nullable: true },
-                            subQuestions: {
-                                type: Type.ARRAY,
-                                nullable: true,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        text: { type: Type.STRING },
-                                        correctAnswer: { type: Type.STRING, enum: ["True", "False"] }
-                                    }
-                                }
-                            }
-                        },
-                        required: ["type", "text"]
-                    }
-                }
-            }
-        });
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("AI không trả về dữ liệu.");
-    const rawData = JSON.parse(cleanJsonString(text));
-    return rawData.map((item: any) => ({
-        id: uuidv4(),
-        ...item,
-        points: item.points || (item.type === 'mcq' ? 0.25 : (item.type === 'group-tf' ? 1.0 : 0.5)),
-        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
-    }));
-  } catch (error: any) {
-     throw new Error(error.message || "Lỗi xử lý file.");
-  }
-};
-
-export const generateQuizFromPrompt = async (config: {
-    grade: string,
-    category: string,
-    topic: string,
-    part1Count: number,
-    part2Count: number,
-    part3Count: number,
-    difficulty: string
-}): Promise<Question[]> => {
-    const ai = getAIClient();
-    const prompt = `
-        Soạn đề thi Toán học Lớp ${config.grade} - Chủ đề: ${config.topic}.
-        YÊU CẦU DỮ LIỆU SẠCH (BẮT BUỘC):
-        1. 'text': KHÔNG chứa "Câu X:" hay "A.", "B.". Chỉ chứa nội dung câu hỏi.
-        2. 'options': Mảng 4 chuỗi sạch. KHÔNG chứa "A. ", "B. ".
-        3. 'correctAnswer': Phải khớp 100% với một phần tử trong 'options'.
-        4. 'solution': Giải thích chi tiết cách làm.
-        
-        SỐ LƯỢNG: ${config.part1Count} câu MCQ, ${config.part2Count} câu Đúng/Sai, ${config.part3Count} câu Trả lời ngắn.
-        ĐỘ KHÓ: ${config.difficulty}.
-    `;
-
-    try {
-        const response = await withRetry(async () => {
-            return await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: {
+        parts: [
+            { inlineData: { mimeType: "application/pdf", data: base64Data } },
+            { text: prompt }
+        ]
+    },
+    config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    type: { type: Type.STRING },
+                    text: { type: Type.STRING },
+                    points: { type: Type.NUMBER },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                    correctAnswer: { type: Type.STRING, nullable: true },
+                    solution: { type: Type.STRING, nullable: true },
+                    subQuestions: {
                         type: Type.ARRAY,
+                        nullable: true,
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                type: { type: Type.STRING, enum: ["mcq", "group-tf", "short"] },
                                 text: { type: Type.STRING },
-                                points: { type: Type.NUMBER },
-                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                                correctAnswer: { type: Type.STRING, nullable: true },
-                                solution: { type: Type.STRING, nullable: true },
-                                subQuestions: {
-                                    type: Type.ARRAY,
-                                    nullable: true,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            text: { type: Type.STRING },
-                                            correctAnswer: { type: Type.STRING, enum: ["True", "False"] }
-                                        }
-                                    }
-                                }
-                            },
-                            required: ["type", "text", "solution", "correctAnswer"]
+                                correctAnswer: { type: Type.STRING }
+                            }
                         }
                     }
-                }
-            });
-        });
-
-        const text = response.text;
-        if (!text) throw new Error("AI không phản hồi.");
-        const rawData = JSON.parse(cleanJsonString(text));
-        
-        return rawData.map((item: any) => ({
-            id: uuidv4(),
-            ...item,
-            points: item.points || (item.type === 'mcq' ? 0.25 : (item.type === 'group-tf' ? 1.0 : 0.5)),
-            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
-        }));
-    } catch (e: any) {
-        throw new Error(e.message || "Lỗi soạn đề AI");
+                },
+                required: ["type", "text"]
+            }
+        }
     }
+  });
+
+  const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
+  return rawData.map((item: any) => ({
+      id: uuidv4(),
+      ...item,
+      subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
+  }));
+};
+
+export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
+    const ai = getAIClient();
+    const prompt = `
+        Soạn đề thi Toán lớp ${config.grade} về chủ đề: ${config.topic}.
+        Yêu cầu:
+        - Phần I: ${config.part1Count} câu trắc nghiệm 4 lựa chọn.
+        - Phần II: ${config.part2Count} câu trắc nghiệm Đúng/Sai.
+        - Phần III: ${config.part3Count} câu trả lời ngắn.
+        Mỗi câu hỏi BẮT BUỘC có phần 'solution' (Lời giải chi tiết).
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        type: { type: Type.STRING },
+                        text: { type: Type.STRING },
+                        points: { type: Type.NUMBER },
+                        options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                        correctAnswer: { type: Type.STRING, nullable: true },
+                        solution: { type: Type.STRING },
+                        subQuestions: {
+                            type: Type.ARRAY,
+                            nullable: true,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    text: { type: Type.STRING },
+                                    correctAnswer: { type: Type.STRING }
+                                }
+                            }
+                        }
+                    },
+                    required: ["type", "text", "solution"]
+                }
+            }
+        }
+    });
+
+    const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
+    return rawData.map((item: any) => ({
+        id: uuidv4(),
+        ...item,
+        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ ...sq, id: uuidv4() })) : undefined
+    }));
 };
