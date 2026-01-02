@@ -28,7 +28,6 @@ const sortQuestionsByType = (qs: Question[]): Question[] => {
 };
 
 // --- HELPER COMPONENTS ---
-// Fix: Use explicit React prefix for namespaces
 interface ToolbarButtonProps { onClick: () => void; icon?: React.ReactNode; label?: string; tooltip: string; }
 const ToolbarBtn: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, tooltip }) => (
     <button type="button" onClick={onClick} className="p-1.5 hover:bg-gray-200 rounded text-gray-700 font-medium text-xs flex items-center gap-1 border border-transparent hover:border-gray-300 transition-all min-w-[24px] justify-center" title={tooltip}>
@@ -85,7 +84,6 @@ const AdminDashboard: React.FC = () => {
   const [results, setResults] = useState<Result[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   
-  // Filters
   const [quizFilterGrade, setQuizFilterGrade] = useState<Grade | 'all'>('all');
   const [resultFilterQuizId, setResultFilterQuizId] = useState<string>('all');
   const [studentFilterGrade, setStudentFilterGrade] = useState<Grade | 'all'>('all');
@@ -138,22 +136,22 @@ const AdminDashboard: React.FC = () => {
     return groups;
   }, [quizzes, quizFilterGrade]);
 
-  const filteredResults = useMemo(() => {
-    return results.filter(r => {
-        const quiz = quizzes.find(q => q.id === r.quizId);
-        const matchesQuiz = resultFilterQuizId === 'all' || r.quizId === resultFilterQuizId;
+  const filteredResultsList = useMemo(() => {
+    return results.filter(res => {
+        const quiz = quizzes.find(q => q.id === res.quizId);
+        const matchesQuiz = resultFilterQuizId === 'all' || res.quizId === resultFilterQuizId;
         const matchesGrade = quizFilterGrade === 'all' || (quiz && quiz.grade === quizFilterGrade);
         return matchesQuiz && matchesGrade;
     }).sort((a,b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   }, [results, resultFilterQuizId, quizFilterGrade, quizzes]);
 
   const stats = useMemo(() => {
-    const totalResults = filteredResults.length;
-    // Fix: Added explicit types for sum and result to avoid potential inference issues
-    const avgScore = totalResults > 0 ? filteredResults.reduce((sum: number, r: Result) => sum + r.score, 0) / totalResults : 0;
-    const topScore = totalResults > 0 ? Math.max(...filteredResults.map(r => r.score)) : 0;
+    const totalResults = filteredResultsList.length;
+    const totalScore = filteredResultsList.reduce((acc: number, res: Result) => acc + (res.score || 0), 0);
+    const avgScore = totalResults > 0 ? totalScore / totalResults : 0;
+    const topScore = totalResults > 0 ? Math.max(...filteredResultsList.map(res => res.score)) : 0;
     return { totalResults, avgScore, topScore };
-  }, [filteredResults]);
+  }, [filteredResultsList]);
 
   const filteredStudents = useMemo(() => {
       return users.filter(u => u.role === 'student' && (studentFilterGrade === 'all' || u.grade === studentFilterGrade));
@@ -276,13 +274,13 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionIndex: number) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileToUpload = e.target.files?.[0];
+    if (!fileToUpload) return;
 
     setIsProcessing(true);
     setLoadingMsg("Đang tải ảnh lên...");
     try {
-        const url = await uploadImage(file);
+        const url = await uploadImage(fileToUpload);
         if (url) {
             const n = [...questions];
             n[questionIndex].imageUrl = url;
@@ -298,7 +296,6 @@ const AdminDashboard: React.FC = () => {
   const handleShufflePreview = () => {
       if (!previewQuestions.length) return;
       
-      // Fix: Added explicit type casting and generic parameters for shuffleArray to ensure correct type inference for spread operations
       const p1 = (shuffleArray(previewQuestions.filter(q => q.type === 'mcq')) as Question[]).map((q: Question) => ({
           ...q,
           options: q.options ? (shuffleArray(q.options) as string[]) : q.options
@@ -313,12 +310,12 @@ const AdminDashboard: React.FC = () => {
       alert("Đã xáo trộn thứ tự câu hỏi và phương án!");
   };
 
-  const handleExportWord = (quiz: Quiz, currentQuestions: Question[]) => {
-    if (!quiz) return;
+  const handleExportWord = (quizObj: Quiz, currentQuestions: Question[]) => {
+    if (!quizObj) return;
 
     const getOptionChar = (i: number) => String.fromCharCode(65 + i);
-    const cleanQuestionText = (text: string) => {
-        return text.replace(/^Câu\s+\d+[:.]\s*/i, "").trim();
+    const cleanQuestionText = (txt: string) => {
+        return txt.replace(/^Câu\s+\d+[:.]\s*/i, "").trim();
     };
 
     let content = `
@@ -356,8 +353,8 @@ const AdminDashboard: React.FC = () => {
               MÃ ĐỀ THI: ${Math.floor(Math.random() * 900) + 100}
             </td>
             <td class="exam-info">
-              ĐỀ ÔN TẬP KIỂM TRA - KHỐI ${quiz.grade}<br/>
-              Môn: Toán học | Thời gian: ${quiz.durationMinutes} phút<br/>
+              ĐỀ ÔN TẬP KIỂM TRA - KHỐI ${quizObj.grade}<br/>
+              Môn: Toán học | Thời gian: ${quizObj.durationMinutes} phút<br/>
               <i>(Đề thi gồm có ${currentQuestions.length} câu)</i>
             </td>
           </tr>
@@ -453,7 +450,7 @@ const AdminDashboard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `De_Thi_${quiz.title.replace(/\s+/g, '_')}.doc`;
+    link.download = `De_Thi_${quizObj.title.replace(/\s+/g, '_')}.doc`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -490,7 +487,7 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
         <div className="p-4 space-y-4">
-          {questions.filter(q => q.type === type).map((q, idx) => {
+          {questions.filter(q => q.type === type).map((q) => {
             const globalIdx = questions.findIndex(item => item.id === q.id);
             return (
               <div key={q.id} className="border rounded-xl p-4 bg-white hover:border-gray-300 transition-colors shadow-sm">
@@ -788,7 +785,6 @@ const AdminDashboard: React.FC = () => {
           <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
                   <div className="flex flex-col lg:flex-row gap-8">
-                    {/* Hướng dẫn mẫu PDF */}
                     <div className="lg:w-1/2 bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
                         <h4 className="text-xs font-black text-indigo-600 uppercase mb-4 tracking-widest flex items-center gap-2"><FileText size={16}/> Mẫu cấu trúc PDF (Cực kỳ quan trọng)</h4>
                         <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
@@ -819,7 +815,6 @@ const AdminDashboard: React.FC = () => {
                         <p className="mt-4 text-[10px] text-gray-500 italic">Lưu ý: Bạn có thể đánh dấu đáp án đúng bằng dấu (*) phía sau phương án nếu file PDF có đáp án sẵn.</p>
                     </div>
 
-                    {/* Upload Section */}
                     <div className="lg:w-1/2 flex flex-col justify-center">
                         <div className="flex items-center gap-4 mb-8">
                             <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><Upload size={32}/></div>
@@ -881,15 +876,15 @@ const AdminDashboard: React.FC = () => {
                               </tr>
                           </thead>
                           <tbody className="divide-y text-sm">
-                              {filteredResults.length === 0 ? (
+                              {filteredResultsList.length === 0 ? (
                                   <tr><td colSpan={4} className="px-6 py-20 text-center text-gray-400 font-bold uppercase text-[10px] tracking-widest">Chưa có kết quả nào.</td></tr>
                               ) : (
-                                filteredResults.map(r => (
-                                    <tr key={r.id} className="hover:bg-blue-50/30 transition-all group">
-                                        <td className="px-6 py-4 font-bold text-gray-800">{r.studentName}</td>
-                                        <td className="px-6 py-4 font-medium text-gray-500">{quizzes.find(q => q.id === r.quizId)?.title || "Đề đã xóa"}</td>
-                                        <td className="px-6 py-4 text-right"><span className={`font-black text-xl ${r.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{r.score.toFixed(2)}</span></td>
-                                        <td className="px-6 py-4 text-center"><button onClick={async () => { if(window.confirm('Xóa vĩnh viễn kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="p-2 text-gray-300 group-hover:text-red-500 transition-all"><Trash2 size={16}/></button></td>
+                                filteredResultsList.map(res => (
+                                    <tr key={res.id} className="hover:bg-blue-50/30 transition-all group">
+                                        <td className="px-6 py-4 font-bold text-gray-800">{res.studentName}</td>
+                                        <td className="px-6 py-4 font-medium text-gray-500">{quizzes.find(q => q.id === res.quizId)?.title || "Đề đã xóa"}</td>
+                                        <td className="px-6 py-4 text-right"><span className={`font-black text-xl ${res.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{res.score.toFixed(2)}</span></td>
+                                        <td className="px-6 py-4 text-center"><button onClick={async () => { if(window.confirm('Xóa vĩnh viễn kết quả này?')) { await deleteResult(res.id); refreshData(); } }} className="p-2 text-gray-300 group-hover:text-red-500 transition-all"><Trash2 size={16}/></button></td>
                                     </tr>
                                 ))
                               )}
@@ -927,9 +922,8 @@ const AdminDashboard: React.FC = () => {
                                   <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-400 font-bold uppercase text-[10px] tracking-widest">Không có học sinh nào.</td></tr>
                               ) : (
                                 filteredStudents.map(u => {
-                                    const studentResults = results.filter(r => r.studentId === u.id);
-                                    // Fix: Explicitly typing reduce parameters as number and Result to ensure correct accumulation and object property access
-                                    const avg = studentResults.length > 0 ? (studentResults.reduce((s: number, r: Result) => s + r.score, 0) / studentResults.length).toFixed(2) : "0.00";
+                                    const studentResults = results.filter(res => res.studentId === u.id);
+                                    const avgVal = studentResults.length > 0 ? (studentResults.reduce((accVal: number, rVal: Result) => accVal + rVal.score, 0) / studentResults.length).toFixed(2) : "0.00";
                                     return (
                                         <tr key={u.id} className="hover:bg-indigo-50/20 transition-all group">
                                             <td className="px-6 py-4 font-bold text-gray-800">{u.fullName}</td>
@@ -937,7 +931,7 @@ const AdminDashboard: React.FC = () => {
                                             <td className="px-6 py-4"><span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase">Lớp {u.grade}</span></td>
                                             <td className="px-6 py-4 text-center">
                                                 <button onClick={() => setSelectedStudentForDetails(u)} className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all">
-                                                    <Trophy size={14}/> {studentResults.length} Đề | Avg: {avg}
+                                                    <Trophy size={14}/> {studentResults.length} Đề | Avg: {avgVal}
                                                 </button>
                                             </td>
                                             <td className="px-6 py-4 text-center">
@@ -1043,7 +1037,7 @@ const AdminDashboard: React.FC = () => {
                   <h4 className="text-[10px] font-black text-gray-400 uppercase mb-8 tracking-widest">Tóm tắt đề thi</h4>
                   <div className="grid grid-cols-2 gap-4 mb-8">
                     <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[9px] font-black text-gray-400 uppercase mb-1">Câu hỏi</p><p className="text-2xl font-black text-blue-600">{questions.length}</p></div>
-                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[9px] font-black text-gray-400 uppercase mb-1">Thang điểm</p><p className="text-2xl font-black text-blue-600">{questions.reduce((s, q) => s + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</p></div>
+                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[9px] font-black text-gray-400 uppercase mb-1">Thang điểm</p><p className="text-2xl font-black text-blue-600">{questions.reduce((accVal: number, qVal: Question) => accVal + (parseFloat(String(qVal.points)) || 0), 0).toFixed(2)}</p></div>
                   </div>
                   <div className="mb-8">
                       <label className="flex items-center justify-center gap-3 cursor-pointer p-4 bg-blue-50 rounded-2xl font-bold text-sm text-blue-700 border border-blue-100 hover:bg-blue-100 transition-all">
@@ -1077,11 +1071,11 @@ const AdminDashboard: React.FC = () => {
                           </tr>
                       </thead>
                       <tbody className="divide-y text-sm">
-                          {results.filter(r => r.studentId === selectedStudentForDetails.id).map(r => (
-                            <tr key={r.id} className="hover:bg-indigo-50/30 transition-all">
-                                <td className="px-6 py-4 font-bold text-gray-800">{quizzes.find(q => q.id === r.quizId)?.title || "Đề đã xóa"}</td>
-                                <td className="px-6 py-4 text-gray-400 font-medium">{format(parseISO(r.submittedAt), "dd/MM/yyyy HH:mm")}</td>
-                                <td className="px-6 py-4 text-right"><span className={`font-black text-lg ${r.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{r.score.toFixed(2)}</span></td>
+                          {results.filter(res => res.studentId === selectedStudentForDetails.id).map(res => (
+                            <tr key={res.id} className="hover:bg-indigo-50/30 transition-all">
+                                <td className="px-6 py-4 font-bold text-gray-800">{quizzes.find(q => q.id === res.quizId)?.title || "Đề đã xóa"}</td>
+                                <td className="px-6 py-4 text-gray-400 font-medium">{format(parseISO(res.submittedAt), "dd/MM/yyyy HH:mm")}</td>
+                                <td className="px-6 py-4 text-right"><span className={`font-black text-lg ${res.score >= 5 ? 'text-green-600' : 'text-red-500'}`}>{res.score.toFixed(2)}</span></td>
                             </tr>
                           ))}
                       </tbody>
