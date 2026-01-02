@@ -205,6 +205,71 @@ const AdminDashboard: React.FC = () => {
       alert("Đã xáo trộn thứ tự các câu hỏi!");
   };
 
+  const handleExportWord = (quizObj: Quiz, currentQuestions: Question[]) => {
+    const getOptionChar = (i: number) => String.fromCharCode(65 + i);
+    let content = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Times New Roman', serif; line-height: 1.5; font-size: 12pt; }
+          .header { text-align: center; font-weight: bold; margin-bottom: 20px; }
+          .section-title { font-weight: bold; margin-top: 15px; text-decoration: underline; }
+          .question { margin-top: 10px; }
+          .options { margin-left: 20px; }
+          .ans-table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+          .ans-table th, .ans-table td { border: 1px solid black; padding: 5px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          TRƯỜNG THPT .........................<br/>
+          ĐỀ ÔN TẬP: ${quizObj.title.toUpperCase()}<br/>
+          Môn: Toán học | Thời gian: ${quizObj.durationMinutes} phút
+        </div>
+    `;
+
+    const mcqs = currentQuestions.filter(q => q.type === 'mcq');
+    if (mcqs.length > 0) {
+      content += `<div class="section-title">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn.</div>`;
+      mcqs.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div><div class="options">`;
+        q.options?.forEach((opt, oi) => {
+          content += `<b>${getOptionChar(oi)}.</b> ${opt}&nbsp;&nbsp;&nbsp;&nbsp;`;
+        });
+        content += `</div>`;
+      });
+    }
+
+    const tfs = currentQuestions.filter(q => q.type === 'group-tf');
+    if (tfs.length > 0) {
+      content += `<div class="section-title">PHẦN II. Câu trắc nghiệm đúng sai.</div>`;
+      tfs.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+        q.subQuestions?.forEach((sq, si) => {
+          content += `<div class="options"><b>${String.fromCharCode(97 + si)})</b> ${sq.text}</div>`;
+        });
+      });
+    }
+
+    const shorts = currentQuestions.filter(q => q.type === 'short');
+    if (shorts.length > 0) {
+      content += `<div class="section-title">PHẦN III. Câu trắc nghiệm trả lời ngắn.</div>`;
+      shorts.forEach((q, i) => {
+        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
+      });
+    }
+
+    content += `<br/><div class="header">--- HẾT ---</div></body></html>`;
+
+    const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `De_Thi_${quizObj.title.replace(/\s+/g, '_')}.doc`;
+    link.click();
+  };
+
   const renderPartEditor = (type: QuestionType, label: string, colorClass: string) => (
     <div className={`mt-8 border-l-4 ${colorClass} bg-white rounded-r-xl shadow-sm overflow-hidden`}>
         <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
@@ -466,7 +531,8 @@ const AdminDashboard: React.FC = () => {
                           <div><h3 className="text-xl font-black uppercase tracking-tight">{viewingQuiz.title}</h3><p className="text-[10px] font-bold text-blue-300 uppercase">Khối {viewingQuiz.grade} • {viewingQuiz.questions.length} câu</p></div>
                       </div>
                       <div className="flex gap-2">
-                          <button onClick={handleShufflePreview} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all"><Shuffle size={16}/> Xáo đề</button>
+                          <button onClick={handleShufflePreview} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all shadow-md"><Shuffle size={16}/> Xáo đề</button>
+                          <button onClick={() => handleExportWord(viewingQuiz, previewQuestions)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all shadow-md"><FileDown size={16}/> Xuất Word</button>
                           <button onClick={() => setViewingQuiz(null)} className="p-2 hover:bg-white/10 rounded-full transition-all"><XCircle size={28}/></button>
                       </div>
                   </div>
