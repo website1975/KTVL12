@@ -3,22 +3,18 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, User } from '../types';
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
-    uploadImage, getUsers, deleteUser, deleteResult 
+    getUsers, deleteQuiz as deleteQuizStorage 
 } from '../services/storage';
-import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
 import { 
-    Plus, Trash2, Save, List, Upload, FileText, BarChart3, Edit, 
-    XCircle, BookOpen, Lightbulb, Users, ChevronRight, Database, 
-    Bold, Italic, Underline, CornerDownLeft, Sigma, Info, Settings2, 
-    FolderTree, Layers, Sparkles, Zap, BrainCircuit, Loader2, PieChart, 
-    TrendingUp, Calendar, Trophy, Eye, Image as ImageIcon, X, Link as LinkIcon, 
-    FileDown, Shuffle, CheckSquare, Clock as ClockIcon, Send, Search, Check
+    Plus, Trash2, Save, List, Upload, BarChart3, Edit, 
+    XCircle, BookOpen, Lightbulb, Database, 
+    Bold, Italic, Underline, CornerDownLeft, Sigma, Settings2, 
+    Sparkles, BrainCircuit, FileDown, Shuffle, Check, Search
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
 import LatexText from './LatexText';
 
-// --- HELPERS ---
+// Helper to shuffle an array
 const shuffleArray = <T,>(array: T[]): T[] => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -28,20 +24,22 @@ const shuffleArray = <T,>(array: T[]): T[] => {
     return newArr;
 };
 
+// Sort questions by their type for logical ordering
 const sortQuestionsByType = (qs: Question[]): Question[] => {
     const typeOrder: Record<string, number> = { 'mcq': 1, 'group-tf': 2, 'short': 3 };
     return [...qs].sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
 };
 
-// --- RICH TEXT EDITOR COMPONENT ---
 interface RichTextEditorProps { value: string; onChange: (val: string) => void; placeholder?: string; rows?: number; className?: string; }
-const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeholder, rows, className }) => {
+
+// Fix: Simplified component declaration to avoid React.FC pitfalls and potential "() => void" type mismatch errors
+const RichTextEditor = ({ value, onChange, placeholder, rows, className }: RichTextEditorProps) => {
     const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
     const insertTag = (prefix: string, suffix: string = '') => {
         const el = inputRef.current;
         if (!el) return;
-        const start = el.selectionStart || 0;
-        const end = el.selectionEnd || 0;
+        const start = (el as any).selectionStart || 0;
+        const end = (el as any).selectionEnd || 0;
         const text = el.value;
         const newVal = text.substring(0, start) + prefix + text.substring(start, end) + suffix + text.substring(end);
         onChange(newVal);
@@ -65,15 +63,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, placeh
     );
 };
 
-// --- MAIN COMPONENT ---
-const AdminDashboard: React.FC = () => {
+// Fix: Simplified component declaration and addressed the "no default export" error in App.tsx by ensuring valid syntax
+const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'import' | 'results' | 'students' | 'auto'>('list');
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  
   const [quizFilterGrade, setQuizFilterGrade] = useState<Grade | 'all'>('all');
-  const [resultFilterQuizId, setResultFilterQuizId] = useState<string>('all');
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -87,18 +83,13 @@ const AdminDashboard: React.FC = () => {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('Đang khởi tạo...');
-  const [file, setFile] = useState<File | null>(null);
 
-  // Bank Modal State
   const [showBankModal, setShowBankModal] = useState(false);
   const [bankGrade, setBankGrade] = useState<Grade>('12');
   const [bankQuizId, setBankQuizId] = useState('');
 
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
-
-  const [aiTopic, setAiTopic] = useState('');
-  const [aiConfig, setAiConfig] = useState({ p1: 10, p2: 4, p3: 6, diff: 'Thông hiểu' });
 
   useEffect(() => { refreshData(); }, [activeTab]);
   useEffect(() => { if (viewingQuiz) setPreviewQuestions([...viewingQuiz.questions]); }, [viewingQuiz]);
@@ -110,7 +101,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const resetForm = () => {
-    setEditingId(null); setTitle(''); setCategory(''); setQuestions([]); setStartTime(''); setDuration(90); setFile(null); setIsPublished(false);
+    setEditingId(null); setTitle(''); setCategory(''); setQuestions([]); setStartTime(''); setDuration(90); setIsPublished(false);
   };
 
   const groupedQuizzes = useMemo(() => {
@@ -137,64 +128,29 @@ const AdminDashboard: React.FC = () => {
     setEditingId(q.id); setTitle(q.title); setCategory(q.category || ''); setQuizType(q.type); setGrade(q.grade); setStartTime(q.startTime || ''); setDuration(q.durationMinutes); setQuestions(q.questions); setIsPublished(q.isPublished); setActiveTab('create');
   };
 
-  const handleFileUpload = async () => {
-    if (!file) return alert("Vui lòng chọn file PDF.");
-    setIsProcessing(true);
-    setLoadingMsg("AI đang bóc tách nội dung và lời giải...");
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = async () => {
-      try {
-        const base64 = (reader.result as string).split(',')[1];
-        const extracted = await parseQuestionsFromPDF(base64);
-        setQuestions(sortQuestionsByType([...questions, ...extracted]));
-        alert(`Thành công! Trích xuất ${extracted.length} câu kèm lời giải.`);
-        setActiveTab('create');
-      } catch (e) { alert("Lỗi xử lý file."); } finally { setIsProcessing(false); }
-    };
-  };
-
-  const handleAutoGenerate = async () => {
-    if (!aiTopic.trim()) return alert("Nhập chủ đề soạn đề.");
-    setIsProcessing(true);
-    setLoadingMsg("AI đang biên soạn đề thi kèm lời giải chi tiết...");
-    try {
-        const generated = await generateQuizFromPrompt({
-            grade, topic: aiTopic, part1Count: aiConfig.p1, part2Count: aiConfig.p2, part3Count: aiConfig.p3, difficulty: aiConfig.diff
-        });
-        setQuestions(sortQuestionsByType([...questions, ...generated]));
-        alert("Đã soạn thêm câu hỏi bằng AI.");
-        setActiveTab('create');
-    } catch (e) { alert("Lỗi soạn AI."); } finally { setIsProcessing(false); }
-  };
-
-  // Fix: Added missing handleShufflePreview function to support shuffling questions in preview mode
   const handleShufflePreview = () => {
     setPreviewQuestions(shuffleArray([...previewQuestions]));
   };
 
   const handleExportWord = (quiz: Quiz, qs: Question[]) => {
-    const getOptionChar = (i: number) => String.fromCharCode(65 + i);
+    const getChar = (i: number) => String.fromCharCode(65 + i);
     let content = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset="utf-8">
+      <head><meta charset="utf-8">
         <style>
           body { font-family: 'Times New Roman', serif; line-height: 1.5; font-size: 12pt; }
           .header { text-align: center; font-weight: bold; margin-bottom: 20px; }
-          .section-title { font-weight: bold; margin-top: 20px; text-decoration: underline; background: #f0f0f0; padding: 5px; }
-          .question { margin-top: 15px; font-weight: normal; text-align: justify; }
-          .options { margin-left: 20px; display: block; }
-          .solution { margin-top: 5px; font-style: italic; color: #555; border-left: 2px solid #ccc; padding-left: 10px; }
-          .ans-table { border-collapse: collapse; width: 100%; margin-top: 30px; }
-          .ans-table th, .ans-table td { border: 1px solid black; padding: 5px; text-align: center; }
+          .section-title { font-weight: bold; margin-top: 20px; text-decoration: underline; background: #f9f9f9; padding: 5px; }
+          .question { margin-top: 15px; text-align: justify; }
+          .options { margin-left: 20px; }
+          .solution { margin-top: 10px; font-style: italic; color: #444; border-left: 3px solid #ddd; padding-left: 10px; }
         </style>
       </head>
       <body>
         <div class="header">
           TRƯỜNG THPT .........................<br/>
           ĐỀ ÔN TẬP: ${quiz.title.toUpperCase()}<br/>
-          Môn: Toán học | Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút
+          Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút
         </div>
     `;
 
@@ -203,9 +159,7 @@ const AdminDashboard: React.FC = () => {
       content += `<div class="section-title">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn.</div>`;
       p1.forEach((q, i) => {
         content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div><div class="options">`;
-        q.options?.forEach((opt, oi) => {
-          content += `<b>${getOptionChar(oi)}.</b> ${opt}&nbsp;&nbsp;&nbsp;&nbsp;`;
-        });
+        q.options?.forEach((opt, oi) => { content += `<b>${getChar(oi)}.</b> ${opt}&nbsp;&nbsp;&nbsp;&nbsp;`; });
         content += `</div>`;
       });
     }
@@ -215,36 +169,27 @@ const AdminDashboard: React.FC = () => {
       content += `<div class="section-title">PHẦN II. Câu trắc nghiệm đúng sai.</div>`;
       p2.forEach((q, i) => {
         content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
-        q.subQuestions?.forEach((sq, si) => {
-          content += `<div style="margin-left: 20px;"><b>${String.fromCharCode(97 + si)})</b> ${sq.text}</div>`;
-        });
+        q.subQuestions?.forEach((sq, si) => { content += `<div style="margin-left: 20px;"><b>${String.fromCharCode(97 + si)})</b> ${sq.text}</div>`; });
       });
     }
 
     const p3 = qs.filter(q => q.type === 'short');
     if (p3.length > 0) {
       content += `<div class="section-title">PHẦN III. Câu trắc nghiệm trả lời ngắn.</div>`;
-      p3.forEach((q, i) => {
-        content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`;
-      });
+      p3.forEach((q, i) => { content += `<div class="question"><b>Câu ${i + 1}.</b> ${q.text}</div>`; });
     }
 
-    content += `
-      <div style="page-break-before: always;"></div>
-      <div class="header">BẢNG ĐÁP ÁN VÀ LỜI GIẢI CHI TIẾT</div>
-    `;
-    
+    content += `<div style="page-break-before: always;"></div><div class="header">HƯỚNG DẪN GIẢI CHI TIẾT</div>`;
     qs.forEach((q, i) => {
-        content += `<div class="question"><b>Câu ${i+1}.</b> ${q.solution ? `<div class="solution"><b>Lời giải:</b> ${q.solution}</div>` : '<i>(Chưa có lời giải)</i>'}</div>`;
+        content += `<div class="question"><b>Câu ${i+1}.</b> ${q.solution ? `<div class="solution">${q.solution}</div>` : '<i>(Chưa có lời giải)</i>'}</div>`;
     });
 
-    content += `<br/><div class="header">--- HẾT ---</div></body></html>`;
-
+    content += `</body></html>`;
     const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `EduQuiz_${quiz.title.replace(/\s+/g, '_')}.doc`;
+    link.download = `De_Thi_${quiz.title.replace(/\s+/g, '_')}.doc`;
     link.click();
   };
 
@@ -253,13 +198,13 @@ const AdminDashboard: React.FC = () => {
         <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
             <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">{label}</h3>
             <div className="flex gap-2">
-                <button onClick={() => { setBankGrade(grade); setShowBankModal(true); }} className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-100 flex items-center gap-1 hover:bg-indigo-100"><Database size={14}/> Ngân hàng</button>
+                <button onClick={() => { setBankGrade(grade); setShowBankModal(true); }} className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-100 flex items-center gap-1 hover:bg-indigo-100 transition-all"><Database size={14}/> Ngân hàng</button>
                 <button onClick={() => {
                     let q: Question = { id: uuidv4(), type, text: '', points: type === 'mcq' ? '0.25' : (type === 'group-tf' ? '1.0' : '0.5'), solution: '' };
                     if (type === 'mcq') q.options = ['', '', '', ''];
                     if (type === 'group-tf') q.subQuestions = Array(4).fill(0).map(() => ({ id: uuidv4(), text: '', correctAnswer: 'True' }));
                     setQuestions(sortQuestionsByType([...questions, q]));
-                }} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-all shadow-sm">+ Thêm câu mới</button>
+                }} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-all shadow-sm">+ Thêm câu</button>
             </div>
         </div>
         <div className="p-4 space-y-6">
@@ -271,8 +216,8 @@ const AdminDashboard: React.FC = () => {
                             <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-xl font-black text-xs uppercase">Câu {gIdx + 1}</span>
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black text-gray-400">ĐIỂM:</span>
-                                    <input type="text" className="w-12 border-2 rounded-xl text-center font-black py-1 text-sm outline-none focus:border-blue-500" value={q.points} onChange={e => {
+                                    <span className="text-[10px] font-black text-gray-400 uppercase">Điểm:</span>
+                                    <input type="text" className="w-12 border-2 rounded-xl text-center font-black py-1 text-sm focus:border-blue-500 outline-none" value={q.points} onChange={e => {
                                         const n = [...questions]; n[gIdx].points = e.target.value; setQuestions(n);
                                     }} />
                                 </div>
@@ -284,7 +229,6 @@ const AdminDashboard: React.FC = () => {
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Nội dung câu hỏi</label>
                                 <RichTextEditor rows={3} value={q.text} onChange={v => { const n = [...questions]; n[gIdx].text = v; setQuestions(n); }} />
                             </div>
-
                             {type === 'mcq' && q.options && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {q.options.map((opt, oi) => (
@@ -297,21 +241,19 @@ const AdminDashboard: React.FC = () => {
                                     ))}
                                 </div>
                             )}
-
                             {type === 'group-tf' && q.subQuestions && (
                                 <div className="space-y-2">
                                     {q.subQuestions.map((sq, si) => (
                                         <div key={si} className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                                             <span className="text-xs font-black text-blue-600 w-6">{String.fromCharCode(97+si)})</span>
-                                            <input type="text" className="flex-1 bg-white border rounded-lg p-2 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100" value={sq.text} onChange={e => {
+                                            <input type="text" className="flex-1 bg-white border rounded-lg p-2 text-sm font-medium focus:ring-2 focus:ring-blue-100 outline-none" value={sq.text} onChange={e => {
                                                 const n = [...questions]; const s = [...(n[gIdx].subQuestions||[])]; s[si].text = e.target.value; n[gIdx].subQuestions = s; setQuestions(n);
-                                            }} placeholder={`Nội dung ý ${String.fromCharCode(97+si)}...`} />
+                                            }} placeholder={`Ý ${String.fromCharCode(97+si)}...`} />
                                             <div className="flex gap-1 shrink-0">
                                                 {['True', 'False'].map(val => (
                                                     <button key={val} onClick={() => {
-                                                        // Fix: Changed 'globalIdx' to 'gIdx' to correctly reference the current question in the group-tf part
                                                         const n = [...questions]; const s = [...(n[gIdx].subQuestions || [])]; s[si].correctAnswer = val as any; n[gIdx].subQuestions = s; setQuestions(n);
-                                                    }} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${sq.correctAnswer === val ? (val === 'True' ? 'bg-green-600 text-white' : 'bg-orange-600 text-white shadow-md') : 'bg-white text-gray-300'}`}>
+                                                    }} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${sq.correctAnswer === val ? (val === 'True' ? 'bg-green-600 text-white shadow-md' : 'bg-orange-600 text-white shadow-md') : 'bg-white text-gray-300'}`}>
                                                         {val === 'True' ? 'Đúng' : 'Sai'}
                                                     </button>
                                                 ))}
@@ -320,23 +262,23 @@ const AdminDashboard: React.FC = () => {
                                     ))}
                                 </div>
                             )}
-
                             {type === 'short' && (
                                 <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-100 flex items-center gap-4">
                                     <span className="text-sm font-black text-green-700">Đáp án chính xác:</span>
-                                    <input type="text" className="flex-1 border-2 border-green-200 rounded-xl p-3 font-black text-xl outline-none focus:border-green-500 bg-white" value={q.correctAnswer} onChange={e => {
+                                    <input type="text" className="flex-1 border-2 border-green-200 rounded-xl p-3 font-black text-xl focus:border-green-500 bg-white outline-none" value={q.correctAnswer} onChange={e => {
                                         const n = [...questions]; n[gIdx].correctAnswer = e.target.value; setQuestions(n);
-                                    }} placeholder="Nhập số..." />
+                                    }} />
                                 </div>
                             )}
-
                             <div className="bg-yellow-50/50 p-4 rounded-2xl border-2 border-yellow-100">
                                 <label className="text-[10px] font-black text-yellow-700 uppercase mb-2 flex items-center gap-1 tracking-widest"><Lightbulb size={12}/> Lời giải chi tiết</label>
-                                <RichTextEditor rows={3} value={q.solution || ''} onChange={v => { const n = [...questions]; n[gIdx].solution = v; setQuestions(n); }} placeholder="Nhập hướng dẫn giải tại đây..." />
+                                <RichTextEditor rows={3} value={q.solution || ''} onChange={v => { const n = [...questions]; n[gIdx].solution = v; setQuestions(n); }} placeholder="Nhập hướng dẫn giải..." />
                             </div>
                         </div>
-                    );
-                })}
+                        {/* Fix: Added missing closing div for the question card container */}
+                    </div>
+                );
+            })}
         </div>
     </div>
   );
@@ -382,7 +324,7 @@ const AdminDashboard: React.FC = () => {
                                     <div className="flex gap-2 mt-4 pt-6 border-t-2 border-dashed border-slate-50">
                                         <button onClick={() => setViewingQuiz(q)} className="flex-1 bg-blue-50 text-blue-600 py-3 rounded-2xl text-xs font-black uppercase hover:bg-blue-600 hover:text-white transition-all tracking-widest">XEM ĐỀ</button>
                                         <button onClick={() => handleEditQuiz(q)} className="p-3 text-indigo-400 hover:bg-indigo-50 rounded-2xl transition-all"><Edit size={20}/></button>
-                                        <button onClick={async () => { if(confirm('Xóa vĩnh viễn đề này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-3 text-red-300 hover:bg-red-50 rounded-2xl transition-all"><Trash2 size={20}/></button>
+                                        <button onClick={async () => { if(confirm('Xóa vĩnh viễn đề này?')) { await deleteQuizStorage(q.id); refreshData(); } }} className="p-3 text-red-300 hover:bg-red-50 rounded-2xl transition-all"><Trash2 size={20}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -410,16 +352,6 @@ const AdminDashboard: React.FC = () => {
                                   <select className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-black focus:ring-2 focus:ring-blue-100" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select>
                               </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-6">
-                              <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Hình thức</label>
-                                  <select className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-black focus:ring-2 focus:ring-blue-100" value={quizType} onChange={e => setQuizType(e.target.value as QuizType)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select>
-                              </div>
-                              <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Thời gian (phút)</label>
-                                  <input type="number" className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-black focus:ring-2 focus:ring-blue-100" value={duration} onChange={e => setDuration(parseInt(e.target.value))} />
-                              </div>
-                          </div>
                       </div>
                   </div>
                   {renderEditor('mcq', 'Phần I: Câu trắc nghiệm nhiều phương án lựa chọn', 'border-blue-500')}
@@ -429,14 +361,11 @@ const AdminDashboard: React.FC = () => {
               <div className="lg:col-span-1">
                   <div className="sticky top-24 bg-white p-10 rounded-[3rem] border-2 border-slate-50 shadow-2xl text-center space-y-8">
                       <div className="flex justify-center"><div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-[2rem] flex items-center justify-center shadow-inner"><Sparkles size={40}/></div></div>
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Thống kê cấu trúc</h4>
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Thống kê đề</h4>
                       <div className="grid grid-cols-2 gap-4">
                           <div className="bg-slate-50 p-6 rounded-[2rem]"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">Số câu</p><p className="text-3xl font-black text-blue-600">{questions.length}</p></div>
-                          <div className="bg-slate-50 p-6 rounded-[2rem]"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">Thang điểm</p><p className="text-3xl font-black text-blue-600">{questions.reduce((acc, q) => acc + (parseFloat(String(q.points)) || 0), 0).toFixed(2)}</p></div>
+                          <div className="bg-slate-50 p-6 rounded-[2rem]"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">Điểm</p><p className="text-3xl font-black text-blue-600">{questions.reduce((acc, q) => acc + (parseFloat(String(q.points)) || 0), 0).toFixed(1)}</p></div>
                       </div>
-                      <label className="flex items-center justify-center gap-3 cursor-pointer bg-blue-50 py-4 rounded-[2rem] font-black text-sm text-blue-700 hover:bg-blue-100 transition-all border-2 border-blue-100">
-                          <input type="checkbox" checked={isPublished} onChange={e => setIsPublished(e.target.checked)} className="w-6 h-6 rounded-lg text-blue-600" /> CÔNG KHAI ĐỀ THI
-                      </label>
                       <button onClick={handleSaveQuiz} className="w-full bg-slate-900 hover:bg-black text-white py-6 rounded-[2rem] font-black uppercase text-xs tracking-[0.2em] shadow-2xl transform active:scale-95 transition-all flex items-center justify-center gap-3"><Save size={20}/> HOÀN TẤT & LƯU ĐỀ</button>
                   </div>
               </div>
@@ -449,7 +378,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
                       <div className="flex items-center gap-6">
                           <div className="w-16 h-16 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-xl"><BookOpen size={32}/></div>
-                          <div><h3 className="text-2xl font-black uppercase tracking-tight leading-tight">{viewingQuiz.title}</h3><p className="text-[11px] font-black text-blue-300 uppercase tracking-widest mt-1">LỚP {viewingQuiz.grade} • {viewingQuiz.questions.length} CÂU HỎI • KÈM LỜI GIẢI</p></div>
+                          <div><h3 className="text-2xl font-black uppercase tracking-tight leading-tight">{viewingQuiz.title}</h3><p className="text-[11px] font-black text-blue-300 uppercase tracking-widest mt-1">LỚP {viewingQuiz.grade} • {viewingQuiz.questions.length} CÂU HỎI</p></div>
                       </div>
                       <div className="flex gap-3">
                           <button onClick={handleShufflePreview} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase transition-all shadow-lg active:scale-95"><Shuffle size={18}/> XÁO ĐỀ</button>
@@ -461,79 +390,26 @@ const AdminDashboard: React.FC = () => {
                       <div className="max-w-4xl mx-auto bg-white p-16 shadow-2xl rounded-[3rem] border border-slate-200 space-y-16">
                           <div className="text-center pb-10 border-b-4 border-slate-50">
                               <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter mb-3 leading-tight">{viewingQuiz.title}</h2>
-                              <div className="text-slate-400 font-black uppercase text-xs tracking-[0.4em]">KHỐI LỚP {viewingQuiz.grade} • THỜI GIAN: {viewingQuiz.durationMinutes} PHÚT</div>
                           </div>
-
                           <div className="space-y-16">
-                              {previewQuestions.filter(q => q.type === 'mcq').length > 0 && (
-                                  <div className="space-y-8">
-                                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-[0.2em] border-l-8 border-blue-600 pl-4 bg-blue-50 py-3 rounded-r-xl">PHẦN I. CÂU TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN</h4>
-                                      <div className="space-y-12">
-                                          {previewQuestions.filter(q => q.type === 'mcq').map((q, i) => (
-                                              <div key={q.id}>
-                                                  <div className="font-black text-slate-800 mb-4 leading-relaxed"><span className="text-blue-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  <div className="grid grid-cols-2 gap-x-10 gap-y-3 ml-8">
-                                                      {q.options?.map((opt, oi) => (
-                                                          <div key={oi} className="text-sm text-slate-600 font-bold"><span className="text-slate-400 mr-2">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>
-                                                      ))}
-                                                  </div>
-                                                  {q.solution && (
-                                                      <div className="mt-6 ml-8 p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 italic text-sm text-slate-500">
-                                                          <span className="font-black text-slate-400 not-italic uppercase text-[10px] mb-2 block tracking-widest">Lời giải chi tiết:</span>
-                                                          <LatexText text={q.solution}/>
-                                                      </div>
-                                                  )}
-                                              </div>
-                                          ))}
-                                      </div>
+                              {previewQuestions.map((q, i) => (
+                                  <div key={q.id}>
+                                      <div className="font-black text-slate-800 mb-4 leading-relaxed"><span className="text-blue-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
+                                      {q.type === 'mcq' && q.options && (
+                                          <div className="grid grid-cols-2 gap-x-10 gap-y-3 ml-8">
+                                              {q.options.map((opt, oi) => (
+                                                  <div key={oi} className="text-sm text-slate-600 font-bold"><span className="text-slate-400 mr-2">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>
+                                              ))}
+                                          </div>
+                                      )}
+                                      {q.solution && (
+                                          <div className="mt-6 ml-8 p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 italic text-sm text-slate-500">
+                                              <span className="font-black text-slate-400 not-italic uppercase text-[10px] mb-2 block tracking-widest">Lời giải chi tiết:</span>
+                                              <LatexText text={q.solution}/>
+                                          </div>
+                                      )}
                                   </div>
-                              )}
-
-                              {previewQuestions.filter(q => q.type === 'group-tf').length > 0 && (
-                                  <div className="space-y-8">
-                                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-[0.2em] border-l-8 border-purple-600 pl-4 bg-purple-50 py-3 rounded-r-xl">PHẦN II. CÂU TRẮC NGHIỆM ĐÚNG SAI</h4>
-                                      <div className="space-y-12">
-                                          {previewQuestions.filter(q => q.type === 'group-tf').map((q, i) => (
-                                              <div key={q.id}>
-                                                  <div className="font-black text-slate-800 mb-6 leading-relaxed"><span className="text-purple-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  <div className="space-y-4 ml-8">
-                                                      {q.subQuestions?.map((sq, si) => (
-                                                          <div key={si} className="text-sm text-slate-600 font-bold flex gap-3">
-                                                              <span className="text-slate-400 shrink-0">{String.fromCharCode(97+si)})</span>
-                                                              <LatexText text={sq.text}/>
-                                                          </div>
-                                                      ))}
-                                                  </div>
-                                                  {q.solution && (
-                                                      <div className="mt-6 ml-8 p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 italic text-sm text-slate-500">
-                                                          <span className="font-black text-slate-400 not-italic uppercase text-[10px] mb-2 block tracking-widest">Lời giải chi tiết:</span>
-                                                          <LatexText text={q.solution}/>
-                                                      </div>
-                                                  )}
-                                              </div>
-                                          ))}
-                                      </div>
-                                  </div>
-                              )}
-
-                              {previewQuestions.filter(q => q.type === 'short').length > 0 && (
-                                  <div className="space-y-8">
-                                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-[0.2em] border-l-8 border-green-600 pl-4 bg-green-50 py-3 rounded-r-xl">PHẦN III. CÂU TRẮC NGHIỆM TRẢ LỜI NGẮN</h4>
-                                      <div className="space-y-12">
-                                          {previewQuestions.filter(q => q.type === 'short').map((q, i) => (
-                                              <div key={q.id}>
-                                                  <div className="font-black text-slate-800 mb-4 leading-relaxed"><span className="text-green-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
-                                                  {q.solution && (
-                                                      <div className="mt-4 ml-8 p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 italic text-sm text-slate-500">
-                                                          <span className="font-black text-slate-400 not-italic uppercase text-[10px] mb-2 block tracking-widest">Lời giải chi tiết & Đáp án: {q.correctAnswer}</span>
-                                                          <LatexText text={q.solution}/>
-                                                      </div>
-                                                  )}
-                                              </div>
-                                          ))}
-                                      </div>
-                                  </div>
-                              )}
+                              ))}
                           </div>
                       </div>
                   </div>
@@ -549,15 +425,15 @@ const AdminDashboard: React.FC = () => {
                           <Database size={32}/>
                           <div><h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi</h3><p className="text-[10px] font-black text-indigo-200 uppercase mt-1">Chọn từ các đề thi đã soạn thảo</p></div>
                       </div>
-                      <button onClick={() => setShowBankModal(false)} className="hover:rotate-90 transition-transform"><XCircle size={32}/></button>
+                      <button onClick={() => setShowBankModal(false)}><XCircle size={32}/></button>
                   </div>
                   <div className="p-6 bg-slate-50 border-b flex gap-4">
                       <select className="flex-1 bg-white border-2 border-slate-200 rounded-2xl p-4 font-black text-sm outline-none focus:border-indigo-500" value={bankQuizId} onChange={e => setBankQuizId(e.target.value)}>
                           <option value="">-- Chọn đề thi gốc --</option>
-                          {quizzes.filter(q => q.grade === bankGrade).map(q => <option key={q.id} value={q.id}>{q.title} ({q.questions.length} câu)</option>)}
+                          {quizzes.filter(q => q.grade === bankGrade).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                       </select>
                       <select className="w-40 bg-white border-2 border-slate-200 rounded-2xl p-4 font-black text-sm outline-none focus:border-indigo-500" value={bankGrade} onChange={e => setBankGrade(e.target.value as Grade)}>
-                          <option value="10">Khối 10</option><option value="11">Khối 11</option><option value="12">Khối 12</option>
+                          <option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option>
                       </select>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-4">
@@ -581,11 +457,9 @@ const AdminDashboard: React.FC = () => {
                           <div className="text-center py-20 text-slate-300 font-black flex flex-col items-center gap-4"><Search size={48} className="text-slate-200"/><p className="uppercase text-xs tracking-[0.2em]">Chọn một đề thi để xem danh sách câu hỏi</p></div>
                       )}
                   </div>
-                  {questions.length > 0 && (
-                      <div className="p-4 bg-white border-t-2 border-slate-100 flex justify-center">
-                          <button onClick={() => setShowBankModal(false)} className="bg-indigo-600 text-white px-10 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2"><Check size={18}/> Xong</button>
-                      </div>
-                  )}
+                  <div className="p-4 bg-white border-t-2 border-slate-100 flex justify-center">
+                      <button onClick={() => setShowBankModal(false)} className="bg-indigo-600 text-white px-10 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2"><Check size={18}/> Xong</button>
+                  </div>
               </div>
           </div>
       )}
@@ -597,7 +471,6 @@ const AdminDashboard: React.FC = () => {
                   <div className="absolute inset-0 flex items-center justify-center text-blue-600"><Sparkles size={36}/></div>
               </div>
               <h2 className="text-3xl font-black text-gray-800 mt-12 mb-4 uppercase tracking-tighter text-center max-w-lg">{loadingMsg}</h2>
-              <p className="text-gray-400 font-black animate-pulse text-[10px] tracking-[0.2em] uppercase">Hệ thống AI đang phân tích dữ liệu Toán học...</p>
           </div>
       )}
     </div>
