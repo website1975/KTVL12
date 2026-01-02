@@ -50,12 +50,20 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3, initialDel
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
   const prompt = `
-    Nhiệm vụ: Chuyển đổi PDF đề thi sang JSON. 
-    QUY TẮC CỰC KỲ NGHIÊM NGẶT:
-    1. 'text': CHỈ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG chứa "Câu 1.", "Câu 2:" hay các ký tự phương án "A.", "B.".
-    2. 'options': Cho MCQ, phải là mảng 4 chuỗi sạch. KHÔNG chứa "A.", "B." bên trong chuỗi.
-    3. 'correctAnswer': Phải khớp 100% với nội dung trong mảng options.
-    4. Tự động gán điểm mặc định: MCQ (0.25), Group-TF (1.0), Short (0.5).
+    Nhiệm vụ: Chuyển đổi PDF đề thi sang JSON. Đề thi thường có 3 phần:
+    - PHẦN I: Câu trắc nghiệm 4 lựa chọn (mcq).
+    - PHẦN II: Câu trắc nghiệm Đúng/Sai (group-tf) - mỗi câu có 4 ý a,b,c,d.
+    - PHẦN III: Câu trắc nghiệm trả lời ngắn (short) - đáp án là một số.
+
+    QUY TẮC BÓC TÁCH:
+    1. Nhận diện tiêu đề "PHẦN I", "PHẦN II", "PHẦN III" để gán đúng 'type'.
+    2. 'text': CHỈ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG chứa "Câu 1.", "Câu 2:" hay các ký tự phương án "A.", "B.".
+    3. 'options': Cho MCQ, phải là mảng 4 chuỗi sạch.
+    4. 'correctAnswer': 
+       - MCQ: Nội dung chuỗi khớp 100% với options.
+       - Short: Giá trị số (chuỗi).
+    5. 'subQuestions': Cho Phần II, tạo mảng 4 đối tượng {text, correctAnswer: "True"/"False"}.
+    6. Điểm mặc định: Phần I (0.25), Phần II (1.0), Phần III (0.5).
   `;
 
   try {
