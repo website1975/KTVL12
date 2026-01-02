@@ -18,23 +18,28 @@ const cleanJsonString = (str: string): string => {
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = getAIClient();
   const prompt = `
-    Nhiệm vụ: Chuyển đổi nội dung PDF đề thi Toán sang JSON theo cấu trúc 3 phần mới.
+    Nhiệm vụ: Chuyển đổi nội dung PDF đề thi Toán sang JSON.
     
-    QUY TẮC NHẬN DIỆN ĐÁP ÁN & LỜI GIẢI:
-    1. PHẦN I (MCQ): Phương án nào có dấu '*' phía trước (VD: *B. Nội dung) là đáp án đúng.
-    2. PHẦN II (Đúng/Sai): Mỗi ý a, b, c, d nếu có (Đ) ở cuối là Đúng, (S) ở cuối là Sai.
-    3. PHẦN III (Ngắn): Đáp án sau từ "Đáp án:" hoặc "Kết quả:".
-    4. LỜI GIẢI: Mọi nội dung nằm sau từ khóa "Lời giải:" hoặc "Hướng dẫn giải:" của mỗi câu PHẢI được đưa vào trường 'solution'. 
-       Nội dung câu hỏi (field 'text') phải dừng lại TRƯỚC từ khóa "Lời giải:".
+    QUY TẮC NHẬN DIỆN MẪU ĐỀ CỦA NGƯỜI DÙNG:
+    1. PHẦN I (MCQ): 
+       - Câu hỏi bắt đầu bằng "Câu X:" hoặc "Cau :".
+       - Phương án nào có dấu '*' phía trước (VD: *B. Đáp án) là đáp án đúng.
+    2. PHẦN II (Đúng/Sai): 
+       - Mỗi ý a, b, c, d nếu có (Đ) ở cuối là Đúng, (S) ở cuối là Sai.
+    3. PHẦN III (Trả lời ngắn): 
+       - Đáp án sau từ "Đáp án:".
+    4. LỜI GIẢI CHI TIẾT: 
+       - Mọi nội dung nằm sau từ khóa "Lời giải:" của mỗi câu PHẢI được đưa vào trường 'solution'.
+       - Phần 'text' của câu hỏi phải dừng lại TRƯỚC từ khóa "Lời giải:".
 
-    CẤU TRÚC JSON:
+    CẤU TRÚC JSON CẦN TRẢ VỀ:
     - type: "mcq" | "group-tf" | "short"
     - text: Nội dung câu hỏi (đã bỏ "Câu X:", đã bỏ phần lời giải).
-    - points: Mặc định P1: 0.25, P2: 1.0, P3: 0.5.
+    - points: P1: 0.25, P2: 1.0, P3: 0.5.
     - options: (Chỉ P1) Mảng 4 chuỗi phương án (đã bỏ dấu '*').
-    - correctAnswer: (P1) Nội dung phương án đúng; (P3) Giá trị số.
-    - subQuestions: (Chỉ P2) Mảng 4 đối tượng {text, correctAnswer: "True" | "False"}.
-    - solution: Nội dung sau chữ "Lời giải:".
+    - correctAnswer: (P1) Nội dung phương án đúng; (P3) Giá trị đáp án.
+    - subQuestions: (Chỉ P2) Mảng các đối tượng {text, correctAnswer: "True" | "False"}.
+    - solution: Nội dung chi tiết sau chữ "Lời giải:".
   `;
 
   const response = await ai.models.generateContent({
@@ -88,11 +93,10 @@ export const generateQuizFromPrompt = async (config: any): Promise<Question[]> =
     const ai = getAIClient();
     const prompt = `
         Soạn đề thi Toán lớp ${config.grade} về chủ đề: ${config.topic}.
-        Yêu cầu:
-        - Phần I: ${config.part1Count} câu trắc nghiệm 4 lựa chọn.
-        - Phần II: ${config.part2Count} câu trắc nghiệm Đúng/Sai.
+        Yêu cầu có lời giải chi tiết sau mỗi câu.
+        - Phần I: ${config.part1Count} câu trắc nghiệm.
+        - Phần II: ${config.part2Count} câu Đúng/Sai.
         - Phần III: ${config.part3Count} câu trả lời ngắn.
-        Mỗi câu hỏi BẮT BUỘC có phần 'solution' (Lời giải chi tiết).
     `;
 
     const response = await ai.models.generateContent({
