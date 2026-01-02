@@ -242,11 +242,11 @@ const AdminDashboard = () => {
     if (mcq.length > 0) {
         content += `<p class="part-title">PHẦN I. Câu trắc nghiệm nhiều phương án chọn.</p>`;
         mcq.forEach((q, i) => {
-            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text}</div>`;
             if (q.options) {
                 content += `<div class="options">`;
                 q.options.forEach((opt, oi) => {
-                    content += `<span>${String.fromCharCode(65+oi)}. ${opt.replace(/\$/g, '')}</span> &nbsp;&nbsp;&nbsp;&nbsp;`;
+                    content += `<span>${String.fromCharCode(65+oi)}. ${opt}</span> &nbsp;&nbsp;&nbsp;&nbsp;`;
                 });
                 content += `</div>`;
             }
@@ -256,10 +256,10 @@ const AdminDashboard = () => {
     if (tf.length > 0) {
         content += `<p class="part-title">PHẦN II. Câu trắc nghiệm đúng sai.</p>`;
         tf.forEach((q, i) => {
-            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text}</div>`;
             if (q.subQuestions) {
                 q.subQuestions.forEach((sq, si) => {
-                    content += `<p style="margin-left: 20px;">${String.fromCharCode(97+si)}) ${sq.text.replace(/\$/g, '')}</p>`;
+                    content += `<p style="margin-left: 20px;">${String.fromCharCode(97+si)}) ${sq.text}</p>`;
                 });
             }
         });
@@ -268,7 +268,7 @@ const AdminDashboard = () => {
     if (short.length > 0) {
         content += `<p class="part-title">PHẦN III. Câu trắc nghiệm trả lời ngắn.</p>`;
         short.forEach((q, i) => {
-            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text}</div>`;
             content += `<p style="margin-left: 20px; color: #ccc;">Trả lời: ...........................................................</p>`;
         });
     }
@@ -751,7 +751,12 @@ const AdminDashboard = () => {
                                             {q.subQuestions.map((sq, si) => <div key={si}><span className="text-slate-300 mr-1">{String.fromCharCode(97+si)})</span> <LatexText text={sq.text}/></div>)}
                                         </div>
                                     )}
-                                    {/* Lời giải đã được ẩn theo yêu cầu */}
+                                    {q.type === 'short' && (
+                                        <div className="ml-8 mt-2 italic text-slate-400">
+                                            Trả lời: ...........................................................
+                                        </div>
+                                    )}
+                                    {/* Lời giải và đáp án hoàn toàn ẩn theo yêu cầu */}
                                 </div>
                             ))}
                         </div>
