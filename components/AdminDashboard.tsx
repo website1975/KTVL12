@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Role } from '../types';
 import { saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, uploadImage, getUsers, saveUser, deleteUser, updateUser, deleteResult } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
@@ -18,7 +18,6 @@ const shuffleArray = <T,>(array: T[]): T[] => {
     return newArr;
 };
 
-// Hàm sắp xếp câu hỏi theo chuẩn: MCQ -> Group-TF -> Short
 const sortQuestionsByType = (qs: Question[]): Question[] => {
     const typeOrder: Record<QuestionType, number> = {
         'mcq': 1,
@@ -29,6 +28,7 @@ const sortQuestionsByType = (qs: Question[]): Question[] => {
 };
 
 // --- HELPER COMPONENTS ---
+// Fix: Use explicit React prefix for namespaces
 interface ToolbarButtonProps { onClick: () => void; icon?: React.ReactNode; label?: string; tooltip: string; }
 const ToolbarBtn: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, tooltip }) => (
     <button type="button" onClick={onClick} className="p-1.5 hover:bg-gray-200 rounded text-gray-700 font-medium text-xs flex items-center gap-1 border border-transparent hover:border-gray-300 transition-all min-w-[24px] justify-center" title={tooltip}>
@@ -111,23 +111,20 @@ const AdminDashboard: React.FC = () => {
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  // Batch point logic
   const [batchPoints, setBatchPoints] = useState<Record<QuestionType, string>>({
       'mcq': '0.25',
       'group-tf': '1.0',
       'short': '0.5'
   });
 
-  // Modal states
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<User | null>(null);
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
 
-  // AI Auto Gen State
   const [aiTopic, setAiTopic] = useState('');
   const [aiConfig, setAiConfig] = useState({ p1: 10, p2: 4, p3: 6, diff: 'Thông hiểu' });
 
-  const loadingMessages = ['Đang trích xuất dữ liệu...', 'Đang nhận diện công thức toán học...', 'Đang phân tích lời giải chi tiết...', 'Đang hoàn tất cấu trúc đề thi...'];
+  const loadingMessages = ['Đang trích xuất dữ liệu...', 'Đang nhận diện các phần thi...', 'Đang bóc tách Đúng/Sai & Tự luận...', 'Đang hoàn tất cấu trúc đề thi...'];
 
   const groupedQuizzes = useMemo(() => {
     const groups: Record<string, Quiz[]> = {};
@@ -152,7 +149,8 @@ const AdminDashboard: React.FC = () => {
 
   const stats = useMemo(() => {
     const totalResults = filteredResults.length;
-    const avgScore = totalResults > 0 ? filteredResults.reduce((sum, r) => sum + r.score, 0) / totalResults : 0;
+    // Fix: Added explicit types for sum and result to avoid potential inference issues
+    const avgScore = totalResults > 0 ? filteredResults.reduce((sum: number, r: Result) => sum + r.score, 0) / totalResults : 0;
     const topScore = totalResults > 0 ? Math.max(...filteredResults.map(r => r.score)) : 0;
     return { totalResults, avgScore, topScore };
   }, [filteredResults]);
@@ -234,11 +232,10 @@ const AdminDashboard: React.FC = () => {
               part3Count: aiConfig.p3,
               difficulty: aiConfig.diff
           });
-          // Tự động sắp xếp lại mảng sau khi thêm từ AI để đồng nhất số thứ tự
           const merged = sortQuestionsByType([...questions, ...generated]);
           setQuestions(merged);
           if (!title.trim()) setTitle(`Đề thi AI - ${aiTopic}`);
-          alert(`Đã soạn thêm ${generated.length} câu hỏi. Đề thi đã được sắp xếp lại đúng trình tự các phần.`);
+          alert(`Đã soạn thêm ${generated.length} câu hỏi. Hệ thống đã tự động sắp xếp lại đề thi theo đúng cấu trúc 3 phần.`);
           setActiveTab('create');
       } catch (e: any) {
           alert(e.message);
@@ -258,7 +255,7 @@ const AdminDashboard: React.FC = () => {
         const extracted = await parseQuestionsFromPDF(base64Str);
         const merged = sortQuestionsByType([...questions, ...extracted]);
         setQuestions(merged);
-        alert(`Đã thêm ${extracted.length} câu hỏi và sắp xếp lại đề thi.`);
+        alert(`Đã trích xuất thành công ${extracted.length} câu hỏi hỗn hợp.`);
         setActiveTab('create');
       } catch (e: any) { alert(e.message); } finally { setIsProcessing(false); }
     };
@@ -301,15 +298,16 @@ const AdminDashboard: React.FC = () => {
   const handleShufflePreview = () => {
       if (!previewQuestions.length) return;
       
-      const p1 = shuffleArray(previewQuestions.filter(q => q.type === 'mcq')).map(q => ({
+      // Fix: Added explicit type casting and generic parameters for shuffleArray to ensure correct type inference for spread operations
+      const p1 = (shuffleArray(previewQuestions.filter(q => q.type === 'mcq')) as Question[]).map((q: Question) => ({
           ...q,
-          options: q.options ? shuffleArray(q.options) : q.options
+          options: q.options ? (shuffleArray(q.options) as string[]) : q.options
       }));
-      const p2 = shuffleArray(previewQuestions.filter(q => q.type === 'group-tf')).map(q => ({
+      const p2 = (shuffleArray(previewQuestions.filter(q => q.type === 'group-tf')) as Question[]).map((q: Question) => ({
           ...q,
-          subQuestions: q.subQuestions ? shuffleArray(q.subQuestions) : q.subQuestions
+          subQuestions: q.subQuestions ? (shuffleArray(q.subQuestions) as any[]) : q.subQuestions
       }));
-      const p3 = shuffleArray(previewQuestions.filter(q => q.type === 'short'));
+      const p3 = shuffleArray(previewQuestions.filter(q => q.type === 'short')) as Question[];
 
       setPreviewQuestions([...p1, ...p2, ...p3]);
       alert("Đã xáo trộn thứ tự câu hỏi và phương án!");
@@ -467,7 +465,6 @@ const AdminDashboard: React.FC = () => {
         <div className="bg-gray-50 px-6 py-4 border-b flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex items-center gap-3">
             <h3 className="font-extrabold text-gray-800 uppercase flex items-center gap-2">{label}</h3>
-            {/* Batch Points Control */}
             <div className="flex items-center gap-1 bg-white border rounded-lg p-1 shadow-inner">
                 <input 
                     type="text" 
@@ -788,35 +785,59 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {activeTab === 'import' && (
-          <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
+          <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
-                  <div className="flex items-center gap-4 mb-8">
-                      <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><Upload size={32}/></div>
-                      <div><h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Nhập đề từ PDF thông minh</h2><p className="text-gray-400 text-sm font-medium">Hệ thống AI tự động bóc tách Câu hỏi, Đáp án và Lời giải.</p></div>
+                  <div className="flex flex-col lg:flex-row gap-8">
+                    {/* Hướng dẫn mẫu PDF */}
+                    <div className="lg:w-1/2 bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
+                        <h4 className="text-xs font-black text-indigo-600 uppercase mb-4 tracking-widest flex items-center gap-2"><FileText size={16}/> Mẫu cấu trúc PDF (Cực kỳ quan trọng)</h4>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm font-mono text-[11px] leading-relaxed space-y-4">
+                                <div>
+                                    <p className="text-blue-600 font-black border-b pb-1 mb-2">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn.</p>
+                                    <p className="font-bold">Câu 1. Một nguyên hàm của hàm số $f(x) = e^x$ là:</p>
+                                    <p className="ml-2">A. $e^x$.</p>
+                                    <p className="ml-2">B. $x^e$.</p>
+                                    <p className="ml-2">C. $\ln x$.</p>
+                                    <p className="ml-2">D. $1/e^x$.</p>
+                                </div>
+                                <div>
+                                    <p className="text-purple-600 font-black border-b pb-1 mb-2">PHẦN II. Câu trắc nghiệm đúng sai.</p>
+                                    <p className="font-bold">Câu 1. Cho hàm số $y=f(x)$ liên tục trên $\mathbb{R}$...</p>
+                                    <p className="ml-2">a) Đồ thị hàm số đi qua điểm (0;1).</p>
+                                    <p className="ml-2">b) Hàm số đồng biến trên khoảng (1;2).</p>
+                                    <p className="ml-2">c) Giá trị cực đại của hàm số là 3.</p>
+                                    <p className="ml-2">d) Đồ thị hàm số có tiệm cận ngang $y=0$.</p>
+                                </div>
+                                <div>
+                                    <p className="text-green-600 font-black border-b pb-1 mb-2">PHẦN III. Câu trắc nghiệm trả lời ngắn.</p>
+                                    <p className="font-bold">Câu 1. Cho hình chóp S.ABCD... Tính thể tích V.</p>
+                                    <p className="text-slate-400 italic">(AI sẽ bóc tách đề bài, bạn sẽ điền đáp án số sau)</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="mt-4 text-[10px] text-gray-500 italic">Lưu ý: Bạn có thể đánh dấu đáp án đúng bằng dấu (*) phía sau phương án nếu file PDF có đáp án sẵn.</p>
+                    </div>
+
+                    {/* Upload Section */}
+                    <div className="lg:w-1/2 flex flex-col justify-center">
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><Upload size={32}/></div>
+                            <div><h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Bắt đầu Upload PDF</h2><p className="text-gray-400 text-sm font-medium">Hệ thống AI sẽ tự động phân loại 3 phần đề.</p></div>
+                        </div>
+                        
+                        <div className="flex flex-col justify-center items-center p-8 bg-blue-50/20 rounded-3xl border-2 border-dashed border-blue-200 hover:border-blue-400 transition-all cursor-pointer group relative overflow-hidden h-64 mb-6">
+                            <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                            <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform"><FileText size={40}/></div>
+                            <span className="font-black text-blue-600 text-lg text-center px-4">{file ? file.name : "CHỌN FILE PDF ĐÃ SOẠN THEO MẪU"}</span>
+                        </div>
+
+                        <button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-100 disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-widest">
+                            {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles size={24}/>}
+                            {isProcessing ? "ĐANG PHÂN TÍCH CẤU TRÚC 3 PHẦN..." : "TRÍCH XUẤT ĐỀ THI HỖN HỢP"}
+                        </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
-                          <h4 className="text-xs font-black text-blue-600 uppercase mb-4 tracking-widest flex items-center gap-2"><HelpCircle size={14}/> Mẫu cấu trúc file PDF chuẩn</h4>
-                          <div className="space-y-4">
-                              <div className="p-3 bg-white rounded-lg border border-slate-200 text-[11px] leading-relaxed shadow-sm font-mono">
-                                  <p className="font-bold text-slate-800">Câu 1. Nội dung câu hỏi...</p>
-                                  <p className="ml-2">A. Phương án 1</p>
-                                  <p className="ml-2">B. Phương án 2 *</p>
-                                  <p className="ml-2">C. Phương án 3</p>
-                                  <p className="ml-2">D. Phương án 4</p>
-                              </div>
-                          </div>
-                      </div>
-                      <div className="flex flex-col justify-center items-center p-8 bg-blue-50/20 rounded-3xl border-2 border-dashed border-blue-200 hover:border-blue-400 transition-all cursor-pointer group relative overflow-hidden">
-                          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" />
-                          <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform"><FileText size={40}/></div>
-                          <span className="font-black text-blue-600 text-lg">{file ? file.name : "KÉO THẢ FILE PDF VÀO ĐÂY"}</span>
-                      </div>
-                  </div>
-                  <button onClick={handleFileUpload} disabled={!file || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-100 disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-widest">
-                      {isProcessing ? <Loader2 className="animate-spin" /> : <Sparkles size={24}/>}
-                      {isProcessing ? "ĐANG PHÂN TÍCH FILE..." : "BẮT ĐẦU TRÍCH XUẤT CÂU HỎI"}
-                  </button>
               </div>
           </div>
       )}
@@ -907,7 +928,8 @@ const AdminDashboard: React.FC = () => {
                               ) : (
                                 filteredStudents.map(u => {
                                     const studentResults = results.filter(r => r.studentId === u.id);
-                                    const avg = studentResults.length > 0 ? (studentResults.reduce((s,r) => s+r.score, 0) / studentResults.length).toFixed(2) : "0.00";
+                                    // Fix: Explicitly typing reduce parameters as number and Result to ensure correct accumulation and object property access
+                                    const avg = studentResults.length > 0 ? (studentResults.reduce((s: number, r: Result) => s + r.score, 0) / studentResults.length).toFixed(2) : "0.00";
                                     return (
                                         <tr key={u.id} className="hover:bg-indigo-50/20 transition-all group">
                                             <td className="px-6 py-4 font-bold text-gray-800">{u.fullName}</td>
