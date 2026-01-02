@@ -14,7 +14,7 @@ import {
     Sparkles, BrainCircuit, FileDown, Shuffle, Check, Search,
     ChevronRight, LayoutDashboard, Users, GraduationCap, FileText,
     Eye, Monitor, Cpu, FileUp, Trophy, History, Settings, Filter, Calendar,
-    Clock
+    Clock, Download
 } from 'lucide-react';
 import LatexText from './LatexText';
 
@@ -22,6 +22,15 @@ import LatexText from './LatexText';
 const sortQuestionsByType = (qs: Question[]): Question[] => {
     const typeOrder: Record<string, number> = { 'mcq': 1, 'group-tf': 2, 'short': 3 };
     return [...qs].sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
+};
+
+const shuffleArray = <T,>(array: T[]): T[] => {
+    const newArr = [...array];
+    for (let i = newArr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+    }
+    return newArr;
 };
 
 // --- RICH TEXT EDITOR WITH INLINE PREVIEW ---
@@ -92,6 +101,7 @@ const AdminDashboard = () => {
   const [bankGrade, setBankGrade] = useState<Grade>('12');
   const [bankCategory, setBankCategory] = useState('all');
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
+  const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
   const [viewingStudent, setViewingStudent] = useState<User | null>(null);
   const [viewingResult, setViewingResult] = useState<Result | null>(null);
   
@@ -186,6 +196,92 @@ const AdminDashboard = () => {
         finally { setIsProcessing(false); }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleShufflePreview = () => {
+    if (!viewingQuiz) return;
+    const shuffled = shuffleArray(viewingQuiz.questions).map(q => {
+        if (q.type === 'mcq' && q.options) {
+            return { ...q, options: shuffleArray(q.options) };
+        }
+        return q;
+    });
+    setPreviewQuestions(shuffled);
+  };
+
+  const handleExportDoc = () => {
+    if (!viewingQuiz) return;
+    const qs = previewQuestions.length > 0 ? previewQuestions : viewingQuiz.questions;
+    
+    let content = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>${viewingQuiz.title}</title>
+      <style>
+        body { font-family: 'Times New Roman', serif; line-height: 1.5; }
+        .header { text-align: center; margin-bottom: 20px; font-weight: bold; }
+        .part-title { font-weight: bold; margin: 15px 0 5px 0; text-transform: uppercase; text-decoration: underline; }
+        .question { margin-bottom: 10px; }
+        .options { display: grid; grid-template-cols: 1fr 1fr; margin-left: 20px; }
+      </style>
+      </head>
+      <body>
+        <div class="header">
+          <p>SỞ GIÁO DỤC VÀ ĐÀO TẠO</p>
+          <p>TRƯỜNG THPT .....................</p>
+          <h2 style="margin-top: 20px;">ĐỀ THI: ${viewingQuiz.title.toUpperCase()}</h2>
+          <p>Khối: ${viewingQuiz.grade} - Thời gian: ${viewingQuiz.durationMinutes} phút</p>
+        </div>
+        <hr/>
+    `;
+
+    // Phân chia câu hỏi theo phần
+    const mcq = qs.filter(q => q.type === 'mcq');
+    const tf = qs.filter(q => q.type === 'group-tf');
+    const short = qs.filter(q => q.type === 'short');
+
+    if (mcq.length > 0) {
+        content += `<p class="part-title">PHẦN I. Câu trắc nghiệm nhiều phương án chọn.</p>`;
+        mcq.forEach((q, i) => {
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            if (q.options) {
+                content += `<div class="options">`;
+                q.options.forEach((opt, oi) => {
+                    content += `<span>${String.fromCharCode(65+oi)}. ${opt.replace(/\$/g, '')}</span> &nbsp;&nbsp;&nbsp;&nbsp;`;
+                });
+                content += `</div>`;
+            }
+        });
+    }
+
+    if (tf.length > 0) {
+        content += `<p class="part-title">PHẦN II. Câu trắc nghiệm đúng sai.</p>`;
+        tf.forEach((q, i) => {
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            if (q.subQuestions) {
+                q.subQuestions.forEach((sq, si) => {
+                    content += `<p style="margin-left: 20px;">${String.fromCharCode(97+si)}) ${sq.text.replace(/\$/g, '')}</p>`;
+                });
+            }
+        });
+    }
+
+    if (short.length > 0) {
+        content += `<p class="part-title">PHẦN III. Câu trắc nghiệm trả lời ngắn.</p>`;
+        short.forEach((q, i) => {
+            content += `<div class="question"><b>Câu ${i+1}.</b> ${q.text.replace(/\$/g, '')}</div>`;
+            content += `<p style="margin-left: 20px; color: #ccc;">Trả lời: ...........................................................</p>`;
+        });
+    }
+
+    content += `</body></html>`;
+
+    const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${viewingQuiz.title.replace(/\s+/g, '_')}.doc`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const renderQuestionEditor = (type: QuestionType, label: string, colorClass: string) => (
@@ -363,7 +459,7 @@ const AdminDashboard = () => {
                                         </div>
                                     </div>
                                     <div className="mt-4 pt-4 border-t border-slate-50 flex gap-2">
-                                        <button onClick={() => setViewingQuiz(q)} className="flex-1 bg-slate-50 text-slate-600 py-2 rounded-lg text-[10px] font-bold hover:bg-blue-600 hover:text-white transition-all">XEM ĐỀ</button>
+                                        <button onClick={() => { setViewingQuiz(q); setPreviewQuestions([]); }} className="flex-1 bg-slate-50 text-slate-600 py-2 rounded-lg text-[10px] font-bold hover:bg-blue-600 hover:text-white transition-all">XEM ĐỀ</button>
                                         <button onClick={() => handleEdit(q)} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={14}/></button>
                                         <button onClick={async () => { if(confirm('Xóa đề này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
                                     </div>
@@ -467,7 +563,7 @@ const AdminDashboard = () => {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-1">
-                                                        <button onClick={() => setViewingResult(r)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Eye size={16}/></button>
+                                                        <button onClick={() => alert('Tính năng xem chi tiết bài làm của học sinh đang được cập nhật!')} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Eye size={16}/></button>
                                                         <button onClick={async () => { if(confirm('Xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="p-1.5 text-slate-200 hover:text-red-500"><Trash2 size={16}/></button>
                                                     </div>
                                                 </td>
@@ -634,11 +730,15 @@ const AdminDashboard = () => {
                             <FileText size={28}/>
                             <div><h3 className="text-sm font-black uppercase">{viewingQuiz.title}</h3><p className="text-[10px] text-slate-400 uppercase tracking-widest">Khối {viewingQuiz.grade} • {viewingQuiz.questions.length} câu hỏi</p></div>
                         </div>
-                        <button onClick={() => setViewingQuiz(null)}><X size={28}/></button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleShufflePreview} className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-xs font-bold hover:bg-blue-700 transition-all"><Shuffle size={14}/> XÁO ĐỀ</button>
+                            <button onClick={handleExportDoc} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-all"><Download size={14}/> XUẤT WORD</button>
+                            <button onClick={() => setViewingQuiz(null)} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700"><X size={24}/></button>
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                         <div className="max-w-2xl mx-auto bg-white p-12 shadow-sm rounded-[2rem] space-y-10">
-                            {viewingQuiz.questions.map((q, i) => (
+                            {(previewQuestions.length > 0 ? previewQuestions : viewingQuiz.questions).map((q, i) => (
                                 <div key={q.id} className="text-[13px] border-b border-slate-50 pb-8 last:border-0">
                                     <div className="font-black text-slate-800 text-base mb-4 leading-relaxed"><span className="text-blue-600 mr-2">Câu {i+1}.</span> <LatexText text={q.text}/></div>
                                     {q.type === 'mcq' && q.options && (
@@ -646,12 +746,12 @@ const AdminDashboard = () => {
                                             {q.options.map((opt, oi) => <div key={oi}><span className="text-slate-300 mr-1">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
                                         </div>
                                     )}
-                                    {q.solution && (
-                                        <div className="mt-6 ml-8 p-4 bg-slate-50 rounded-xl border border-slate-100 text-[12px] text-slate-500 leading-relaxed italic">
-                                            <div className="text-[9px] font-black text-blue-400 uppercase mb-2 not-italic tracking-widest">Lời giải:</div>
-                                            <LatexText text={q.solution}/>
+                                    {q.type === 'group-tf' && q.subQuestions && (
+                                        <div className="ml-8 space-y-2 mt-2">
+                                            {q.subQuestions.map((sq, si) => <div key={si}><span className="text-slate-300 mr-1">{String.fromCharCode(97+si)})</span> <LatexText text={sq.text}/></div>)}
                                         </div>
                                     )}
+                                    {/* Lời giải đã được ẩn theo yêu cầu */}
                                 </div>
                             ))}
                         </div>
