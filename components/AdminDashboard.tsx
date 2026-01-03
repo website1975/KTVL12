@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Quiz, Question, Grade, QuestionType, QuizType, Result, User } from '../types';
+import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Chapter } from '../types';
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
-    getUsers, deleteUser, deleteResult
+    getUsers, deleteUser, deleteResult,
+    getChapters, saveChapter, updateChapter, deleteChapter
 } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,7 +15,7 @@ import {
     Sparkles, BrainCircuit, FileDown, Shuffle, Check, Search,
     ChevronRight, LayoutDashboard, Users, GraduationCap, FileText,
     Eye, Monitor, Cpu, FileUp, Trophy, History, Settings, Filter, Calendar,
-    Clock, Download
+    Clock, Download, FolderTree, ArrowUpDown
 } from 'lucide-react';
 import LatexText from './LatexText';
 
@@ -71,15 +72,22 @@ const RichTextEditor = ({ value, onChange, placeholder, rows, className, label }
 };
 
 const AdminDashboard = () => {
-  const [activeMenu, setActiveMenu] = useState<'quizzes' | 'create' | 'import' | 'ai' | 'results' | 'students'>('quizzes');
+  const [activeMenu, setActiveMenu] = useState<'quizzes' | 'create' | 'import' | 'ai' | 'results' | 'students' | 'chapters'>('quizzes');
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
 
   // Global Filter States
   const [filterGrade, setFilterGrade] = useState<Grade | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterQuizId, setFilterQuizId] = useState('all');
+
+  // Chapter Management State
+  const [selectedGradeForChapters, setSelectedGradeForChapters] = useState<Grade>('12');
+  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
+  const [chapterNameInput, setChapterNameInput] = useState('');
+  const [chapterOrderInput, setChapterOrderInput] = useState(1);
 
   // AI & PDF State
   const [aiTopic, setAiTopic] = useState('');
@@ -114,17 +122,17 @@ const AdminDashboard = () => {
     const qs = await getQuizzes();
     const rs = await getResults();
     const us = await getUsers();
+    const chs = await getChapters();
     setQuizzes(qs);
     setResults(rs);
     setUsers(us);
+    setChapters(chs);
   };
 
-  // Lấy danh sách chuyên đề duy nhất từ dữ liệu đề thi hiện có
-  const categories = useMemo(() => {
-    const cats = new Set<string>();
-    quizzes.forEach(q => { if (q.category) cats.add(q.category); });
-    return Array.from(cats).sort();
-  }, [quizzes]);
+  // Lấy danh sách chuyên đề duy nhất (đã quản lý trong QL Chương)
+  const availableChapters = useMemo(() => {
+    return chapters.filter(c => c.grade === (activeMenu === 'create' ? grade : filterGrade === 'all' ? c.grade : filterGrade));
+  }, [chapters, grade, filterGrade, activeMenu]);
 
   const filteredQuizzes = useMemo(() => {
     return quizzes.filter(q => {
@@ -167,6 +175,28 @@ const AdminDashboard = () => {
     refreshData(); setActiveMenu('quizzes'); resetForm();
   };
 
+  // --- Chapter Handlers ---
+  const handleSaveChapter = async () => {
+      if (!chapterNameInput.trim()) return alert("Nhập tên chương!");
+      const chapData: Chapter = {
+          id: editingChapterId || uuidv4(),
+          grade: selectedGradeForChapters,
+          name: chapterNameInput.trim(),
+          order: chapterOrderInput
+      };
+      if (editingChapterId) await updateChapter(chapData); else await saveChapter(chapData);
+      setChapterNameInput(''); setChapterOrderInput(chapters.length + 2); setEditingChapterId(null);
+      refreshData();
+  };
+
+  const handleEditChapter = (c: Chapter) => {
+      setEditingChapterId(c.id);
+      setChapterNameInput(c.name);
+      setChapterOrderInput(c.order);
+      setSelectedGradeForChapters(c.grade);
+  };
+
+  // --- AI Handlers ---
   const handleAICompose = async () => {
     if (!aiTopic.trim()) return alert("Nhập chủ đề!");
     setIsProcessing(true); setLoadingMsg("AI Flash đang soạn đề...");
@@ -234,7 +264,6 @@ const AdminDashboard = () => {
         <hr/>
     `;
 
-    // Phân chia câu hỏi theo phần
     const mcq = qs.filter(q => q.type === 'mcq');
     const tf = qs.filter(q => q.type === 'group-tf');
     const short = qs.filter(q => q.type === 'short');
@@ -274,7 +303,6 @@ const AdminDashboard = () => {
     }
 
     content += `</body></html>`;
-
     const blob = new Blob(['\ufeff', content], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -381,6 +409,7 @@ const AdminDashboard = () => {
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
                 {[
                     { id: 'quizzes', icon: LayoutDashboard, label: 'QUẢN LÝ ĐỀ THI' },
+                    { id: 'chapters', icon: FolderTree, label: 'QL CHƯƠNG' },
                     { id: 'create', icon: Plus, label: 'SOẠN ĐỀ THỦ CÔNG' },
                     { id: 'ai', icon: Sparkles, label: 'SOẠN ĐỀ BẰNG AI' },
                     { id: 'import', icon: FileUp, label: 'NHẬP ĐỀ TỪ PDF' },
@@ -414,17 +443,8 @@ const AdminDashboard = () => {
                             
                             {(activeMenu === 'quizzes' || activeMenu === 'results') && (
                                 <select className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-                                    <option value="all">CHUYÊN ĐỀ (TẤT CẢ)</option>
-                                    {categories.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                                </select>
-                            )}
-
-                            {activeMenu === 'results' && (
-                                <select className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none max-w-[200px]" value={filterQuizId} onChange={e => setFilterQuizId(e.target.value)}>
-                                    <option value="all">ĐỀ THI (TẤT CẢ)</option>
-                                    {quizzes.filter(q => (filterGrade === 'all' || q.grade === filterGrade) && (filterCategory === 'all' || q.category === filterCategory)).map(q => (
-                                        <option key={q.id} value={q.id}>{q.title}</option>
-                                    ))}
+                                    <option value="all">CHƯƠNG (TẤT CẢ)</option>
+                                    {availableChapters.map(c => <option key={c.id} value={c.name}>{c.name.toUpperCase()}</option>)}
                                 </select>
                             )}
                         </div>
@@ -436,6 +456,62 @@ const AdminDashboard = () => {
             </header>
 
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                {/* CHAPTERS TAB */}
+                {activeMenu === 'chapters' && (
+                    <div className="max-w-4xl mx-auto animate-fade-in">
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 mb-6 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-sm font-black uppercase tracking-tight">Cấu trúc chương trình học</h3>
+                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                                    {(['10', '11', '12'] as const).map(g => (
+                                        <button key={g} onClick={() => setSelectedGradeForChapters(g)} className={`px-4 py-1.5 rounded text-[10px] font-black ${selectedGradeForChapters === g ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-400'}`}>
+                                            KHỐI {g}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                                <div className="col-span-12 md:col-span-8 space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Tên chương mới</label>
+                                    <input type="text" className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-100" placeholder="VD: Chương 1: Ứng dụng đạo hàm..." value={chapterNameInput} onChange={e => setChapterNameInput(e.target.value)} />
+                                </div>
+                                <div className="col-span-6 md:col-span-2 space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Thứ tự</label>
+                                    <input type="number" className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold text-center outline-none" value={chapterOrderInput} onChange={e => setChapterOrderInput(parseInt(e.target.value))} />
+                                </div>
+                                <div className="col-span-6 md:col-span-2">
+                                    <button onClick={handleSaveChapter} className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                        {editingChapterId ? <Save size={14}/> : <Plus size={14}/>} {editingChapterId ? 'Cập nhật' : 'Thêm'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="p-4 bg-slate-50 border-b flex items-center gap-2"><FolderTree size={16} className="text-slate-400"/> <h4 className="text-[10px] font-black uppercase text-slate-600">Danh sách chương khối {selectedGradeForChapters}</h4></div>
+                            <div className="divide-y divide-slate-100">
+                                {chapters.filter(c => c.grade === selectedGradeForChapters).length === 0 ? (
+                                    <div className="p-10 text-center text-slate-300 font-bold uppercase text-[10px]">Chưa có chương nào được tạo cho khối {selectedGradeForChapters}</div>
+                                ) : (
+                                    chapters.filter(c => c.grade === selectedGradeForChapters).sort((a,b)=>a.order - b.order).map(c => (
+                                        <div key={c.id} className="p-4 flex justify-between items-center group hover:bg-slate-50 transition-colors">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-8 h-8 bg-slate-100 text-slate-400 rounded-lg flex items-center justify-center font-black text-[10px] group-hover:bg-blue-50 group-hover:text-blue-600 transition-all">{c.order}</div>
+                                                <span className="text-[12px] font-bold text-slate-700">{c.name}</span>
+                                            </div>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => handleEditChapter(c)} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={14}/></button>
+                                                <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* QUIZZES TAB */}
                 {activeMenu === 'quizzes' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
@@ -479,8 +555,11 @@ const AdminDashboard = () => {
                                     <input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs font-black outline-none focus:ring-1 focus:ring-blue-100" placeholder="VD: Đề thi khảo sát HK1..." value={title} onChange={e => setTitle(e.target.value)} />
                                 </div>
                                 <div className="col-span-6 md:col-span-3 space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Chuyên đề (Mục)</label>
-                                    <input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs font-black outline-none" placeholder="VD: Chương 1..." value={category} onChange={e => setCategory(e.target.value)} />
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Chương / Chuyên đề</label>
+                                    <select className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs font-black outline-none" value={category} onChange={e => setCategory(e.target.value)}>
+                                        <option value="">Chọn chương...</option>
+                                        {availableChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </select>
                                 </div>
                                 <div className="col-span-6 md:col-span-3 space-y-1">
                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Khối</label>
@@ -654,7 +733,7 @@ const AdminDashboard = () => {
                             <label className="text-[9px] font-bold text-slate-400 uppercase">Chuyên đề</label>
                             <select className="bg-white border rounded-lg p-2 text-xs font-bold outline-none" value={bankCategory} onChange={e => setBankCategory(e.target.value)}>
                                 <option value="all">TẤT CẢ CHUYÊN ĐỀ</option>
-                                {categories.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                                {availableChapters.filter(c => c.grade === bankGrade).map(c => <option key={c.id} value={c.name}>{c.name.toUpperCase()}</option>)}
                             </select>
                         </div>
                     </div>
@@ -675,47 +754,6 @@ const AdminDashboard = () => {
                                 }} className="bg-blue-600 text-white p-2 rounded-lg shadow-lg hover:bg-blue-700 transition-all shrink-0"><Plus size={16}/></button>
                             </div>
                         ))}
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* STUDENT PROGRESS MODAL */}
-        {viewingStudent && (
-            <div className="fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
-                    <div className="p-6 bg-blue-600 text-white flex justify-between items-center shrink-0">
-                        <div className="flex items-center gap-4">
-                            <Monitor size={24}/>
-                            <div><h3 className="text-sm font-black uppercase">Tiến trình rèn luyện của học sinh</h3><p className="text-[10px] text-blue-100 uppercase">{viewingStudent.fullName} • LỚP {viewingStudent.grade}</p></div>
-                        </div>
-                        <button onClick={() => setViewingStudent(null)}><X size={24}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-8 bg-slate-50 space-y-8 custom-scrollbar">
-                        <div className="grid grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-2xl border text-center shadow-sm"><p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Đã thi</p><p className="text-3xl font-black">{results.filter(r=>r.studentId===viewingStudent.id).length}</p></div>
-                            <div className="bg-white p-6 rounded-2xl border text-center shadow-sm"><p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Điểm TB</p><p className="text-3xl font-black text-blue-600">{(results.filter(r=>r.studentId===viewingStudent.id).reduce((a,b)=>a+b.score,0) / (results.filter(r=>r.studentId===viewingStudent.id).length || 1)).toFixed(2)}</p></div>
-                            <div className="bg-white p-6 rounded-2xl border text-center shadow-sm"><p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Xếp hạng</p><p className="text-3xl font-black text-emerald-500">TỐT</p></div>
-                        </div>
-                        
-                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                            <div className="p-4 bg-slate-50 border-b flex items-center gap-2"><History size={16} className="text-slate-400"/> <h4 className="text-[10px] font-black uppercase text-slate-600">Lịch sử bài làm chi tiết</h4></div>
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b">
-                                    <tr><th className="px-6 py-3">Đề thi</th><th className="px-6 py-3 text-center">Thời gian</th><th className="px-6 py-3 text-center">Điểm</th><th className="px-6 py-3 text-right">Ngày nộp</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {results.filter(r=>r.studentId===viewingStudent.id).sort((a,b)=>new Date(b.submittedAt).getTime()-new Date(a.submittedAt).getTime()).map(r => (
-                                        <tr key={r.id} className="text-[12px] hover:bg-slate-50">
-                                            <td className="px-6 py-4 font-bold">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
-                                            <td className="px-6 py-4 text-center">{Math.floor(r.durationSeconds/60)}p {r.durationSeconds%60}s</td>
-                                            <td className="px-6 py-4 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                            <td className="px-6 py-4 text-right text-slate-400">{new Date(r.submittedAt).toLocaleDateString('vi-VN')}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -756,7 +794,6 @@ const AdminDashboard = () => {
                                             Trả lời: ...........................................................
                                         </div>
                                     )}
-                                    {/* Lời giải và đáp án hoàn toàn ẩn theo yêu cầu */}
                                 </div>
                             ))}
                         </div>
