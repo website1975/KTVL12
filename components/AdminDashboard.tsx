@@ -152,7 +152,7 @@ const AdminDashboard = () => {
             </div>
 
             <div className="space-y-6">
-                {questions.filter(q => q.type === type).map((q, qIndex) => (
+                {sectionQuestions.map((q, qIndex) => (
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
                         <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
                         <div className="flex items-center gap-4 mb-6"><span className={`text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest ${type === 'mcq' ? 'bg-blue-50 text-blue-600' : type === 'group-tf' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}>Câu {qIndex + 1}</span></div>
@@ -172,7 +172,7 @@ const AdminDashboard = () => {
                             <div className="shrink-0">
                                 {q.imageUrl ? (
                                     <div className="relative group/img">
-                                        <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" />
+                                        <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" alt="Quiz question" />
                                         <button onClick={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].imageUrl = undefined; setQuestions(n); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover/img:opacity-100 transition-all"><X size={12}/></button>
                                     </div>
                                 ) : (
@@ -256,7 +256,6 @@ const AdminDashboard = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
-          {/* VIEW: SOẠN ĐỀ */}
           {activeMenu === 'create' && (
             <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
               <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
@@ -283,7 +282,6 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* VIEW: QUẢN LÝ ĐỀ THI */}
           {activeMenu === 'quizzes' && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-5 rounded-[2rem] border shadow-sm">
@@ -298,7 +296,7 @@ const AdminDashboard = () => {
                 {filteredQuizzes.map(q => {
                     const { count, max } = getQuizStats(q.id);
                     return (
-                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-[0_20px_50px_rgba(168,85,247,0.15)] hover:border-purple-200 transition-all duration-500 group relative flex flex-col">
+                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:border-purple-300 transition-all duration-500 group relative flex flex-col">
                           <div className="flex justify-between items-start mb-8">
                             <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${q.type === 'practice' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>{q.type === 'practice' ? 'LUYỆN TẬP' : 'KIỂM TRA'}</span>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -315,7 +313,8 @@ const AdminDashboard = () => {
                             {q.startTime && <div className="flex items-center gap-3 text-slate-400"><Clock size={16} className="text-red-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight italic">Bắt đầu: {new Date(q.startTime).toLocaleString('vi-VN')}</span></div>}
                           </div>
 
-                          <div className="bg-slate-50/70 rounded-3xl p-6 grid grid-cols-2 gap-4 mb-8 border border-transparent group-hover:bg-purple-50/50 group-hover:border-purple-100 transition-all duration-500">
+                          {/* THỐNG KÊ CHI TIẾT VỚI HIỆU ỨNG TÍM */}
+                          <div className="bg-slate-50/70 rounded-3xl p-6 grid grid-cols-2 gap-4 mb-8 border border-transparent group-hover:bg-purple-50 group-hover:border-purple-100 transition-all duration-500">
                             <div className="text-center">
                                 <div className="flex items-center justify-center gap-1.5 mb-1">
                                     <Users2 size={12} className="text-slate-400 group-hover:text-purple-400"/>
@@ -380,7 +379,7 @@ const AdminDashboard = () => {
                           <div className="text-center py-20 text-slate-400 font-bold italic">Không tìm thấy câu hỏi nào phù hợp trong ngân hàng.</div>
                       ) : (
                           getBankQuestions(showBank.type).map((q, i) => (
-                              <div key={i} className="bg-white p-8 rounded-3xl border shadow-sm flex items-start gap-6 group hover:border-blue-500 transition-all">
+                              <div key={q.id || i} className="bg-white p-8 rounded-3xl border shadow-sm flex items-start gap-6 group hover:border-blue-500 transition-all">
                                   <div className="flex-1">
                                     <div className="text-sm font-bold text-slate-800 mb-4 leading-relaxed"><LatexText text={q.text}/></div>
                                     {q.imageUrl && <img src={q.imageUrl} className="w-32 h-20 object-cover rounded-xl border mb-4" alt="bank preview" />}
@@ -399,13 +398,31 @@ const AdminDashboard = () => {
       {previewQuiz && (
           <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border-8 border-white">
-                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><div className="flex items-center gap-5"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center"><FileText size={24}/></div><div><h3 className="text-lg font-black uppercase leading-tight">{previewQuiz.title}</h3><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Lớp {previewQuiz.grade} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút</p></div></div><button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors shadow-lg"><X size={24}/></button></div>
+                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                    <div className="flex items-center gap-5"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center"><FileText size={24}/></div><div><h3 className="text-lg font-black uppercase leading-tight">{previewQuiz.title}</h3><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Lớp {previewQuiz.grade} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút</p></div></div><button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors shadow-lg"><X size={24}/></button>
+                </div>
                 <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                     <div className="max-w-2xl mx-auto space-y-12 pb-12">
                         {previewQuiz.questions.map((q, i) => (
-                            <div key={q.id} className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 relative"><div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview q" />}</div></div>
-                                {q.type === 'mcq' && q.options && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-12">{q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-500 flex items-center gap-2"><span className="text-slate-300 font-black italic">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}</div>)}
-                                {q.solution && (<div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl"><p className="text-[10px] font-black text-yellow-600 uppercase mb-3 flex items-center gap-2"><Target size={14}/> Lời giải tham khảo:</p><div className="text-sm font-medium text-slate-600 italic leading-relaxed"><LatexText text={q.solution}/></div></div>)}
+                            <div key={q.id || i} className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 relative">
+                                <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
+                                    <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
+                                    <div className="flex flex-col gap-4">
+                                        <LatexText text={q.text}/>
+                                        {q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview q" />}
+                                    </div>
+                                </div>
+                                {q.type === 'mcq' && q.options && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-12">
+                                        {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-500 flex items-center gap-2"><span className="text-slate-300 font-black italic">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                    </div>
+                                )}
+                                {q.solution && (
+                                    <div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl">
+                                        <p className="text-[10px] font-black text-yellow-600 uppercase mb-3 flex items-center gap-2"><Target size={14}/> Lời giải tham khảo:</p>
+                                        <div className="text-sm font-medium text-slate-600 italic leading-relaxed"><LatexText text={q.solution}/></div>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
