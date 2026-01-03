@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Chapter } from '../types';
 import { 
@@ -395,21 +394,21 @@ const AdminDashboard = () => {
         <div className="bg-blue-50 rounded-[2.5rem] p-10 border border-blue-100 flex gap-8">
             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"><Info size={24}/></div>
             <div className="space-y-4">
-                <h4 className="font-black text-sm uppercase text-blue-900 tracking-tight">Hướng dẫn định dạng file PDF để AI đọc chuẩn</h4>
+                <h4 className="font-black text-sm uppercase text-blue-900 tracking-tight">Hướng dẫn cấu hình file PDF cho AI đọc chuẩn</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
-                        <p className="text-[11px] font-black text-blue-400 uppercase tracking-widest">1. Cấu trúc câu hỏi</p>
+                        <p className="text-[11px] font-black text-blue-400 uppercase tracking-widest">1. Cấu trúc câu hỏi & Đáp án</p>
                         <ul className="text-sm space-y-2 text-blue-700">
-                            <li><span className="font-bold">Trắc nghiệm:</span> Để AI nhận diện đáp án đúng, hãy đánh dấu <span className="text-red-600 font-black">*</span> trước ký tự phương án. VD: <span className="italic">*A. Nội dung...</span></li>
-                            <li><span className="font-bold">Đúng Sai:</span> Ở cuối mỗi ý a, b, c, d hãy ghi <span className="text-green-600 font-bold">(Đ)</span> hoặc <span className="text-red-600 font-bold">(S)</span>.</li>
-                            <li><span className="font-bold">Trả lời ngắn:</span> Ghi <span className="font-bold italic">Đáp án: 12.5</span> ngay dưới nội dung câu hỏi.</li>
+                            <li><span className="font-bold">MCQ (Phần I):</span> Đánh dấu <span className="text-red-600 font-black">*</span> trước phương án đúng. VD: <span className="italic">*A. Đáp án đúng</span>.</li>
+                            <li><span className="font-bold">Đúng/Sai (Phần II):</span> Cuối mỗi ý a, b, c, d ghi <span className="text-green-600 font-bold">(Đ)</span> cho Đúng hoặc <span className="text-red-600 font-bold">(S)</span> cho Sai.</li>
+                            <li><span className="font-bold">Tự luận ngắn (Phần III):</span> Ghi <span className="font-bold">Đáp án: 12.5</span> ngay dưới mỗi câu.</li>
                         </ul>
                     </div>
                     <div className="space-y-3">
                         <p className="text-[11px] font-black text-blue-400 uppercase tracking-widest">2. Lời giải chi tiết</p>
-                        <p className="text-sm text-blue-700 leading-relaxed">Để bóc tách lời giải, hãy bắt đầu bằng từ khóa <span className="font-bold underline">Lời giải:</span> hoặc <span className="font-bold underline">Hướng dẫn:</span> ngay dưới nội dung câu hỏi.</p>
+                        <p className="text-sm text-blue-700 leading-relaxed">Để AI bóc tách lời giải, hãy bắt đầu bằng từ khóa <span className="font-bold underline uppercase">Lời giải:</span> hoặc <span className="font-bold underline uppercase">Hướng dẫn giải:</span> ngay sau nội dung câu hỏi hoặc cuối đề thi.</p>
                         <div className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm">
-                            <code className="text-[10px] font-mono text-slate-500">Lời giải: Ta có AB = 5, AC = 12 nên BC = 13...</code>
+                            <code className="text-[10px] font-mono text-slate-500">Lời giải: Áp dụng định lý Pythagoras, ta có...</code>
                         </div>
                     </div>
                 </div>
@@ -450,6 +449,7 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-3"><label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối lớp:</label><div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">{(['all', '10', '11', '12'] as const).map(g => (<button key={g} onClick={() => setStdGrade(g)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${stdGrade === g ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{g === 'all' ? 'Tất cả' : `Khối ${g}`}</button>))}</div></div>
         </div>
         <div className="overflow-x-auto">
+            {/* Sử dụng min-width để bảng không bị bóp lại khi có nhiều cột và nhiều dữ liệu */}
             <table className="w-full text-left text-[13px] border-collapse min-w-[1000px]">
                 <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
                     <tr>
