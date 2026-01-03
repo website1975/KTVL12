@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter } from '../types';
 
@@ -68,6 +69,19 @@ export const saveUser = async (user: User): Promise<void> => {
 export const findUser = async (username: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
   const { data, error } = await supabase.from('users').select('data').eq('username', username).single();
+  if (error || !data) return undefined;
+  return data.data as User;
+};
+
+// Tìm học sinh theo Mã số (Access Code)
+export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
+  if (!supabase) return undefined;
+  const { data, error } = await supabase
+    .from('users')
+    .select('data')
+    .filter('data->>studentCode', 'eq', code.toUpperCase())
+    .maybeSingle();
+  
   if (error || !data) return undefined;
   return data.data as User;
 };
