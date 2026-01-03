@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -74,14 +74,24 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
                         <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
                         <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 mb-6 inline-block">Câu {idx + 1}</span>
+                        
+                        {/* PHẦN NỘI DUNG CÂU HỎI & PREVIEW */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
-                            <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none min-h-[120px]" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung câu hỏi..." />
-                            <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-50 min-h-[120px] text-sm"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nội dung câu hỏi</label>
+                                <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none min-h-[120px] focus:border-blue-300 transition-colors" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nhập câu hỏi (dùng $...$ cho Toán)..." />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-blue-400 uppercase ml-2">Xem trước nội dung</label>
+                                <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-100 min-h-[120px] text-sm overflow-auto"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
+                            </div>
                         </div>
+
                         <div className="mb-8 flex items-center gap-6 p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
                             <div className="shrink-0">{q.imageUrl ? <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" alt="q" /> : <div className="w-24 h-24 bg-white border rounded-2xl flex items-center justify-center text-slate-300">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/>}</div>}</div>
-                            <div><input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border rounded-xl text-[10px] font-black uppercase cursor-pointer">Tải hình ảnh</label></div>
+                            <div><input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-colors">Tải hình ảnh minh họa</label></div>
                         </div>
+
                         {type === 'mcq' && q.options && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                 {q.options.map((opt, oi) => (
@@ -99,7 +109,33 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                         {type === 'short' && (
                             <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
                         )}
-                        <div className="space-y-4 pt-6 border-t border-slate-50"><label className="text-[10px] font-black text-slate-400 uppercase">Lời giải chi tiết</label><textarea className="w-full p-6 bg-yellow-50/30 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[100px]" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Nhập lời giải..." /></div>
+
+                        {/* PHẦN LỜI GIẢI CHI TIẾT & PREVIEW (CẬP NHẬT MỚI) */}
+                        <div className="pt-8 border-t border-slate-100 space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Lightbulb size={16} className="text-yellow-500 fill-yellow-200" />
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lời giải chi tiết cho học sinh</label>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="relative group">
+                                    <textarea 
+                                        className="w-full p-6 bg-yellow-50/20 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[140px] focus:bg-yellow-50/50 focus:border-yellow-300 transition-all font-medium placeholder:text-yellow-200/50" 
+                                        value={q.solution} 
+                                        onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
+                                        placeholder="Nhập hướng dẫn giải (hệ thống sẽ hiện sau khi học sinh nộp bài)..." 
+                                    />
+                                    <div className="absolute top-4 right-4 text-[8px] font-black text-yellow-300 uppercase select-none group-focus-within:opacity-0 transition-opacity">Draft Mode</div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="w-full p-6 bg-yellow-50/40 border border-yellow-100 rounded-3xl text-sm min-h-[140px] overflow-auto shadow-inner relative">
+                                        <span className="absolute top-4 right-4 text-[8px] font-black text-yellow-500/30 uppercase select-none">Live Preview</span>
+                                        <div className="text-slate-600 italic leading-relaxed">
+                                            <LatexText text={q.solution || '*Chưa có lời giải chi tiết cho câu này.*'} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -108,6 +144,7 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
 };
 
 const AdminDashboard = () => {
+    // ... (Giữ nguyên phần code logic AdminDashboard ở dưới)
     // Basic States
     const [activeMenu, setActiveMenu] = useState<'quizzes' | 'editor' | 'ai' | 'results' | 'students' | 'chapters'>('quizzes');
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -215,7 +252,6 @@ const AdminDashboard = () => {
         });
     }, [selectedStudent, results, quizzes]);
 
-    // Ngân hàng đề: Lọc theo khối của đề đang soạn và loại câu hỏi đang chọn
     const bankQuestions = useMemo(() => {
         if (!showBank.open) return [];
         return quizzes
@@ -224,7 +260,6 @@ const AdminDashboard = () => {
             .filter(q => q.type === showBank.type);
     }, [showBank, quizzes, grade]);
 
-    // --- ACTIONS ---
     const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newStudentName || !newStudentCode) return alert("Điền đủ thông tin!");
