@@ -111,7 +111,6 @@ const AdminDashboard = () => {
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
   const [viewingStudent, setViewingStudent] = useState<User | null>(null);
-  const [viewingResult, setViewingResult] = useState<Result | null>(null);
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
@@ -119,19 +118,30 @@ const AdminDashboard = () => {
   useEffect(() => { refreshData(); }, [activeMenu]);
 
   const refreshData = async () => {
-    const qs = await getQuizzes();
-    const rs = await getResults();
-    const us = await getUsers();
-    const chs = await getChapters();
+    const [qs, rs, us, chs] = await Promise.all([
+        getQuizzes(),
+        getResults(),
+        getUsers(),
+        getChapters()
+    ]);
     setQuizzes(qs);
     setResults(rs);
     setUsers(us);
     setChapters(chs);
+
+    // Cập nhật STT gợi ý cho chương
+    if (activeMenu === 'chapters') {
+        const gradeChaps = chs.filter(c => c.grade === selectedGradeForChapters);
+        const maxOrder = gradeChaps.length > 0 ? Math.max(...gradeChaps.map(c => c.order)) : 0;
+        setChapterOrderInput(maxOrder + 1);
+    }
   };
 
-  // Lấy danh sách chuyên đề duy nhất (đã quản lý trong QL Chương)
+  // Lấy danh sách chương phù hợp cho Listbox
   const availableChapters = useMemo(() => {
-    return chapters.filter(c => c.grade === (activeMenu === 'create' ? grade : filterGrade === 'all' ? c.grade : filterGrade));
+    const targetGrade = (activeMenu === 'create' || activeMenu === 'ai') ? grade : filterGrade;
+    if (targetGrade === 'all') return chapters;
+    return chapters.filter(c => c.grade === targetGrade);
   }, [chapters, grade, filterGrade, activeMenu]);
 
   const filteredQuizzes = useMemo(() => {
@@ -185,8 +195,8 @@ const AdminDashboard = () => {
           order: chapterOrderInput
       };
       if (editingChapterId) await updateChapter(chapData); else await saveChapter(chapData);
-      setChapterNameInput(''); setChapterOrderInput(chapters.length + 2); setEditingChapterId(null);
-      refreshData();
+      setChapterNameInput(''); setEditingChapterId(null);
+      await refreshData();
   };
 
   const handleEditChapter = (c: Chapter) => {
@@ -659,7 +669,6 @@ const AdminDashboard = () => {
                 {activeMenu === 'students' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                         {users.filter(u=>u.role==='student' && (filterGrade==='all' || u.grade===filterGrade)).map(s => {
-                            const studentResults = results.filter(r => r.studentId === s.id);
                             return (
                                 <div key={s.id} className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col items-center gap-3 text-center group hover:shadow-md transition-all">
                                     <div className="w-12 h-12 bg-slate-100 text-blue-600 rounded-lg flex items-center justify-center font-black text-lg group-hover:bg-blue-50 transition-colors">{s.fullName.charAt(0)}</div>
@@ -668,7 +677,7 @@ const AdminDashboard = () => {
                                         <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">LỚP {s.grade} • ID: {s.username}</p>
                                     </div>
                                     <div className="w-full grid grid-cols-2 gap-2 mt-2">
-                                        <button onClick={() => setViewingStudent(s)} className="flex-1 bg-blue-50 text-blue-600 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">CHI TIẾT</button>
+                                        <button onClick={() => alert('Xem chi tiết tiến trình đang cập nhật!')} className="flex-1 bg-blue-50 text-blue-600 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">CHI TIẾT</button>
                                         <button onClick={async () => { if(confirm('Xóa tài khoản này?')) { await deleteUser(s.id); refreshData(); } }} className="bg-slate-50 text-slate-300 py-1.5 rounded-lg text-[9px] font-black uppercase hover:text-red-500 transition-all">XÓA</button>
                                     </div>
                                 </div>
@@ -730,9 +739,9 @@ const AdminDashboard = () => {
                             </select>
                         </div>
                         <div className="flex flex-col gap-1 flex-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Chuyên đề</label>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Chương</label>
                             <select className="bg-white border rounded-lg p-2 text-xs font-bold outline-none" value={bankCategory} onChange={e => setBankCategory(e.target.value)}>
-                                <option value="all">TẤT CẢ CHUYÊN ĐỀ</option>
+                                <option value="all">TẤT CẢ CHƯƠNG</option>
                                 {availableChapters.filter(c => c.grade === bankGrade).map(c => <option key={c.id} value={c.name}>{c.name.toUpperCase()}</option>)}
                             </select>
                         </div>
