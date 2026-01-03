@@ -8,6 +8,7 @@ const cleanJsonString = (str: string): string => {
 };
 
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
+  // Always use {apiKey: process.env.API_KEY} for initializing GoogleGenAI
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Nhiệm vụ: Chuyển đổi đề thi Toán từ PDF sang JSON.
@@ -22,15 +23,19 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   `;
 
   try {
+    // Corrected: contents must be { parts: [...] } when sending multiple parts
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [
-          { inlineData: { mimeType: "application/pdf", data: base64Data } },
-          { text: prompt }
-      ],
+      contents: {
+          parts: [
+              { inlineData: { mimeType: "application/pdf", data: base64Data } },
+              { text: prompt }
+          ]
+      },
       config: { responseMimeType: "application/json" }
     });
 
+    // Access the .text property directly (not as a method)
     const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
     return rawData.map((item: any) => ({
         id: uuidv4(),
@@ -44,6 +49,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 };
 
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
+    // Always use {apiKey: process.env.API_KEY} for initializing GoogleGenAI
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `
         Soạn đề thi Toán lớp ${config.grade} - Chủ đề: ${config.topic}.
@@ -89,6 +95,7 @@ export const generateQuizFromPrompt = async (config: any): Promise<Question[]> =
             }
         });
 
+        // Access the .text property directly (not as a method)
         const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
         return rawData.map((item: any) => ({
             id: uuidv4(),
