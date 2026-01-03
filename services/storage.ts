@@ -57,13 +57,47 @@ export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
   if (error) return [];
-  return data.map((row: any) => row.data as User);
+  return data.map((row: any) => ({ ...row.data, id: row.id } as User));
 };
 
 export const saveUser = async (user: User): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('users').insert({ id: user.id, username: user.username, data: user });
+  const { error } = await supabase.from('users').upsert({ 
+    id: user.id, 
+    username: user.studentCode || user.username, 
+    data: user 
+  });
   if (error) throw error;
+};
+
+export const addPointsToUser = async (userId: string, pointsToAdd: number): Promise<void> => {
+  if (!supabase) {
+    const stored = localStorage.getItem('eduquiz_current_user');
+    if (stored) {
+      const user = JSON.parse(stored);
+      if (user.id === userId) {
+        user.points = (user.points || 0) + pointsToAdd;
+        localStorage.setItem('eduquiz_current_user', JSON.stringify(user));
+      }
+    }
+    return;
+  }
+  
+  const { data: row } = await supabase.from('users').select('data').eq('id', userId).single();
+  if (row) {
+    const userData = row.data as User;
+    userData.points = (userData.points || 0) + pointsToAdd;
+    await supabase.from('users').update({ data: userData }).eq('id', userId);
+    
+    // Đồng bộ lại local storage nếu là user hiện tại
+    const stored = localStorage.getItem('eduquiz_current_user');
+    if (stored) {
+      const u = JSON.parse(stored);
+      if (u.id === userId) {
+        localStorage.setItem('eduquiz_current_user', JSON.stringify(userData));
+      }
+    }
+  }
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
@@ -73,7 +107,6 @@ export const findUser = async (username: string): Promise<User | undefined> => {
   return data.data as User;
 };
 
-// Tìm học sinh theo Mã số (Access Code)
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
   const { data, error } = await supabase
