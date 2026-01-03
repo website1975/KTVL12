@@ -110,12 +110,13 @@ const AdminDashboard = () => {
   const [bankCategory, setBankCategory] = useState('all');
   const [viewingQuiz, setViewingQuiz] = useState<Quiz | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
-  const [viewingStudent, setViewingStudent] = useState<User | null>(null);
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
 
-  useEffect(() => { refreshData(); }, [activeMenu]);
+  useEffect(() => { 
+    refreshData(); 
+  }, [activeMenu, selectedGradeForChapters]);
 
   const refreshData = async () => {
     const [qs, rs, us, chs] = await Promise.all([
@@ -129,7 +130,7 @@ const AdminDashboard = () => {
     setUsers(us);
     setChapters(chs);
 
-    // Cập nhật STT gợi ý cho chương
+    // Cập nhật STT gợi ý cho chương (Dựa trên số chương hiện có của khối đang chọn + 1)
     if (activeMenu === 'chapters') {
         const gradeChaps = chs.filter(c => c.grade === selectedGradeForChapters);
         const maxOrder = gradeChaps.length > 0 ? Math.max(...gradeChaps.map(c => c.order)) : 0;
@@ -137,7 +138,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Lấy danh sách chương phù hợp cho Listbox
+  // Lấy danh sách chương phù hợp dựa trên khối lớp đang được lọc hoặc đang soạn
   const availableChapters = useMemo(() => {
     const targetGrade = (activeMenu === 'create' || activeMenu === 'ai') ? grade : filterGrade;
     if (targetGrade === 'all') return chapters;
@@ -253,6 +254,7 @@ const AdminDashboard = () => {
     if (!viewingQuiz) return;
     const qs = previewQuestions.length > 0 ? previewQuestions : viewingQuiz.questions;
     
+    // Xuất word bọc LaTeX bằng dấu $ cho MathType
     let content = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>${viewingQuiz.title}</title>
