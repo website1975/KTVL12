@@ -10,8 +10,9 @@ export interface User {
   password: string;
   role: Role;
   fullName: string;
-  studentCode?: string; // Mã số học sinh
+  studentCode?: string; 
   grade?: Grade;
+  points?: number; // Điểm tích lũy từ rèn luyện
 }
 
 export interface Chapter {
@@ -63,6 +64,7 @@ export interface Result {
   submittedAt: string;
   durationSeconds: number;
   detailScores?: number[];
+  pointsAwarded?: number; // Ghi nhận số điểm thưởng được cộng trong lần thi này
 }
 
 export interface AuthState {
