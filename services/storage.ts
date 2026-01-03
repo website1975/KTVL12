@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter } from '../types';
 
@@ -37,7 +36,7 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
     if (!supabase) throw new Error("Chưa kết nối Database");
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random()}.${fileExt}`;
-    const filePath = `quiz-images/${fileName}`;
+    const filePath = `${fileName}`;
 
     const { error: uploadError } = await supabase.storage
         .from('quiz-images')
