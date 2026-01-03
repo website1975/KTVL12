@@ -2,7 +2,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter } from '../types';
 
-// Helper để lấy biến môi trường an toàn
 const getEnv = (name: string): string | undefined => {
   try {
     const metaEnv = (import.meta as any).env;
@@ -33,26 +32,24 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- Storage (Ảnh) ---
-export const uploadImage = async (file: File): Promise<string | null> => {
-  if (!supabase) return null;
-  try {
-    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+// --- Storage (Images) ---
+export const uploadQuizImage = async (file: File): Promise<string> => {
+    if (!supabase) throw new Error("Chưa kết nối Database");
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `quiz-images/${fileName}`;
+
     const { error: uploadError } = await supabase.storage
-      .from('quiz-images')
-      .upload(fileName, file);
+        .from('quiz-images')
+        .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data } = supabase.storage
-      .from('quiz-images')
-      .getPublicUrl(fileName);
+        .from('quiz-images')
+        .getPublicUrl(filePath);
 
     return data.publicUrl;
-  } catch (e) {
-    console.error("Lỗi upload ảnh:", e);
-    return null;
-  }
 };
 
 // --- Users ---
@@ -65,12 +62,15 @@ export const getUsers = async (): Promise<User[]> => {
 
 export const saveUser = async (user: User): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('users').insert({
-    id: user.id,
-    username: user.username,
-    data: user
-  });
-  if (error) console.error('Lỗi lưu User:', error);
+  const { error } = await supabase.from('users').insert({ id: user.id, username: user.username, data: user });
+  if (error) throw error;
+};
+
+export const findUser = async (username: string): Promise<User | undefined> => {
+  if (!supabase) return undefined;
+  const { data, error } = await supabase.from('users').select('data').eq('username', username).single();
+  if (error || !data) return undefined;
+  return data.data as User;
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
@@ -78,35 +78,13 @@ export const deleteUser = async (id: string): Promise<void> => {
   await supabase.from('users').delete().eq('id', id);
 };
 
-export const findUser = async (username: string): Promise<User | undefined> => {
-  if (!supabase) return undefined;
-  const { data, error } = await supabase
-    .from('users')
-    .select('data')
-    .eq('username', username)
-    .single();
-  
-  if (error || !data) return undefined;
-  return data.data as User;
-};
-
 export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
   if (!supabase) return false;
-  const { data: rows, error: fetchError } = await supabase
-      .from('users')
-      .select('data')
-      .eq('id', userId)
-      .single();
-  
+  const { data: rows, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
   if (fetchError || !rows) return false;
   const currentUser = rows.data as User;
   const updatedUser = { ...currentUser, password: newPass };
-
-  const { error: updateError } = await supabase
-      .from('users')
-      .update({ data: updatedUser })
-      .eq('id', userId);
-
+  const { error: updateError } = await supabase.from('users').update({ data: updatedUser }).eq('id', userId);
   return !updateError;
 };
 
@@ -115,24 +93,19 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('quizzes').select('data');
   if (error) return [];
-  return data.map((row: any) => row.data as Quiz)
-    .sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return data.map((row: any) => row.data as Quiz).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').insert({
-    id: quiz.id,
-    grade: quiz.grade,
-    data: quiz
-  });
+  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
+  if (error) throw error;
 };
 
 export const updateQuiz = async (updatedQuiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  await supabase.from('quizzes')
-    .update({ data: updatedQuiz, grade: updatedQuiz.grade })
-    .eq('id', updatedQuiz.id);
+  const { error } = await supabase.from('quizzes').update({ data: updatedQuiz, grade: updatedQuiz.grade }).eq('id', updatedQuiz.id);
+  if (error) throw error;
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
@@ -150,12 +123,8 @@ export const getResults = async (): Promise<Result[]> => {
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) return;
-  await supabase.from('results').insert({
-    id: result.id,
-    quiz_id: result.quizId,
-    student_id: result.studentId,
-    data: result
-  });
+  const { error } = await supabase.from('results').insert({ id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result });
+  if (error) throw error;
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
@@ -167,17 +136,11 @@ export const getStudentStats = async (studentId: string) => {
   if (!supabase) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
   const { data } = await supabase.from('results').select('data').eq('student_id', studentId);
   if (!data) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
-
   const resultsList = data.map((row: any) => row.data as Result);
   const totalQuizzes = resultsList.length;
   const totalScore = resultsList.reduce((acc: number, curr: Result) => acc + (curr.score || 0), 0);
   const totalSeconds = resultsList.reduce((acc: number, curr: Result) => acc + (curr.durationSeconds || 0), 0);
-
-  return {
-    totalQuizzes,
-    avgScore: totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0,
-    totalSeconds
-  };
+  return { totalQuizzes, avgScore: totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0, totalSeconds };
 };
 
 // --- Chapters ---
@@ -187,41 +150,46 @@ export const getChapters = async (): Promise<Chapter[]> => {
       return local ? JSON.parse(local) : [];
   }
   const { data, error } = await supabase.from('chapters').select('data');
-  if (error) return [];
+  if (error) {
+    if (error.code === 'PGRST116' || error.message.includes('not found')) {
+        console.warn("Bảng chapters chưa tồn tại. Đang dùng LocalStorage.");
+    } else {
+        console.error("Lỗi Supabase Chapters:", error);
+    }
+    const local = localStorage.getItem('eduquiz_chapters');
+    return local ? JSON.parse(local) : [];
+  }
   return data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order);
 };
 
 export const saveChapter = async (chapter: Chapter): Promise<void> => {
-  if (!supabase) {
-      const chapters = await getChapters();
-      localStorage.setItem('eduquiz_chapters', JSON.stringify([...chapters, chapter]));
-      return;
+  const currentLocal = await getChapters();
+  localStorage.setItem('eduquiz_chapters', JSON.stringify([...currentLocal, chapter]));
+
+  if (!supabase) return;
+  const { error } = await supabase.from('chapters').insert({ id: chapter.id, grade: chapter.grade, data: chapter });
+  if (error) {
+      console.error("Lỗi lưu chương:", error);
+      throw new Error(`Lỗi Database: ${error.message}. Hãy đảm bảo bạn đã tạo bảng 'chapters' trong Supabase.`);
   }
-  await supabase.from('chapters').insert({
-    id: chapter.id,
-    grade: chapter.grade,
-    data: chapter
-  });
 };
 
 export const updateChapter = async (chapter: Chapter): Promise<void> => {
-  if (!supabase) {
-      const chapters = await getChapters();
-      const updated = chapters.map(c => c.id === chapter.id ? chapter : c);
-      localStorage.setItem('eduquiz_chapters', JSON.stringify(updated));
-      return;
-  }
-  await supabase.from('chapters').update({ data: chapter, grade: chapter.grade }).eq('id', chapter.id);
+  const currentLocal = await getChapters();
+  localStorage.setItem('eduquiz_chapters', JSON.stringify(currentLocal.map(c => c.id === chapter.id ? chapter : c)));
+
+  if (!supabase) return;
+  const { error } = await supabase.from('chapters').update({ data: chapter, grade: chapter.grade }).eq('id', chapter.id);
+  if (error) throw error;
 };
 
 export const deleteChapter = async (id: string): Promise<void> => {
-  if (!supabase) {
-      const chapters = await getChapters();
-      const updated = chapters.filter(c => c.id !== id);
-      localStorage.setItem('eduquiz_chapters', JSON.stringify(updated));
-      return;
-  }
-  await supabase.from('chapters').delete().eq('id', id);
+  const currentLocal = await getChapters();
+  localStorage.setItem('eduquiz_chapters', JSON.stringify(currentLocal.filter(c => c.id !== id)));
+
+  if (!supabase) return;
+  const { error } = await supabase.from('chapters').delete().eq('id', id);
+  if (error) throw error;
 };
 
 export const initStorage = () => {
