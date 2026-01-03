@@ -12,13 +12,12 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Users2,
-    Trophy
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
 
-// --- SUB-COMPONENT: PHẦN CÂU HỎI TRONG TRÌNH SOẠN THẢO ---
+// --- SUB-COMPONENT: QUESTION SECTION ---
 interface SectionProps {
     title: string;
     type: QuestionType;
@@ -57,12 +56,12 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                     </div>
                     <div>
                         <h3 className="font-black text-slate-800 uppercase tracking-tight">{title}</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sectionQuestions.length} câu đã soạn</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sectionQuestions.length} câu</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
-                        <Database size={14}/> Ngân hàng
+                        <Database size={14}/> Ngân hàng đề
                     </button>
                     <button onClick={addManual} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">
                         <Plus size={14}/> Thêm mới
@@ -73,71 +72,34 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
             <div className="space-y-6">
                 {sectionQuestions.map((q, idx) => (
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
-                        <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors">
-                            <Trash2 size={24}/>
-                        </button>
+                        <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
                         <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 mb-6 inline-block">Câu {idx + 1}</span>
-                        
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
-                            <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none min-h-[120px]" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung câu hỏi (LaTeX $...$)" />
-                            <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-50 min-h-[120px] text-sm"><LatexText text={q.text || '*Nhập liệu để xem trước...*'} /></div>
+                            <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none min-h-[120px]" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung câu hỏi..." />
+                            <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-50 min-h-[120px] text-sm"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
                         </div>
-
                         <div className="mb-8 flex items-center gap-6 p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                            <div className="shrink-0">
-                                {q.imageUrl ? (
-                                    <div className="relative group/img">
-                                        <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" alt="q" />
-                                        <button onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].imageUrl = undefined; setQuestions(nl); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg"><X size={12}/></button>
-                                    </div>
-                                ) : (
-                                    <div className="w-24 h-24 bg-white border rounded-2xl flex flex-col items-center justify-center text-slate-300 gap-1">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/>}</div>
-                                )}
-                            </div>
-                            <div>
-                                <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} />
-                                <label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border rounded-xl text-[10px] font-black uppercase cursor-pointer">Tải hình ảnh</label>
-                            </div>
+                            <div className="shrink-0">{q.imageUrl ? <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" alt="q" /> : <div className="w-24 h-24 bg-white border rounded-2xl flex items-center justify-center text-slate-300">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/>}</div>}</div>
+                            <div><input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border rounded-xl text-[10px] font-black uppercase cursor-pointer">Tải hình ảnh</label></div>
                         </div>
-
                         {type === 'mcq' && q.options && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                 {q.options.map((opt, oi) => (
-                                    <div key={oi} className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border">
-                                        <input type="radio" name={`ans-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} />
-                                        <input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].options![oi] = e.target.value; setQuestions(nl); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} />
-                                    </div>
+                                    <div key={oi} className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><input type="radio" name={`ans-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} /><input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].options![oi] = e.target.value; setQuestions(nl); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} /></div>
                                 ))}
                             </div>
                         )}
-
                         {type === 'group-tf' && (
                             <div className="space-y-4 mb-8">
                                 {q.subQuestions?.map((sq, si) => (
-                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border">
-                                        <span className="text-xs font-black text-blue-600 w-8">{String.fromCharCode(97+si)})</span>
-                                        <input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung ý..." />
-                                        <div className="flex bg-white rounded-xl p-1 border">
-                                            {['True', 'False'].map(v => (
-                                                <button key={v} onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].correctAnswer = v as any; setQuestions(nl); }} className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-xs font-black text-blue-600 w-8">{String.fromCharCode(97+si)})</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung ý..." /><div className="flex bg-white rounded-xl p-1 border">{['True', 'False'].map(v => <button key={v} onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].correctAnswer = v as any; setQuestions(nl); }} className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>)}</div></div>
                                 ))}
                             </div>
                         )}
-
                         {type === 'short' && (
-                            <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border">
-                                <span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span>
-                                <input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." />
-                            </div>
+                            <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
                         )}
-
-                        <div className="space-y-4 pt-6 border-t border-slate-50">
-                            <label className="text-[10px] font-black text-slate-400 uppercase">Lời giải chi tiết</label>
-                            <textarea className="w-full p-6 bg-yellow-50/30 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[100px]" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Nhập lời giải chi tiết..." />
-                        </div>
+                        <div className="space-y-4 pt-6 border-t border-slate-50"><label className="text-[10px] font-black text-slate-400 uppercase">Lời giải chi tiết</label><textarea className="w-full p-6 bg-yellow-50/30 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[100px]" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Nhập lời giải..." /></div>
                     </div>
                 ))}
             </div>
@@ -146,10 +108,8 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
 };
 
 const AdminDashboard = () => {
-    // Menu States
+    // Basic States
     const [activeMenu, setActiveMenu] = useState<'quizzes' | 'editor' | 'ai' | 'results' | 'students' | 'chapters'>('quizzes');
-    
-    // Data States
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
     const [results, setResults] = useState<Result[]>([]);
     const [users, setUsers] = useState<User[]>([]);
@@ -173,25 +133,21 @@ const AdminDashboard = () => {
     const [aiPart3, setAiPart3] = useState(2);
     const [isAiLoading, setIsAiLoading] = useState(false);
 
-    // Filter - Quizzes
+    // Filter States
     const [qSearch, setQSearch] = useState('');
     const [qGradeFilter, setQGradeFilter] = useState<Grade | 'all'>('all');
     const [qChapterFilter, setQChapterFilter] = useState<string>('all');
-
-    // Filter - Results (Cascading)
     const [rGradeFilter, setRGradeFilter] = useState<Grade | 'all'>('all');
     const [rChapterFilter, setRChapterFilter] = useState<string>('all');
     const [rQuizFilter, setRQuizFilter] = useState<string>('all');
-
-    // Filter - Students
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
-    const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
-    const [historyView, setHistoryView] = useState<{ student: User, quiz: Quiz, attempts: Result[] } | null>(null);
 
-    // Modals
-    const [uploadingId, setUploadingId] = useState<string | null>(null);
+    // Modals & UI
+    const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+    const [historyView, setHistoryView] = useState<{ student: User, quizId: string, attempts: Result[] } | null>(null);
     const [showBank, setShowBank] = useState<{ type: QuestionType, open: boolean }>({ type: 'mcq', open: false });
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
+    const [uploadingId, setUploadingId] = useState<string | null>(null);
 
     useEffect(() => { refreshData(); }, []);
 
@@ -200,46 +156,7 @@ const AdminDashboard = () => {
         setQuizzes(qs); setResults(rs); setUsers(us); setChapters(chs);
     };
 
-    const startEdit = (q: Quiz) => {
-        setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type);
-        setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions);
-        setCategory(q.category || ''); setStartTime(q.startTime || ''); setActiveMenu('editor');
-    };
-
-    const handleSave = async () => {
-        if (!title) return alert("Vui lòng nhập tên đề thi!");
-        const data: Quiz = {
-            id: editingId || uuidv4(), title, description: '', type: quizType,
-            grade, durationMinutes: duration, questions, isPublished,
-            createdAt: new Date().toISOString(), category,
-            startTime: quizType === 'test' ? startTime : undefined
-        };
-        if (editingId) await updateQuiz(data); else await saveQuiz(data);
-        alert("Đã lưu thành công!"); setEditingId(null); setActiveMenu('quizzes'); refreshData();
-    };
-
-    const handleAiGenerate = async () => {
-        if (!aiPrompt) return alert("Vui lòng nhập yêu cầu cho AI!");
-        setIsAiLoading(true);
-        try {
-            const aiQs = await generateQuizFromPrompt({ grade, topic: aiPrompt, part1Count: aiPart1, part2Count: aiPart2, part3Count: aiPart3 });
-            setQuestions([...questions, ...aiQs]); alert("AI đã hoàn thành! Bạn có thể chỉnh sửa trước khi lưu."); setActiveMenu('editor');
-        } catch (e) { alert("Lỗi soạn AI!"); } finally { setIsAiLoading(false); }
-    };
-
-    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return;
-        setIsAiLoading(true);
-        try {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const base64 = (reader.result as string).split(',')[1];
-                const pdfQs = await parseQuestionsFromPDF(base64);
-                setQuestions([...questions, ...pdfQs]); setIsAiLoading(false);
-            };
-        } catch (e) { alert("Lỗi bóc tách PDF!"); setIsAiLoading(false); }
-    };
-
+    // --- HOOKS AT TOP LEVEL (Fixes Error #310) ---
     const filteredQuizzesList = useMemo(() => {
         return quizzes.filter(q => {
             const matchesSearch = q.title.toLowerCase().includes(qSearch.toLowerCase());
@@ -254,12 +171,12 @@ const AdminDashboard = () => {
         const qResults = results.filter(r => r.quizId === rQuizFilter);
         if (qResults.length === 0) return { max: 0, count: 0, avg: 0 };
         const max = Math.max(...qResults.map(r => r.score));
-        const count = Array.from(new Set(qResults.map(r => r.studentId))).length;
+        const uniqueStudents = new Set(qResults.map(r => r.studentId)).size;
         const avg = qResults.reduce((a, b) => a + b.score, 0) / qResults.length;
-        return { max, count, avg };
+        return { max, count: uniqueStudents, avg };
     }, [results, rQuizFilter]);
 
-    const latestResultsPerStudent = useMemo(() => {
+    const latestResultsForTable = useMemo(() => {
         const filtered = results.filter(r => {
             const q = quizzes.find(qx => qx.id === r.quizId);
             const matchesGrade = rGradeFilter === 'all' || q?.grade === rGradeFilter;
@@ -267,19 +184,75 @@ const AdminDashboard = () => {
             const matchesQuiz = rQuizFilter === 'all' || r.quizId === rQuizFilter;
             return matchesGrade && matchesChapter && matchesQuiz;
         });
-        
         const grouped = filtered.reduce((acc, curr) => {
             if (!acc[curr.studentId] || isAfter(parseISO(curr.submittedAt), parseISO(acc[curr.studentId].submittedAt))) {
                 acc[curr.studentId] = curr;
             }
             return acc;
         }, {} as Record<string, Result>);
-
         return Object.values(grouped);
     }, [results, quizzes, rGradeFilter, rChapterFilter, rQuizFilter]);
 
+    const studentDetailHistory = useMemo(() => {
+        if (!selectedStudent) return [];
+        const sResults = results.filter(r => r.studentId === selectedStudent.id);
+        const groupedByQuiz = sResults.reduce((acc, curr) => {
+            if (!acc[curr.quizId]) acc[curr.quizId] = [];
+            acc[curr.quizId].push(curr);
+            return acc;
+        }, {} as Record<string, Result[]>);
+
+        return Object.entries(groupedByQuiz).map(([qid, rs]) => {
+            const q = quizzes.find(qx => qx.id === qid);
+            const max = Math.max(...rs.map(r => r.score));
+            return { quizTitle: q?.title || 'Đề đã xóa', category: q?.category || 'N/A', count: rs.length, maxScore: max };
+        });
+    }, [selectedStudent, results, quizzes]);
+
+    // --- ACTIONS ---
+    const startEdit = (q: Quiz) => {
+        setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type);
+        setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions);
+        setCategory(q.category || ''); setStartTime(q.startTime || ''); setActiveMenu('editor');
+    };
+
+    const handleSave = async () => {
+        if (!title) return alert("Nhập tên đề!");
+        const data: Quiz = {
+            id: editingId || uuidv4(), title, description: '', type: quizType,
+            grade, durationMinutes: duration, questions, isPublished,
+            createdAt: new Date().toISOString(), category,
+            startTime: quizType === 'test' ? startTime : undefined
+        };
+        if (editingId) await updateQuiz(data); else await saveQuiz(data);
+        alert("Lưu thành công!"); setEditingId(null); setActiveMenu('quizzes'); refreshData();
+    };
+
+    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]; if (!file) return;
+        setIsAiLoading(true);
+        try {
+            const reader = new FileReader(); reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64 = (reader.result as string).split(',')[1];
+                const pdfQs = await parseQuestionsFromPDF(base64);
+                setQuestions([...questions, ...pdfQs]); setIsAiLoading(false);
+            };
+        } catch (e) { alert("Lỗi bóc tách!"); setIsAiLoading(false); }
+    };
+
+    const handleAiGenerate = async () => {
+        if (!aiPrompt) return alert("Nhập yêu cầu AI!");
+        setIsAiLoading(true);
+        try {
+            const aiQs = await generateQuizFromPrompt({ grade, topic: aiPrompt, part1Count: aiPart1, part2Count: aiPart2, part3Count: aiPart3 });
+            setQuestions([...questions, ...aiQs]); alert("AI soạn xong!"); setActiveMenu('editor');
+        } catch (e) { alert("Lỗi AI!"); } finally { setIsAiLoading(false); }
+    };
+
     return (
         <div className="flex h-screen bg-[#f8fafc] overflow-hidden text-slate-700 font-sans">
+            {/* SIDEBAR */}
             <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-20 shadow-2xl">
                 <div className="p-8 border-b border-slate-800 flex items-center gap-3">
                     <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg"><Cpu size={18}/></div>
@@ -300,9 +273,10 @@ const AdminDashboard = () => {
             </aside>
 
             <main className="flex-1 flex flex-col overflow-hidden">
-                <header className="h-16 bg-white border-b px-8 flex items-center justify-between shrink-0 shadow-sm z-10"><h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Panel v3.0 • {activeMenu}</h2></header>
+                <header className="h-16 bg-white border-b px-8 flex items-center justify-between shrink-0 shadow-sm z-10"><h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{activeMenu}</h2></header>
 
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
+                    
                     {/* MENU 1: QUẢN LÝ ĐỀ THI */}
                     {activeMenu === 'quizzes' && (
                         <div className="space-y-8 animate-fade-in">
@@ -313,15 +287,14 @@ const AdminDashboard = () => {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {filteredQuizzesList.map(q => {
-                                    const qResults = results.filter(r => r.quizId === q.id);
-                                    const stats = { count: qResults.length, max: Math.max(0, ...qResults.map(r => r.score)) };
+                                    const stats = { count: results.filter(r => r.quizId === q.id).length, max: Math.max(0, ...results.filter(r => r.quizId === q.id).map(r => r.score)) };
                                     return (
                                         <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border hover:border-blue-400 transition-all group relative flex flex-col shadow-sm">
                                             <div className="flex justify-between items-start mb-6">
                                                 <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${q.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{q.isPublished ? 'CÔNG KHAI' : 'NHÁP'}</span>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <button onClick={() => startEdit(q)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:scale-110 transition-transform"><Edit size={16}/></button>
-                                                    <button onClick={async () => { if(confirm('Bạn có chắc muốn xóa đề này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:scale-110 transition-transform"><Trash2 size={16}/></button>
+                                                    <button onClick={() => startEdit(q)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Edit size={16}/></button>
+                                                    <button onClick={async () => { if(confirm('Xóa?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 text-red-500 rounded-xl"><Trash2 size={16}/></button>
                                                 </div>
                                             </div>
                                             <h3 className="font-black text-slate-800 text-lg mb-6 leading-tight min-h-[56px]">{q.title}</h3>
@@ -343,28 +316,27 @@ const AdminDashboard = () => {
                         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b pb-8">
-                                    <input type="text" className="text-3xl font-black outline-none bg-transparent placeholder-slate-200 w-full" placeholder="Tên đề thi mới..." value={title} onChange={e => setTitle(e.target.value)} />
+                                    <input type="text" className="text-3xl font-black outline-none bg-transparent placeholder-slate-200 w-full" placeholder="Tên đề thi..." value={title} onChange={e => setTitle(e.target.value)} />
                                     <label className="flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:scale-105 transition-all relative shadow-xl">
                                         {isAiLoading && <span className="absolute -top-1 -right-1 flex h-4 w-4"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500"></span></span>}
-                                        <FileUp size={16}/> {isAiLoading ? 'XỬ LÝ PDF...' : 'BÓC TÁCH ĐỀ PDF'}
+                                        <FileUp size={16}/> {isAiLoading ? 'ĐANG XỬ LÝ...' : 'BÓC TÁCH ĐỀ PDF'}
                                         <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfExtract}/>
                                     </label>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Khối lớp</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Hình thức</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={quizType} onChange={e => setQuizType(e.target.value as any)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{isPublished ? 'CÔNG KHAI' : 'NHÁP'}</button></div>
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Thời gian (Phút)</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={duration} onChange={e => setDuration(parseInt(e.target.value))} /></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Chương học</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={category} onChange={e => setCategory(e.target.value)}><option value="">Chọn chương tương ứng</option>{chapters.filter(c => c.grade === grade).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Chương học</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={category} onChange={e => setCategory(e.target.value)}><option value="">Chọn chương</option>{chapters.filter(c => c.grade === grade).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                                     {quizType === 'test' && (
-                                        <div className="space-y-2 animate-fade-in"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Lịch bắt đầu</label><div className="relative"><Calendar className="absolute left-4 top-4 text-slate-400" size={16}/><input type="datetime-local" className="w-full border rounded-2xl p-4 pl-12 text-xs font-black bg-slate-50 outline-none" value={startTime} onChange={e => setStartTime(e.target.value)} /></div></div>
+                                        <div className="space-y-2 animate-fade-in"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Lịch bắt đầu</label><input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
                                     )}
                                 </div>
                                 <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> {editingId ? 'CẬP NHẬT ĐỀ THI' : 'LƯU ĐỀ THI MỚI'}</button>
                             </div>
-                            
                             <QuestionSection title="PHẦN I. Câu trắc nghiệm" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
                             <QuestionSection title="PHẦN II. Câu đúng sai" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
                             <QuestionSection title="PHẦN III. Trả lời ngắn" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
@@ -375,17 +347,17 @@ const AdminDashboard = () => {
                     {activeMenu === 'ai' && (
                         <div className="max-w-4xl mx-auto space-y-10 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
-                                <div className="flex items-center gap-4 text-purple-600 border-b pb-6"><Sparkles size={32}/><h3 className="text-2xl font-black uppercase tracking-tight">Soạn đề thi thông minh với AI Gemini</h3></div>
+                                <div className="flex items-center gap-4 text-purple-600 border-b pb-6"><Sparkles size={32}/><h3 className="text-2xl font-black uppercase tracking-tight">Soạn đề bằng AI</h3></div>
                                 <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhập yêu cầu chi tiết (Lệnh Prompt)</label>
-                                    <textarea className="w-full p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] text-sm font-bold outline-none focus:ring-4 focus:ring-purple-50 transition-all min-h-[250px]" placeholder="Ví dụ: Soạn 10 câu trắc nghiệm chuyên đề Logarit toán 12 mức độ vận dụng cao, có tham số m..." value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} />
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giao nhiệm vụ cho AI</label>
+                                    <textarea className="w-full p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] text-sm font-bold outline-none focus:ring-4 focus:ring-purple-50 transition-all min-h-[250px]" placeholder="Nhập yêu cầu..." value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Số câu Phần I</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart1} onChange={e => setAiPart1(parseInt(e.target.value))} /></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Số câu Phần II</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart2} onChange={e => setAiPart2(parseInt(e.target.value))} /></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Số câu Phần III</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart3} onChange={e => setAiPart3(parseInt(e.target.value))} /></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần I</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart1} onChange={e => setAiPart1(parseInt(e.target.value))} /></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần II</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart2} onChange={e => setAiPart2(parseInt(e.target.value))} /></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần III</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart3} onChange={e => setAiPart3(parseInt(e.target.value))} /></div>
                                 </div>
-                                <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-purple-600 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-purple-700 transition-all shadow-xl disabled:opacity-50">{isAiLoading ? <Loader2 className="animate-spin"/> : <Sparkles size={20}/>} {isAiLoading ? 'AI ĐANG LÀM VIỆC...' : 'BẮT ĐẦU SOẠN BẰNG AI'}</button>
+                                <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-purple-600 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-purple-700 transition-all shadow-xl disabled:opacity-50">{isAiLoading ? <Loader2 className="animate-spin"/> : <Sparkles size={20}/>} {isAiLoading ? 'AI ĐANG LÀM VIỆC...' : 'BẮT ĐẦU SOẠN'}</button>
                             </div>
                         </div>
                     )}
@@ -394,28 +366,28 @@ const AdminDashboard = () => {
                     {activeMenu === 'results' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
                             <div className="flex flex-col lg:flex-row gap-4 bg-white p-6 rounded-[2rem] border shadow-sm items-center">
-                                <div className="flex items-center gap-3 mr-4"><Filter className="text-slate-300" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Lọc theo:</span></div>
-                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}><option value="all">Tất cả khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
-                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}><option value="all">Tất cả chương</option>{chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
-                                <select className="flex-1 px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rQuizFilter} onChange={e => setRQuizFilter(e.target.value)}><option value="all">Tất cả đề thi</option>{quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select>
+                                <div className="flex items-center gap-3 mr-4"><Filter className="text-slate-300" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Lọc:</span></div>
+                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}><option value="all">Khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
+                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}><option value="all">Chương</option>{chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
+                                <select className="flex-1 px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rQuizFilter} onChange={e => setRQuizFilter(e.target.value)}><option value="all">Chọn đề thi</option>{quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select>
                             </div>
 
                             {resultStats && (
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                                     <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><Trophy size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><h4 className="text-xl font-black">{resultStats.max.toFixed(2)}</h4></div></div>
-                                    <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><Users2 size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Số HS đã thi</p><h4 className="text-xl font-black">{resultStats.count}</h4></div></div>
+                                    <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><Users size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Số học sinh</p><h4 className="text-xl font-black">{resultStats.count}</h4></div></div>
                                     <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center"><TrendingUp size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm trung bình</p><h4 className="text-xl font-black">{resultStats.avg.toFixed(2)}</h4></div></div>
                                 </div>
                             )}
 
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                                <table className="w-full text-left">
-                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm số (Gần nhất)</th><th className="p-6 text-center">Thời gian thi</th><th className="p-6 text-center">Thao tác</th></tr></thead>
-                                    <tbody className="divide-y">{latestResultsPerStudent.map(r => {
+                                <table className="w-full text-left border-collapse">
+                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm gần nhất</th><th className="p-6 text-center">Lần nộp</th><th className="p-6 text-center">Thao tác</th></tr></thead>
+                                    <tbody className="divide-y">{latestResultsForTable.map(r => {
                                         const q = quizzes.find(qx => qx.id === r.quizId);
-                                        const std = users.find(u => u.id === r.studentId);
+                                        const attempts = results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId);
                                         return (
-                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleString()}</td><td className="p-6 text-center"><button onClick={() => { if(std && q) { const attempts = results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId); setHistoryView({ student: std, quiz: q, attempts }); }}} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all mx-auto"><History size={14}/> Xem lịch sử</button></td></tr>
+                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center"><button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all mx-auto"><Eye size={14}/> Xem chi tiết</button></td></tr>
                                         );
                                     })}</tbody>
                                 </table>
@@ -426,13 +398,13 @@ const AdminDashboard = () => {
                     {/* MENU 5: QUẢN LÝ HỌC SINH */}
                     {activeMenu === 'students' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-                            <div className="flex gap-4 bg-white p-5 rounded-[2rem] border shadow-sm items-center"><Users2 className="text-slate-300 ml-4" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Khối lớp:</span><select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Tất cả</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
+                            <div className="flex gap-4 bg-white p-5 rounded-[2rem] border shadow-sm items-center"><Users className="text-slate-300 ml-4" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Lọc khối:</span><select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Tất cả</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter)).map(u => (
                                     <div key={u.id} onClick={() => setSelectedStudent(u)} className="bg-white p-8 rounded-[2.5rem] border hover:border-blue-400 transition-all cursor-pointer shadow-sm text-center relative group">
-                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4">{u.fullName.charAt(0)}</div>
+                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4 group-hover:scale-110 transition-transform">{u.fullName.charAt(0)}</div>
                                         <h4 className="font-black text-slate-800 text-lg">{u.fullName}</h4><p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">MS: {u.studentCode} • Lớp {u.grade}</p>
-                                        <div className="mt-6 pt-6 border-t flex justify-around"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Đề đã làm</p><p className="font-black">{new Set(results.filter(r => r.studentId === u.id).map(r => r.quizId)).size}</p></div><div className="text-center border-l w-px h-8 self-center"/><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm TB</p><p className="font-black text-blue-600">{(results.filter(r => r.studentId === u.id).reduce((a,b)=>a+b.score,0)/(results.filter(r => r.studentId === u.id).length || 1)).toFixed(1)}</p></div></div>
+                                        <div className="mt-6 pt-6 border-t flex justify-around"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Đề đã làm</p><p className="font-black text-slate-700">{new Set(results.filter(r => r.studentId === u.id).map(r => r.quizId)).size}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Điểm TB</p><p className="font-black text-blue-600">{(results.filter(r => r.studentId === u.id).reduce((a,b)=>a+b.score,0)/(results.filter(r => r.studentId === u.id).length || 1)).toFixed(1)}</p></div></div>
                                     </div>
                                 ))}
                             </div>
@@ -442,7 +414,7 @@ const AdminDashboard = () => {
                     {/* MENU 6: QUẢN LÝ CHƯƠNG */}
                     {activeMenu === 'chapters' && (
                         <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6"><h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tạo mới chương học</h4><div className="flex flex-col gap-4"><select className="p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select><div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" placeholder="Tên chương học..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value = ''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700">Lưu Chương</button></div></div></div>
+                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6"><h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tạo mới chương học</h4><div className="flex flex-col gap-4"><select className="p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select><div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value = ''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700">Lưu Chương</button></div></div></div>
                             {['12', '11', '10'].map(g => (
                                 <div key={g} className="space-y-3"><h5 className="text-[10px] font-black text-slate-300 uppercase px-6 tracking-[0.2em]">Khối {g}</h5>{chapters.filter(c => c.grade === g).map(c => (<div key={c.id} className="bg-white p-6 px-10 rounded-[2rem] border flex justify-between items-center group hover:border-blue-400 transition-all shadow-sm"><span className="font-black text-sm text-slate-700">{c.name}</span><button onClick={async () => { if(confirm('Xóa?')) { await deleteChapter(c.id); refreshData(); } }} className="p-3 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button></div>))}</div>
                             ))}
@@ -456,76 +428,31 @@ const AdminDashboard = () => {
                 <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
                         <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                            <div className="flex items-center gap-5"><div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center font-black text-2xl">{selectedStudent.fullName.charAt(0)}</div><div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] text-slate-400 font-bold">Lịch sử luyện tập chi tiết</p></div></div>
+                            <div className="flex items-center gap-5"><div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center font-black text-2xl">{selectedStudent.fullName.charAt(0)}</div><div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Lịch sử luyện tập chi tiết</p></div></div>
                             <button onClick={() => setSelectedStudent(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50">
-                            <div className="grid grid-cols-1 gap-4">
-                                {useMemo(() => {
-                                    const sResults = results.filter(r => r.studentId === selectedStudent.id);
-                                    const grouped = sResults.reduce((acc, curr) => {
-                                        if (!acc[curr.quizId]) acc[curr.quizId] = [];
-                                        acc[curr.quizId].push(curr);
-                                        return acc;
-                                    }, {} as Record<string, Result[]>);
-                                    return Object.entries(grouped).map(([qid, rs]) => {
-                                        const q = quizzes.find(qx => qx.id === qid);
-                                        const max = Math.max(...rs.map(r => r.score));
-                                        return (
-                                            <div key={qid} className="bg-white p-6 rounded-3xl border flex items-center justify-between group hover:shadow-md transition-all">
-                                                <div className="flex-1">
-                                                    <h4 className="font-black text-slate-800 mb-1">{q?.title || 'Đề đã xóa'}</h4>
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{q?.category || 'Chương chưa rõ'}</p>
-                                                </div>
-                                                <div className="flex gap-8 items-center">
-                                                    <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Số lần làm</p><p className="font-black text-slate-700">{rs.length}</p></div>
-                                                    <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="font-black text-blue-600">{max.toFixed(2)}</p></div>
-                                                </div>
-                                            </div>
-                                        );
-                                    });
-                                }, [selectedStudent, results, quizzes])}
-                            </div>
+                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
+                            {studentDetailHistory.length > 0 ? studentDetailHistory.map((item, i) => (
+                                <div key={i} className="bg-white p-6 rounded-3xl border flex items-center justify-between group hover:shadow-md transition-all">
+                                    <div className="flex-1"><h4 className="font-black text-slate-800 mb-1">{item.quizTitle}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.category}</p></div>
+                                    <div className="flex gap-8 items-center"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Số lần làm</p><p className="font-black text-slate-700">{item.count}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="font-black text-blue-600">{item.maxScore.toFixed(2)}</p></div></div>
+                                </div>
+                            )) : <div className="text-center py-20 text-slate-400 font-bold">Học sinh này chưa làm đề nào.</div>}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* MODAL: LỊCH SỬ LÀM BÀI CỦA 1 HS TRONG 1 ĐỀ */}
+            {/* MODAL: LỊCH SỬ CHI TIẾT 1 ĐỀ */}
             {historyView && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[1100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[70vh] flex flex-col overflow-hidden shadow-2xl">
-                        <div className="p-8 bg-blue-600 text-white flex justify-between items-center shrink-0">
-                            <div><h3 className="text-lg font-black uppercase">Lịch sử: {historyView.student.fullName}</h3><p className="text-[10px] font-bold text-blue-100">{historyView.quiz.title}</p></div>
-                            <button onClick={() => setHistoryView(null)} className="p-2 hover:bg-white/10 rounded-full"><X size={24}/></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
-                            <div className="space-y-4">
-                                {historyView.attempts.sort((a,b) => isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((r, i) => (
-                                    <div key={r.id} className="bg-white p-5 rounded-2xl border flex justify-between items-center">
-                                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Lần {historyView.attempts.length - i}</p><p className="text-sm font-bold">{new Date(r.submittedAt).toLocaleString()}</p></div>
-                                        <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase">Điểm số</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MODAL: NGÂN HÀNG CÂU HỎI */}
-            {showBank.open && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md">
-                    <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                            <h3 className="text-lg font-black uppercase tracking-widest">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3>
-                            <button onClick={() => setShowBank({ ...showBank, open: false })} className="p-2 hover:bg-red-600 rounded-xl transition-colors"><X size={24}/></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
-                            {quizzes.flatMap(q => q.questions).filter(q => q.type === showBank.type).map((q, i) => (
-                                <div key={i} className="bg-white p-8 rounded-3xl border border-slate-100 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm">
-                                    <div className="flex-1 pr-10 text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div>
-                                    <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); setShowBank({ ...showBank, open: false }); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-100 hover:scale-105 transition-all">Chọn câu này</button>
+                        <div className="p-8 bg-blue-600 text-white flex justify-between items-center shrink-0"><div><h3 className="text-lg font-black uppercase">Lịch sử: {historyView.student.fullName}</h3><p className="text-[10px] font-bold text-blue-100">{quizzes.find(q=>q.id===historyView.quizId)?.title}</p></div><button onClick={() => setHistoryView(null)} className="p-2 hover:bg-white/10 rounded-full"><X size={24}/></button></div>
+                        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 space-y-4">
+                            {historyView.attempts.sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((r, i) => (
+                                <div key={r.id} className="bg-white p-5 rounded-2xl border flex justify-between items-center">
+                                    <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Lần {historyView.attempts.length - i}</p><p className="text-sm font-bold">{new Date(r.submittedAt).toLocaleString()}</p></div>
+                                    <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Điểm</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
                                 </div>
                             ))}
                         </div>
@@ -533,21 +460,30 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: XEM TRƯỚC ĐỀ THI */}
-            {previewQuiz && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl animate-fade-in-up">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                            <div className="flex items-center gap-5"><FileText size={24}/><h3 className="text-lg font-black uppercase tracking-tight">{previewQuiz.title}</h3></div>
-                            <button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
+            {/* MODAL: NGÂN HÀNG ĐỀ */}
+            {showBank.open && (
+                <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
+                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><h3 className="text-lg font-black uppercase tracking-widest">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3><button onClick={() => setShowBank({ ...showBank, open: false })} className="p-2 hover:bg-red-600 rounded-xl transition-colors"><X size={24}/></button></div>
+                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
+                            {quizzes.flatMap(q => q.questions).filter(q => q.type === showBank.type).map((q, i) => (
+                                <div key={i} className="bg-white p-8 rounded-3xl border border-slate-100 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm"><div className="flex-1 pr-10 text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div><button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); setShowBank({ ...showBank, open: false }); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:scale-105 transition-all">Lấy câu này</button></div>
+                            ))}
                         </div>
-                        <div className="flex-1 overflow-y-auto p-12 bg-slate-50">
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: PREVIEW ĐỀ */}
+            {previewQuiz && (
+                <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl animate-fade-in-up">
+                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><div className="flex items-center gap-5"><FileText size={24}/><h3 className="text-lg font-black uppercase tracking-tight">{previewQuiz.title}</h3></div><button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button></div>
+                        <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                             {previewQuiz.questions.map((q, i) => (
-                                <div key={q.id || i} className="bg-white p-10 rounded-[2rem] shadow-sm border mb-8">
-                                    <div className="text-slate-800 font-bold mb-6 flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview" />}</div></div>
-                                    {q.type === 'mcq' && q.options && (<div className="grid grid-cols-2 gap-4 ml-12">{q.options.map((opt, oi) => <div key={oi} className="text-sm text-slate-500">{String.fromCharCode(65+oi)}. <LatexText text={opt}/></div>)}</div>)}
-                                    {q.solution && (<div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl"><p className="text-[10px] font-black text-yellow-600 uppercase mb-3">Lời giải tham khảo:</p><div className="text-sm font-medium text-slate-600 italic"><LatexText text={q.solution}/></div></div>)}
-                                </div>
+                                <div key={q.id || i} className="bg-white p-10 rounded-[2rem] shadow-sm border mb-8 relative"><div className="text-slate-800 font-bold mb-6 flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="p" />}</div></div>
+                                {q.type === 'mcq' && q.options && (<div className="grid grid-cols-2 gap-4 ml-12">{q.options.map((opt, oi) => <div key={oi} className="text-sm text-slate-500">{String.fromCharCode(65+oi)}. <LatexText text={opt}/></div>)}</div>)}
+                                {q.solution && (<div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl"><p className="text-[10px] font-black text-yellow-600 uppercase mb-3">Lời giải tham khảo:</p><div className="text-sm font-medium text-slate-600 italic"><LatexText text={q.solution}/></div></div>)}</div>
                             ))}
                         </div>
                     </div>
