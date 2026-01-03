@@ -156,7 +156,7 @@ const AdminDashboard = () => {
         setQuizzes(qs); setResults(rs); setUsers(us); setChapters(chs);
     };
 
-    // --- HOOKS AT TOP LEVEL (Fixes Error #310) ---
+    // --- HOOKS AT TOP LEVEL (To prevent Hook Violation #310) ---
     const filteredQuizzesList = useMemo(() => {
         return quizzes.filter(q => {
             const matchesSearch = q.title.toLowerCase().includes(qSearch.toLowerCase());
@@ -205,9 +205,17 @@ const AdminDashboard = () => {
         return Object.entries(groupedByQuiz).map(([qid, rs]) => {
             const q = quizzes.find(qx => qx.id === qid);
             const max = Math.max(...rs.map(r => r.score));
-            return { quizTitle: q?.title || 'Đề đã xóa', category: q?.category || 'N/A', count: rs.length, maxScore: max };
+            return { quizId: qid, quizTitle: q?.title || 'Đề đã xóa', category: q?.category || 'N/A', count: rs.length, maxScore: max };
         });
     }, [selectedStudent, results, quizzes]);
+
+    const bankQuestions = useMemo(() => {
+        if (!showBank.open) return [];
+        return quizzes
+            .filter(q => q.grade === grade)
+            .flatMap(q => q.questions.map(quest => ({ ...quest, quizTitle: q.title })))
+            .filter(q => q.type === showBank.type);
+    }, [showBank, quizzes, grade]);
 
     // --- ACTIONS ---
     const startEdit = (q: Quiz) => {
@@ -226,6 +234,18 @@ const AdminDashboard = () => {
         };
         if (editingId) await updateQuiz(data); else await saveQuiz(data);
         alert("Lưu thành công!"); setEditingId(null); setActiveMenu('quizzes'); refreshData();
+    };
+
+    const handleDeleteResult = async (id: string) => {
+        if (!confirm('Bạn có chắc muốn xóa kết quả thi này?')) return;
+        await deleteResult(id);
+        refreshData();
+    };
+
+    const handleDeleteUser = async (id: string) => {
+        if (!confirm('Bạn có chắc muốn xóa học sinh này và toàn bộ dữ liệu liên quan?')) return;
+        await deleteUser(id);
+        refreshData();
     };
 
     const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,7 +346,7 @@ const AdminDashboard = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Khối lớp</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Hình thức</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={quizType} onChange={e => setQuizType(e.target.value as any)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{isPublished ? 'CÔNG KHAI' : 'NHÁP'}</button></div>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button></div>
                                     <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Thời gian (Phút)</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={duration} onChange={e => setDuration(parseInt(e.target.value))} /></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -387,7 +407,10 @@ const AdminDashboard = () => {
                                         const q = quizzes.find(qx => qx.id === r.quizId);
                                         const attempts = results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId);
                                         return (
-                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center"><button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all mx-auto"><Eye size={14}/> Xem chi tiết</button></td></tr>
+                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center flex items-center justify-center gap-2">
+                                                <button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/> Xem</button>
+                                                <button onClick={() => handleDeleteResult(r.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
+                                            </td></tr>
                                         );
                                     })}</tbody>
                                 </table>
@@ -402,6 +425,7 @@ const AdminDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter)).map(u => (
                                     <div key={u.id} onClick={() => setSelectedStudent(u)} className="bg-white p-8 rounded-[2.5rem] border hover:border-blue-400 transition-all cursor-pointer shadow-sm text-center relative group">
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u.id); }} className="absolute top-6 right-6 p-2 bg-red-50 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"><Trash2 size={16}/></button>
                                         <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4 group-hover:scale-110 transition-transform">{u.fullName.charAt(0)}</div>
                                         <h4 className="font-black text-slate-800 text-lg">{u.fullName}</h4><p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">MS: {u.studentCode} • Lớp {u.grade}</p>
                                         <div className="mt-6 pt-6 border-t flex justify-around"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Đề đã làm</p><p className="font-black text-slate-700">{new Set(results.filter(r => r.studentId === u.id).map(r => r.quizId)).size}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Điểm TB</p><p className="font-black text-blue-600">{(results.filter(r => r.studentId === u.id).reduce((a,b)=>a+b.score,0)/(results.filter(r => r.studentId === u.id).length || 1)).toFixed(1)}</p></div></div>
@@ -435,7 +459,11 @@ const AdminDashboard = () => {
                             {studentDetailHistory.length > 0 ? studentDetailHistory.map((item, i) => (
                                 <div key={i} className="bg-white p-6 rounded-3xl border flex items-center justify-between group hover:shadow-md transition-all">
                                     <div className="flex-1"><h4 className="font-black text-slate-800 mb-1">{item.quizTitle}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.category}</p></div>
-                                    <div className="flex gap-8 items-center"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Số lần làm</p><p className="font-black text-slate-700">{item.count}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="font-black text-blue-600">{item.maxScore.toFixed(2)}</p></div></div>
+                                    <div className="flex gap-8 items-center">
+                                        <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Số lần làm</p><p className="font-black text-slate-700">{item.count}</p></div>
+                                        <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="font-black text-blue-600">{item.maxScore.toFixed(2)}</p></div>
+                                        <button onClick={() => { const std = users.find(u => u.id === selectedStudent.id); if(std) setHistoryView({ student: std, quizId: item.quizId, attempts: results.filter(r => r.studentId === selectedStudent.id && r.quizId === item.quizId) }); }} className="p-2 bg-slate-100 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={16}/></button>
+                                    </div>
                                 </div>
                             )) : <div className="text-center py-20 text-slate-400 font-bold">Học sinh này chưa làm đề nào.</div>}
                         </div>
@@ -452,7 +480,10 @@ const AdminDashboard = () => {
                             {historyView.attempts.sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((r, i) => (
                                 <div key={r.id} className="bg-white p-5 rounded-2xl border flex justify-between items-center">
                                     <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Lần {historyView.attempts.length - i}</p><p className="text-sm font-bold">{new Date(r.submittedAt).toLocaleString()}</p></div>
-                                    <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Điểm</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Điểm</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
+                                        <button onClick={() => handleDeleteResult(r.id)} className="p-2 text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -460,15 +491,32 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: NGÂN HÀNG ĐỀ */}
+            {/* MODAL: NGÂN HÀNG ĐỀ (Lọc theo Khối đang chọn) */}
             {showBank.open && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><h3 className="text-lg font-black uppercase tracking-widest">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3><button onClick={() => setShowBank({ ...showBank, open: false })} className="p-2 hover:bg-red-600 rounded-xl transition-colors"><X size={24}/></button></div>
+                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h3 className="text-lg font-black uppercase tracking-widest">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3>
+                                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Đang lọc theo: Khối {grade}</p>
+                            </div>
+                            <button onClick={() => setShowBank({ ...showBank, open: false })} className="p-2 hover:bg-red-600 rounded-xl transition-colors"><X size={24}/></button>
+                        </div>
                         <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
-                            {quizzes.flatMap(q => q.questions).filter(q => q.type === showBank.type).map((q, i) => (
-                                <div key={i} className="bg-white p-8 rounded-3xl border border-slate-100 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm"><div className="flex-1 pr-10 text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div><button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); setShowBank({ ...showBank, open: false }); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:scale-105 transition-all">Lấy câu này</button></div>
-                            ))}
+                            {bankQuestions.length > 0 ? bankQuestions.map((q, i) => (
+                                <div key={i} className="bg-white p-8 rounded-3xl border border-slate-100 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm">
+                                    <div className="flex-1 pr-10">
+                                        <p className="text-[8px] font-black text-slate-300 uppercase mb-2">Nguồn: {q.quizTitle}</p>
+                                        <div className="text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div>
+                                    </div>
+                                    <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); setShowBank({ ...showBank, open: false }); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:scale-105 transition-all">Lấy câu này</button>
+                                </div>
+                            )) : (
+                                <div className="text-center py-20">
+                                    <Info className="mx-auto text-slate-300 mb-4" size={48}/>
+                                    <p className="text-slate-400 font-bold">Không tìm thấy câu hỏi tương tự trong Khối {grade}.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
