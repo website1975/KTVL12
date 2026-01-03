@@ -449,17 +449,16 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-4"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><Users size={24}/></div><div><h3 className="text-sm font-black uppercase tracking-tight">Quản lý Tài khoản Học sinh</h3><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đang hiển thị {filteredStudents.length} học sinh</p></div></div>
             <div className="flex items-center gap-3"><label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối lớp:</label><div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">{(['all', '10', '11', '12'] as const).map(g => (<button key={g} onClick={() => setStdGrade(g)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${stdGrade === g ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{g === 'all' ? 'Tất cả' : `Khối ${g}`}</button>))}</div></div>
         </div>
-        <div className="overflow-x-auto">
-            {/* Sử dụng min-width và layout cố định để bảng không bị bóp lại */}
-            <table className="w-full text-left text-[13px] border-collapse min-w-[1000px] table-fixed">
+        <div className="overflow-x-auto p-4">
+            <table className="w-full text-left text-[13px] border-collapse min-w-[1100px]">
                 <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
                     <tr>
-                        <th className="px-8 py-4 w-[25%]">Họ và tên học sinh</th>
-                        <th className="px-8 py-4 w-[15%]">Tên đăng nhập</th>
-                        <th className="px-8 py-4 w-[10%] text-center">Khối</th>
-                        <th className="px-8 py-4 w-[15%]">Mật khẩu</th>
-                        <th className="px-8 py-4 w-[25%] text-center">Thống kê học tập</th>
-                        <th className="px-8 py-4 w-[10%] text-center">Thao tác</th>
+                        <th className="px-6 py-4 w-[25%]">Họ và tên học sinh</th>
+                        <th className="px-6 py-4 w-[15%]">Tên đăng nhập</th>
+                        <th className="px-6 py-4 w-[10%] text-center">Khối</th>
+                        <th className="px-6 py-4 w-[15%]">Mật khẩu</th>
+                        <th className="px-6 py-4 w-[25%] text-center">Thống kê học tập</th>
+                        <th className="px-6 py-4 w-[10%] text-center">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -468,28 +467,38 @@ const AdminDashboard = () => {
                         const avgScore = sR.length > 0 ? (sR.reduce((a, b) => a + (b.score || 0), 0) / sR.length) : 0;
                         return (
                             <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
-                                <td className="px-8 py-3 font-bold text-slate-800 truncate">{u.fullName}</td>
-                                <td className="px-8 py-3 font-mono text-blue-600 truncate">{u.username}</td>
-                                <td className="px-8 py-3 text-center">
-                                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span>
+                                <td className="px-6 py-2.5 font-bold text-slate-800">{u.fullName}</td>
+                                <td className="px-6 py-2.5 font-mono text-blue-600">{u.username}</td>
+                                <td className="px-6 py-2.5 text-center">
+                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-black text-[9px] uppercase">Khối {u.grade}</span>
                                 </td>
-                                <td className="px-8 py-3 font-mono text-slate-300 select-all truncate">{u.password}</td>
-                                <td className="px-8 py-3">
-                                    <div className="flex flex-col items-center">
-                                        <div className="text-[10px] font-black text-slate-400 uppercase">Đã luyện {sR.length} đề</div>
-                                        <div className={`text-xs font-bold ${avgScore >= 5 ? 'text-green-600' : 'text-slate-600'}`}>
-                                            TB: {avgScore.toFixed(1)}đ
+                                <td className="px-6 py-2.5 font-mono text-slate-300 select-all">{u.password}</td>
+                                <td className="px-6 py-2.5">
+                                    <div className="flex items-center justify-center gap-4">
+                                        <div className="text-center">
+                                            <div className="text-[8px] font-black text-slate-400 uppercase">Đã luyện</div>
+                                            <div className="text-xs font-bold">{sR.length} đề</div>
+                                        </div>
+                                        <div className="w-px h-6 bg-slate-100"></div>
+                                        <div className="text-center">
+                                            <div className="text-[8px] font-black text-slate-400 uppercase">Trung bình</div>
+                                            <div className={`text-xs font-bold ${avgScore >= 5 ? 'text-green-600' : 'text-slate-600'}`}>
+                                                {avgScore.toFixed(1)}đ
+                                            </div>
                                         </div>
                                     </div>
                                 </td>
-                                <td className="px-8 py-3 text-center">
-                                    <button 
-                                        onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} 
-                                        className="p-2.5 bg-slate-100 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all shadow-sm"
-                                        title="Xóa tài khoản"
-                                    >
-                                        <Trash2 size={16}/>
-                                    </button>
+                                <td className="px-6 py-2.5 text-center">
+                                    {/* Nút xóa được bao bọc cẩn thận để không bị cắt */}
+                                    <div className="inline-flex items-center justify-center p-1">
+                                        <button 
+                                            onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} 
+                                            className="p-2 bg-slate-50 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shadow-sm border border-slate-100"
+                                            title="Xóa tài khoản"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         );
