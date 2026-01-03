@@ -10,6 +10,7 @@ export interface User {
   password: string;
   role: Role;
   fullName: string;
+  studentCode?: string; // Mã số học sinh
   grade?: Grade;
 }
 
@@ -44,7 +45,7 @@ export interface Quiz {
   description: string;
   type: QuizType;
   grade: Grade;
-  category?: string; // Trường phân loại theo chương/mục
+  category?: string; 
   startTime?: string;
   durationMinutes: number;
   questions: Question[];
