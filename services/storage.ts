@@ -1,64 +1,56 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result } from '../types';
+import { User, Quiz, Result, Chapter } from '../types';
 
-// Lấy biến môi trường theo chuẩn Vite
-// Fix: Cast import.meta to any to resolve missing property 'env' error
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-// Fix: Cast import.meta to any to resolve missing property 'env' error
-const supabaseKey = (import.meta as any).env.VITE_SUPABASE_KEY;
+// Helper để lấy biến môi trường an toàn
+const getEnv = (name: string): string | undefined => {
+  try {
+    const metaEnv = (import.meta as any).env;
+    if (metaEnv && metaEnv[name]) return metaEnv[name];
+  } catch (e) {}
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[name]) {
+      return (process.env as any)[name];
+    }
+  } catch (e) {}
+  return undefined;
+};
+
+const supabaseUrl = getEnv('VITE_SUPABASE_URL');
+const supabaseKey = getEnv('VITE_SUPABASE_KEY');
 
 let supabase: any = null;
 
-// CHỈ khởi tạo nếu có đầy đủ URL và Key để tránh lỗi màn hình trắng
 if (supabaseUrl && supabaseKey) {
   try {
     supabase = createClient(supabaseUrl, supabaseKey);
   } catch (e) {
-    console.error("Lỗi khởi tạo Supabase (Key không hợp lệ):", e);
+    console.error("Lỗi khởi tạo Supabase:", e);
   }
-} else {
-  console.warn("Chưa cấu hình Supabase URL/Key. Ứng dụng sẽ chạy nhưng không lưu được dữ liệu.");
 }
 
-// Hàm kiểm tra trạng thái kết nối
 export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- Storage (Images) ---
+// --- Storage (Ảnh) ---
 export const uploadImage = async (file: File): Promise<string | null> => {
-  if (!supabase) {
-    alert("Chưa kết nối Supabase. Vui lòng kiểm tra Key.");
-    return null;
-  }
-
+  if (!supabase) return null;
   try {
-    // 1. Tạo tên file độc nhất để không bị trùng (timestamp_tênfile)
-    // Xử lý tên file để bỏ các ký tự đặc biệt tiếng Việt
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-    const fileName = `${Date.now()}_${sanitizedName}`;
-
-    // 2. Upload lên bucket 'quiz-images'
+    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
     const { error: uploadError } = await supabase.storage
       .from('quiz-images')
       .upload(fileName, file);
 
-    if (uploadError) {
-      console.error('Upload Error:', uploadError);
-      alert("Lỗi upload: " + uploadError.message);
-      return null;
-    }
+    if (uploadError) throw uploadError;
 
-    // 3. Lấy đường dẫn công khai (Public URL)
     const { data } = supabase.storage
       .from('quiz-images')
       .getPublicUrl(fileName);
 
     return data.publicUrl;
-
   } catch (e) {
-    console.error("Lỗi upload:", e);
+    console.error("Lỗi upload ảnh:", e);
     return null;
   }
 };
@@ -67,10 +59,7 @@ export const uploadImage = async (file: File): Promise<string | null> => {
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
-  if (error) {
-    console.error('Lỗi lấy Users:', error);
-    return [];
-  }
+  if (error) return [];
   return data.map((row: any) => row.data as User);
 };
 
@@ -84,20 +73,9 @@ export const saveUser = async (user: User): Promise<void> => {
   if (error) console.error('Lỗi lưu User:', error);
 };
 
-export const updateUser = async (user: User): Promise<void> => {
-  if (!supabase) return;
-  const { error } = await supabase
-    .from('users')
-    .update({ data: user }) // Cập nhật cột JSON
-    .eq('id', user.id);
-  
-  if (error) console.error('Lỗi update User:', error);
-};
-
 export const deleteUser = async (id: string): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('users').delete().eq('id', id);
-  if (error) console.error('Lỗi xóa User:', error);
+  await supabase.from('users').delete().eq('id', id);
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
@@ -114,8 +92,6 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 
 export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
   if (!supabase) return false;
-  
-  // 1. Lấy data người dùng hiện tại
   const { data: rows, error: fetchError } = await supabase
       .from('users')
       .select('data')
@@ -123,13 +99,9 @@ export const changePassword = async (userId: string, newPass: string): Promise<b
       .single();
   
   if (fetchError || !rows) return false;
-  
   const currentUser = rows.data as User;
-  
-  // 2. Cập nhật mật khẩu trong object JSON
   const updatedUser = { ...currentUser, password: newPass };
 
-  // 3. Lưu ngược lại vào DB
   const { error: updateError } = await supabase
       .from('users')
       .update({ data: updatedUser })
@@ -142,41 +114,30 @@ export const changePassword = async (userId: string, newPass: string): Promise<b
 export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('quizzes').select('data');
-  if (error) {
-    console.error('Lỗi lấy Quizzes:', error);
-    return [];
-  }
-  const quizzes = data.map((row: any) => row.data as Quiz);
-  // FIX: Thêm kiểu dữ liệu rõ ràng (a: Quiz, b: Quiz) để tránh lỗi build TS7006 trên Vercel
-  return quizzes.sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  if (error) return [];
+  return data.map((row: any) => row.data as Quiz)
+    .sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
-  if (!supabase) {
-      alert("Lỗi: Chưa kết nối Database! Vui lòng kiểm tra cấu hình Key trên Vercel.");
-      return;
-  }
+  if (!supabase) return;
   const { error } = await supabase.from('quizzes').insert({
     id: quiz.id,
     grade: quiz.grade,
     data: quiz
   });
-  if (error) console.error('Lỗi lưu Quiz:', error);
 };
 
 export const updateQuiz = async (updatedQuiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase
-    .from('quizzes')
+  await supabase.from('quizzes')
     .update({ data: updatedQuiz, grade: updatedQuiz.grade })
     .eq('id', updatedQuiz.id);
-  if (error) console.error('Lỗi update Quiz:', error);
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').delete().eq('id', id);
-  if (error) console.error('Lỗi xóa Quiz:', error);
+  await supabase.from('quizzes').delete().eq('id', id);
 };
 
 // --- Results ---
@@ -189,64 +150,80 @@ export const getResults = async (): Promise<Result[]> => {
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('results').insert({
+  await supabase.from('results').insert({
     id: result.id,
     quiz_id: result.quizId,
     student_id: result.studentId,
     data: result
   });
-  if (error) console.error('Lỗi lưu Result:', error);
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('results').delete().eq('id', id);
-  if (error) console.error('Lỗi xóa Result:', error);
-};
-
-export const hasStudentTakenQuiz = async (studentId: string, quizId: string): Promise<boolean> => {
-  if (!supabase) return false;
-  const { count, error } = await supabase
-    .from('results')
-    .select('*', { count: 'exact', head: true })
-    .eq('student_id', studentId)
-    .eq('quiz_id', quizId);
-  
-  if (error) return false;
-  return (count || 0) > 0;
+  await supabase.from('results').delete().eq('id', id);
 };
 
 export const getStudentStats = async (studentId: string) => {
   if (!supabase) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
-  
-  const { data, error } = await supabase
-    .from('results')
-    .select('data')
-    .eq('student_id', studentId);
+  const { data } = await supabase.from('results').select('data').eq('student_id', studentId);
+  if (!data) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
 
-  if (error || !data) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
-
-  const results = data.map((row: any) => row.data as Result);
-  const totalQuizzes = results.length;
-  
-  // FIX: Thêm kiểu dữ liệu rõ ràng (sum: number, r: Result) để tránh lỗi build TS7006
-  const totalScore = results.reduce((sum: number, r: Result) => sum + r.score, 0);
-  const avgScore = totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0;
-  
-  // FIX: Thêm kiểu dữ liệu rõ ràng (sum: number, r: Result)
-  const totalSeconds = results.reduce((sum: number, r: Result) => sum + (r.durationSeconds || 0), 0);
+  const resultsList = data.map((row: any) => row.data as Result);
+  const totalQuizzes = resultsList.length;
+  const totalScore = resultsList.reduce((acc: number, curr: Result) => acc + (curr.score || 0), 0);
+  const totalSeconds = resultsList.reduce((acc: number, curr: Result) => acc + (curr.durationSeconds || 0), 0);
 
   return {
     totalQuizzes,
-    avgScore,
+    avgScore: totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0,
     totalSeconds
   };
 };
 
-export const initStorage = () => {
-  if (supabase) {
-    console.log("Supabase Storage Connected");
-  } else {
-    console.log("Storage Running in Offline Mode (No DB Connection)");
+// --- Chapters ---
+export const getChapters = async (): Promise<Chapter[]> => {
+  if (!supabase) {
+      const local = localStorage.getItem('eduquiz_chapters');
+      return local ? JSON.parse(local) : [];
   }
+  const { data, error } = await supabase.from('chapters').select('data');
+  if (error) return [];
+  return data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order);
+};
+
+export const saveChapter = async (chapter: Chapter): Promise<void> => {
+  if (!supabase) {
+      const chapters = await getChapters();
+      localStorage.setItem('eduquiz_chapters', JSON.stringify([...chapters, chapter]));
+      return;
+  }
+  await supabase.from('chapters').insert({
+    id: chapter.id,
+    grade: chapter.grade,
+    data: chapter
+  });
+};
+
+export const updateChapter = async (chapter: Chapter): Promise<void> => {
+  if (!supabase) {
+      const chapters = await getChapters();
+      const updated = chapters.map(c => c.id === chapter.id ? chapter : c);
+      localStorage.setItem('eduquiz_chapters', JSON.stringify(updated));
+      return;
+  }
+  await supabase.from('chapters').update({ data: chapter, grade: chapter.grade }).eq('id', chapter.id);
+};
+
+export const deleteChapter = async (id: string): Promise<void> => {
+  if (!supabase) {
+      const chapters = await getChapters();
+      const updated = chapters.filter(c => c.id !== id);
+      localStorage.setItem('eduquiz_chapters', JSON.stringify(updated));
+      return;
+  }
+  await supabase.from('chapters').delete().eq('id', id);
+};
+
+export const initStorage = () => {
+  console.log(supabase ? "Database Connected" : "Running Offline");
 };
