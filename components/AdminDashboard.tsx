@@ -230,7 +230,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden text-slate-700 font-sans">
-      {/* SIDEBAR */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-20 shadow-2xl">
         <div className="p-8 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg"><Cpu size={18}/></div>
@@ -296,7 +295,7 @@ const AdminDashboard = () => {
                 {filteredQuizzes.map(q => {
                     const { count, max } = getQuizStats(q.id);
                     return (
-                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:border-purple-300 transition-all duration-500 group relative flex flex-col">
+                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-[0_20px_50px_rgba(168,85,247,0.15)] hover:border-purple-200 transition-all duration-500 group relative flex flex-col">
                           <div className="flex justify-between items-start mb-8">
                             <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${q.type === 'practice' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>{q.type === 'practice' ? 'LUYỆN TẬP' : 'KIỂM TRA'}</span>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -313,7 +312,6 @@ const AdminDashboard = () => {
                             {q.startTime && <div className="flex items-center gap-3 text-slate-400"><Clock size={16} className="text-red-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight italic">Bắt đầu: {new Date(q.startTime).toLocaleString('vi-VN')}</span></div>}
                           </div>
 
-                          {/* THỐNG KÊ CHI TIẾT VỚI HIỆU ỨNG TÍM */}
                           <div className="bg-slate-50/70 rounded-3xl p-6 grid grid-cols-2 gap-4 mb-8 border border-transparent group-hover:bg-purple-50 group-hover:border-purple-100 transition-all duration-500">
                             <div className="text-center">
                                 <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -341,7 +339,6 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* VIEW: CHƯƠNG HỌC */}
           {activeMenu === 'chapters' && (
             <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                 <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6">
@@ -366,7 +363,6 @@ const AdminDashboard = () => {
         </div>
       </main>
 
-      {/* MODAL NGÂN HÀNG CÂU HỎI */}
       {showBank.open && (
           <div className="fixed inset-0 bg-slate-900/90 z-[1100] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
@@ -382,7 +378,9 @@ const AdminDashboard = () => {
                               <div key={q.id || i} className="bg-white p-8 rounded-3xl border shadow-sm flex items-start gap-6 group hover:border-blue-500 transition-all">
                                   <div className="flex-1">
                                     <div className="text-sm font-bold text-slate-800 mb-4 leading-relaxed"><LatexText text={q.text}/></div>
-                                    {q.imageUrl && <img src={q.imageUrl} className="w-32 h-20 object-cover rounded-xl border mb-4" alt="bank preview" />}
+                                    {q.imageUrl && (
+                                        <img src={q.imageUrl} className="w-32 h-20 object-cover rounded-xl border mb-4" alt="bank preview" />
+                                    )}
                                     <p className="text-[9px] font-black text-slate-300 uppercase italic">ID: {q.id.split('-')[0]}</p>
                                   </div>
                                   <button onClick={() => { addFromBank(q); setShowBank({...showBank, open: false}); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-100 hover:scale-105 transition-transform">Chọn câu này</button>
@@ -394,12 +392,18 @@ const AdminDashboard = () => {
           </div>
       )}
 
-      {/* MODAL XEM THỬ ĐỀ THI */}
       {previewQuiz && (
           <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border-8 border-white">
                 <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                    <div className="flex items-center gap-5"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center"><FileText size={24}/></div><div><h3 className="text-lg font-black uppercase leading-tight">{previewQuiz.title}</h3><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Lớp {previewQuiz.grade} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút</p></div></div><button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors shadow-lg"><X size={24}/></button>
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center"><FileText size={24}/></div>
+                        <div>
+                            <h3 className="text-lg font-black uppercase leading-tight">{previewQuiz.title}</h3>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Lớp {previewQuiz.grade} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors shadow-lg"><X size={24}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                     <div className="max-w-2xl mx-auto space-y-12 pb-12">
@@ -409,18 +413,27 @@ const AdminDashboard = () => {
                                     <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
                                     <div className="flex flex-col gap-4">
                                         <LatexText text={q.text}/>
-                                        {q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview q" />}
+                                        {q.imageUrl && (
+                                            <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview q" />
+                                        )}
                                     </div>
                                 </div>
                                 {q.type === 'mcq' && q.options && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-12">
-                                        {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-500 flex items-center gap-2"><span className="text-slate-300 font-black italic">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                        {q.options.map((opt, oi) => (
+                                            <div key={oi} className="text-sm font-medium text-slate-500 flex items-center gap-2">
+                                                <span className="text-slate-300 font-black italic">{String.fromCharCode(65+oi)}.</span> 
+                                                <LatexText text={opt}/>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                                 {q.solution && (
                                     <div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl">
                                         <p className="text-[10px] font-black text-yellow-600 uppercase mb-3 flex items-center gap-2"><Target size={14}/> Lời giải tham khảo:</p>
-                                        <div className="text-sm font-medium text-slate-600 italic leading-relaxed"><LatexText text={q.solution}/></div>
+                                        <div className="text-sm font-medium text-slate-600 italic leading-relaxed">
+                                            <LatexText text={q.solution}/>
+                                        </div>
                                     </div>
                                 )}
                             </div>
