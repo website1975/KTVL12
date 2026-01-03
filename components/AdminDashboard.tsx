@@ -53,7 +53,7 @@ const RichTextEditor = ({ value, onChange, placeholder, rows, className, label, 
             </div>
             {showPreview && value && (
                 <div className="mt-2 p-4 bg-blue-50/30 rounded-xl border border-blue-100/50 text-[14px] text-slate-700 shadow-sm animate-fade-in">
-                    <div className="text-[9px] font-black text-blue-400 uppercase mb-2 tracking-widest opacity-70">Review:</div>
+                    <div className="text-[9px] font-black text-blue-400 uppercase mb-2 tracking-widest opacity-70">Review hiển thị:</div>
                     <LatexText text={value} />
                 </div>
             )}
@@ -68,17 +68,13 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
 
-  // Filters for Main Quiz View
+  // Filters
   const [filterGrade, setFilterGrade] = useState<Grade | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-
-  // Filters for Results (Phân cấp: Khối -> Chương -> Đề)
   const [resGrade, setResGrade] = useState<Grade | 'all'>('all');
   const [resChapter, setResChapter] = useState<string>('all');
   const [resQuizId, setResQuizId] = useState<string>('all');
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
-
-  // Filters for Students
   const [stdGrade, setStdGrade] = useState<Grade | 'all'>('all');
 
   // Editor State
@@ -94,7 +90,6 @@ const AdminDashboard = () => {
   const [bankTargetPart, setBankTargetPart] = useState<QuestionType | null>(null);
 
   // Chapter Editor State
-  // Fix: Adding missing state variables for chapter management (Errors on lines 431, 432, 436, 440, 441, 442, 443, 449, 451, 452)
   const [selectedGradeCh, setSelectedGradeCh] = useState<Grade>('10');
   const [chName, setChName] = useState('');
   const [chOrder, setChOrder] = useState(1);
@@ -128,12 +123,7 @@ const AdminDashboard = () => {
   };
 
   const resetEditor = () => {
-    setEditingId(null);
-    setTitle('');
-    setCategory('');
-    setQuestions([]);
-    setDuration(90);
-    setIsPublished(false);
+    setEditingId(null); setTitle(''); setCategory(''); setQuestions([]); setDuration(90); setIsPublished(false);
   };
 
   const availableChapters = useMemo(() => {
@@ -141,12 +131,10 @@ const AdminDashboard = () => {
     return chapters.filter(c => tg === 'all' || c.grade === tg).sort((a,b)=>a.order - b.order);
   }, [chapters, grade, filterGrade, activeMenu]);
 
-  // Bộ lọc chương cho kết quả
   const resChapters = useMemo(() => {
     return chapters.filter(c => resGrade === 'all' || c.grade === resGrade).sort((a,b)=>a.order - b.order);
   }, [chapters, resGrade]);
 
-  // Bộ lọc đề cho kết quả
   const resAvailableQuizzes = useMemo(() => {
     return quizzes.filter(q => (resGrade === 'all' || q.grade === resGrade) && (resChapter === 'all' || q.category === resChapter));
   }, [quizzes, resGrade, resChapter]);
@@ -206,26 +194,20 @@ const AdminDashboard = () => {
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file || currentQIdxForImage.current === null) return;
-      
-      setIsProcessing(true);
-      setLoadingMsg("Đang tải hình ảnh lên Supabase (bucket quiz-images)...");
+      setIsProcessing(true); setLoadingMsg("Đang tải hình ảnh lên Supabase...");
       try {
           const url = await uploadQuizImage(file);
           const n = [...questions];
           n[currentQIdxForImage.current].imageUrl = url;
           setQuestions(n);
-      } catch (err: any) {
-          alert("Lỗi tải ảnh: " + err.message);
-      } finally {
-          setIsProcessing(false);
-          currentQIdxForImage.current = null;
+      } catch (err: any) { alert("Lỗi tải ảnh: " + err.message); } finally {
+          setIsProcessing(false); currentQIdxForImage.current = null;
           if (e.target) e.target.value = '';
       }
   };
 
   // --- RENDER MODULES ---
 
-  // Fix: Implementing renderQuizzes function (Error on line 505)
   const renderQuizzes = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
         {filteredQuizzes.length === 0 ? (
@@ -454,6 +436,9 @@ const AdminDashboard = () => {
                                 {isExp && (<tr className="bg-slate-50/30"><td colSpan={5} className="px-8 py-0"><div className="border-l-4 border-blue-100 ml-4 my-4 p-4 space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">Lịch sử thi của {last.studentName}:</p>
                                                 {attempts.map((a, idx) => (<div key={a.id} className="flex justify-between items-center text-xs bg-white p-3 rounded-xl border border-slate-100"><div className="flex items-center gap-4"><span className="text-slate-300 font-bold">#{attempts.length - idx}</span><span className="font-medium text-slate-500">{new Date(a.submittedAt).toLocaleString('vi-VN')}</span></div><div className="flex items-center gap-8"><span className="text-slate-400 font-medium">Làm trong {Math.floor(a.durationSeconds / 60)}p {a.durationSeconds % 60}s</span><span className="font-black text-blue-600">Điểm: {a.score.toFixed(2)}</span><button onClick={async () => { if(confirm('Xóa lượt thi này?')){ await deleteResult(a.id); refreshData(); } }} className="text-slate-300 hover:text-red-500"><X size={14}/></button></div></div>))}</div></td></tr>)}</React.Fragment>);
                     })}
+                    {groupedResults.length === 0 && (
+                        <tr><td colSpan={5} className="py-24 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Không có dữ liệu kết quả thi phù hợp</td></tr>
+                    )}
                 </tbody></table></div>
     </div>
   );
@@ -467,8 +452,18 @@ const AdminDashboard = () => {
         <div className="overflow-x-auto"><table className="w-full text-left text-[13px]"><thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100"><tr><th className="px-8 py-5">Họ và tên học sinh</th><th className="px-8 py-5">Tên đăng nhập</th><th className="px-8 py-5">Khối</th><th className="px-8 py-5">Mật khẩu</th><th className="px-8 py-5">Thống kê</th><th className="px-8 py-5">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-50">
                     {filteredStudents.map(u => {
                         const sR = results.filter(r => r.studentId === u.id);
-                        return (<tr key={u.id} className="hover:bg-slate-50/50 transition-colors group"><td className="px-8 py-5 font-bold text-slate-800">{u.fullName}</td><td className="px-8 py-5 font-mono text-blue-600">{u.username}</td><td className="px-8 py-5"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span></td><td className="px-8 py-5 font-mono text-slate-300">{u.password}</td><td className="px-8 py-5"><div className="text-[10px] font-black text-slate-400 uppercase">Đã làm {sR.length} lượt thi</div><div className="text-xs font-bold text-slate-700">TB: {(sR.reduce((a,b)=>a+b.score,0)/(sR.length||1)).toFixed(1)}đ</div></td><td className="px-8 py-5"><button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></td></tr>);
+                        return (<tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
+                                <td className="px-8 py-5 font-bold text-slate-800">{u.fullName}</td>
+                                <td className="px-8 py-5 font-mono text-blue-600">{u.username}</td>
+                                <td className="px-8 py-5"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span></td>
+                                <td className="px-8 py-5 font-mono text-slate-300">{u.password}</td>
+                                <td className="px-8 py-5"><div className="text-[10px] font-black text-slate-400 uppercase">Đã làm {sR.length} lượt thi</div><div className="text-xs font-bold text-slate-700">TB: {(sR.reduce((a,b)=>a+b.score,0)/(sR.length||1)).toFixed(1)}đ</div></td>
+                                <td className="px-8 py-5"><button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all group-hover:text-red-600"><Trash2 size={18}/></button></td>
+                            </tr>);
                     })}
+                    {filteredStudents.length === 0 && (
+                        <tr><td colSpan={6} className="py-24 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Không có tài khoản học sinh nào</td></tr>
+                    )}
                 </tbody></table></div>
     </div>
   );
@@ -571,7 +566,7 @@ const AdminDashboard = () => {
                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50">
                         {quizzes.filter(q=>q.grade===grade).length === 0 ? <p className="text-center text-slate-400 py-10 font-bold uppercase text-[10px]">Chưa có đề thi khối {grade}</p> : quizzes.filter(q=>q.grade===grade).map(q => {
                             const filteredBankQs = q.questions.filter(qi => qi.type === bankTargetPart); if (filteredBankQs.length === 0) return null;
-                            return (<div key={q.id} className="mb-10"><h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 border-b border-slate-200 pb-2">Đề: {q.title}</h4><div className="grid grid-cols-1 gap-4">{filteredBankQs.map((qItem, qiIdx) => (<div key={qItem.id} className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-start group hover:border-blue-400 hover:shadow-lg transition-all"><div className="flex-1 text-[13px] pr-6"><div className="font-bold flex gap-2 mb-2"><span className="text-blue-600">#{qiIdx+1}.</span><LatexText text={qItem.text}/></div>{qItem.imageUrl && <div className="my-2"><img src={qItem.imageUrl} className="max-h-24 rounded border"/></div>}</div><button onClick={() => { setQuestions([...questions, { ...qItem, id: uuidv4() }]); setShowBankModal(false); setBankTargetPart(null); }} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all shadow-lg active:scale-95">+ Thêm</button></div>))}</div></div>);
+                            return (<div key={q.id} className="mb-10"><h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 border-b border-slate-200 pb-2">Đề: {q.title}</h4><div className="grid grid-cols-1 gap-4">{filteredBankQs.map((qItem, qiIdx) => (<div key={qItem.id} className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-start group hover:border-blue-400 hover:shadow-lg transition-all"><div className="flex-1 text-[13px] pr-6"><div className="font-bold flex gap-2 mb-2"><span className="text-blue-600">#{qiIdx+1}.</span><LatexText text={qItem.text}/></div>{qItem.imageUrl && <div className="my-2"><img src={qItem.imageUrl} className="max-h-24 rounded border"/></div>}</div><button onClick={() => { setQuestions([...questions, { ...qItem, id: uuidv4() }]); setShowBankModal(false); setBankTargetPart(null); }} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase shadow-lg active:scale-95">+ Thêm</button></div>))}</div></div>);
                         })}
                     </div>
                 </div>
