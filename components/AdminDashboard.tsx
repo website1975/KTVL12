@@ -4,7 +4,8 @@ import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Chapter } 
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
     getUsers, deleteUser, deleteResult,
-    getChapters, saveChapter, updateChapter, deleteChapter
+    getChapters, saveChapter, updateChapter, deleteChapter,
+    isDatabaseConnected
 } from '../services/storage';
 import { parseQuestionsFromPDF, generateQuizFromPrompt } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
@@ -114,33 +115,47 @@ const AdminDashboard = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
 
+  // Trạng thái DB
+  const isOnline = isDatabaseConnected();
+
+  // Load data lần đầu và khi chuyển menu
   useEffect(() => { 
     refreshData(); 
-  }, [activeMenu, selectedGradeForChapters]);
+  }, [activeMenu]);
+
+  // Tự động nảy số STT khi đổi khối hoặc load lại data
+  useEffect(() => {
+    const gradeChaps = chapters.filter(c => c.grade === selectedGradeForChapters);
+    const maxOrder = gradeChaps.length > 0 ? Math.max(...gradeChaps.map(c => c.order)) : 0;
+    setChapterOrderInput(maxOrder + 1);
+  }, [selectedGradeForChapters, chapters]);
 
   const refreshData = async () => {
-    const [qs, rs, us, chs] = await Promise.all([
-        getQuizzes(),
-        getResults(),
-        getUsers(),
-        getChapters()
-    ]);
-    setQuizzes(qs);
-    setResults(rs);
-    setUsers(us);
-    setChapters(chs);
-
-    // Cập nhật STT gợi ý cho chương (Dựa trên số chương hiện có của khối đang chọn + 1)
-    if (activeMenu === 'chapters') {
-        const gradeChaps = chs.filter(c => c.grade === selectedGradeForChapters);
-        const maxOrder = gradeChaps.length > 0 ? Math.max(...gradeChaps.map(c => c.order)) : 0;
-        setChapterOrderInput(maxOrder + 1);
+    try {
+        const [qs, rs, us, chs] = await Promise.all([
+            getQuizzes(),
+            getResults(),
+            getUsers(),
+            getChapters()
+        ]);
+        setQuizzes(qs);
+        setResults(rs);
+        setUsers(us);
+        setChapters(chs);
+    } catch (err) {
+        console.error("Lỗi refresh data:", err);
     }
   };
 
-  // Lấy danh sách chương phù hợp dựa trên khối lớp đang được lọc hoặc đang soạn
+  // Memo: Danh sách chương cho Listbox (Dựa trên khối lớp đang chọn ở UI hiện tại)
   const availableChapters = useMemo(() => {
-    const targetGrade = (activeMenu === 'create' || activeMenu === 'ai') ? grade : filterGrade;
+    let targetGrade: Grade | 'all' = 'all';
+    if (activeMenu === 'create' || activeMenu === 'ai') {
+        targetGrade = grade; // Theo khối đang soạn đề
+    } else if (activeMenu === 'quizzes' || activeMenu === 'results') {
+        targetGrade = filterGrade; // Theo bộ lọc
+    }
+    
     if (targetGrade === 'all') return chapters;
     return chapters.filter(c => c.grade === targetGrade);
   }, [chapters, grade, filterGrade, activeMenu]);
@@ -183,21 +198,33 @@ const AdminDashboard = () => {
       isPublished, startTime: quizType === 'test' ? startTime : undefined
     };
     if (editingId) await updateQuiz(quizData); else await saveQuiz(quizData);
-    refreshData(); setActiveMenu('quizzes'); resetForm();
+    alert("Đã lưu đề thi thành công!");
+    await refreshData(); setActiveMenu('quizzes'); resetForm();
   };
 
   // --- Chapter Handlers ---
   const handleSaveChapter = async () => {
       if (!chapterNameInput.trim()) return alert("Nhập tên chương!");
-      const chapData: Chapter = {
-          id: editingChapterId || uuidv4(),
-          grade: selectedGradeForChapters,
-          name: chapterNameInput.trim(),
-          order: chapterOrderInput
-      };
-      if (editingChapterId) await updateChapter(chapData); else await saveChapter(chapData);
-      setChapterNameInput(''); setEditingChapterId(null);
-      await refreshData();
+      setIsProcessing(true);
+      setLoadingMsg("Đang lưu chương...");
+      try {
+          const chapData: Chapter = {
+              id: editingChapterId || uuidv4(),
+              grade: selectedGradeForChapters,
+              name: chapterNameInput.trim(),
+              order: chapterOrderInput
+          };
+          if (editingChapterId) await updateChapter(chapData); else await saveChapter(chapData);
+          
+          setChapterNameInput(''); 
+          setEditingChapterId(null);
+          alert("Lưu chương thành công!");
+          await refreshData(); // Tải lại toàn bộ để cập nhật danh sách và STT mới
+      } catch (err) {
+          alert("Lỗi khi lưu chương: " + err);
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleEditChapter = (c: Chapter) => {
@@ -254,7 +281,6 @@ const AdminDashboard = () => {
     if (!viewingQuiz) return;
     const qs = previewQuestions.length > 0 ? previewQuestions : viewingQuiz.questions;
     
-    // Xuất word bọc LaTeX bằng dấu $ cho MathType
     let content = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>${viewingQuiz.title}</title>
@@ -463,7 +489,7 @@ const AdminDashboard = () => {
                    )}
                 </div>
                 <div className="flex items-center gap-3">
-                    <button onClick={refreshData} className="p-1.5 border rounded hover:bg-slate-50 transition-colors"><Shuffle size={14}/></button>
+                    <button onClick={refreshData} className="p-1.5 border rounded hover:bg-slate-50 transition-colors" title="Làm mới dữ liệu"><Shuffle size={14}/></button>
                 </div>
             </header>
 
@@ -473,7 +499,12 @@ const AdminDashboard = () => {
                     <div className="max-w-4xl mx-auto animate-fade-in">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 mb-6 shadow-sm">
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-sm font-black uppercase tracking-tight">Cấu trúc chương trình học</h3>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-sm font-black uppercase tracking-tight">Cấu trúc chương trình học</h3>
+                                    <span className={`text-[8px] px-2 py-0.5 rounded font-black uppercase ${isOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                        {isOnline ? 'Database Online' : 'Local Storage'}
+                                    </span>
+                                </div>
                                 <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
                                     {(['10', '11', '12'] as const).map(g => (
                                         <button key={g} onClick={() => setSelectedGradeForChapters(g)} className={`px-4 py-1.5 rounded text-[10px] font-black ${selectedGradeForChapters === g ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-400'}`}>
@@ -485,7 +516,7 @@ const AdminDashboard = () => {
                             
                             <div className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-xl border border-slate-100">
                                 <div className="col-span-12 md:col-span-8 space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase">Tên chương mới</label>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Tên chương mới (Khối {selectedGradeForChapters})</label>
                                     <input type="text" className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-100" placeholder="VD: Chương 1: Ứng dụng đạo hàm..." value={chapterNameInput} onChange={e => setChapterNameInput(e.target.value)} />
                                 </div>
                                 <div className="col-span-6 md:col-span-2 space-y-1">
@@ -494,7 +525,7 @@ const AdminDashboard = () => {
                                 </div>
                                 <div className="col-span-6 md:col-span-2">
                                     <button onClick={handleSaveChapter} className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
-                                        {editingChapterId ? <Save size={14}/> : <Plus size={14}/>} {editingChapterId ? 'Cập nhật' : 'Thêm'}
+                                        {editingChapterId ? <Save size={14}/> : <Plus size={14}/>} {editingChapterId ? 'Cập nhật' : 'Thêm mới'}
                                     </button>
                                 </div>
                             </div>
@@ -513,8 +544,8 @@ const AdminDashboard = () => {
                                                 <span className="text-[12px] font-bold text-slate-700">{c.name}</span>
                                             </div>
                                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                <button onClick={() => handleEditChapter(c)} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={14}/></button>
-                                                <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                                <button onClick={() => handleEditChapter(c)} className="p-2 text-slate-400 hover:text-blue-600" title="Sửa"><Edit size={14}/></button>
+                                                <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="p-2 text-slate-400 hover:text-red-500" title="Xóa"><Trash2 size={14}/></button>
                                             </div>
                                         </div>
                                     ))
@@ -567,7 +598,7 @@ const AdminDashboard = () => {
                                     <input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs font-black outline-none focus:ring-1 focus:ring-blue-100" placeholder="VD: Đề thi khảo sát HK1..." value={title} onChange={e => setTitle(e.target.value)} />
                                 </div>
                                 <div className="col-span-6 md:col-span-3 space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Chương / Chuyên đề</label>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Chương (Dựa trên khối đã chọn)</label>
                                     <select className="w-full bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs font-black outline-none" value={category} onChange={e => setCategory(e.target.value)}>
                                         <option value="">Chọn chương...</option>
                                         {availableChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
