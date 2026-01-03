@@ -13,6 +13,13 @@ export interface User {
   grade?: Grade;
 }
 
+export interface Chapter {
+  id: string;
+  grade: Grade;
+  name: string;
+  order: number;
+}
+
 export interface SubQuestion {
   id: string;
   text: string;
@@ -37,7 +44,7 @@ export interface Quiz {
   description: string;
   type: QuizType;
   grade: Grade;
-  category?: string; // Trường phân loại theo chương/mục (VD: Chương 1, Chương 2...)
+  category?: string; // Trường phân loại theo chương/mục
   startTime?: string;
   durationMinutes: number;
   questions: Question[];
