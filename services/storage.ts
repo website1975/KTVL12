@@ -93,7 +93,7 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('quizzes').select('data');
   if (error) return [];
-  return data.map((row: any) => row.data as Quiz).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return data.map((row: any) => row.data as Quiz).sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
@@ -151,11 +151,6 @@ export const getChapters = async (): Promise<Chapter[]> => {
   }
   const { data, error } = await supabase.from('chapters').select('data');
   if (error) {
-    if (error.code === 'PGRST116' || error.message.includes('not found')) {
-        console.warn("Bảng chapters chưa tồn tại. Đang dùng LocalStorage.");
-    } else {
-        console.error("Lỗi Supabase Chapters:", error);
-    }
     const local = localStorage.getItem('eduquiz_chapters');
     return local ? JSON.parse(local) : [];
   }
@@ -168,10 +163,7 @@ export const saveChapter = async (chapter: Chapter): Promise<void> => {
 
   if (!supabase) return;
   const { error } = await supabase.from('chapters').insert({ id: chapter.id, grade: chapter.grade, data: chapter });
-  if (error) {
-      console.error("Lỗi lưu chương:", error);
-      throw new Error(`Lỗi Database: ${error.message}. Hãy đảm bảo bạn đã tạo bảng 'chapters' trong Supabase.`);
-  }
+  if (error) throw error;
 };
 
 export const updateChapter = async (chapter: Chapter): Promise<void> => {
