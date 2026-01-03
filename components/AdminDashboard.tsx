@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -75,7 +75,6 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                         <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
                         <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 mb-6 inline-block">Câu {idx + 1}</span>
                         
-                        {/* PHẦN NỘI DUNG CÂU HỎI & PREVIEW */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
                             <div className="space-y-2">
                                 <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nội dung câu hỏi</label>
@@ -110,7 +109,6 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                             <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
                         )}
 
-                        {/* PHẦN LỜI GIẢI CHI TIẾT & PREVIEW (CẬP NHẬT MỚI) */}
                         <div className="pt-8 border-t border-slate-100 space-y-4">
                             <div className="flex items-center gap-2 mb-2">
                                 <Lightbulb size={16} className="text-yellow-500 fill-yellow-200" />
@@ -144,15 +142,12 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
 };
 
 const AdminDashboard = () => {
-    // ... (Giữ nguyên phần code logic AdminDashboard ở dưới)
-    // Basic States
     const [activeMenu, setActiveMenu] = useState<'quizzes' | 'editor' | 'ai' | 'results' | 'students' | 'chapters'>('quizzes');
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
     const [results, setResults] = useState<Result[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [chapters, setChapters] = useState<Chapter[]>([]);
 
-    // Editor States
     const [editingId, setEditingId] = useState<string | null>(null);
     const [title, setTitle] = useState('');
     const [grade, setGrade] = useState<Grade>('12');
@@ -163,14 +158,12 @@ const AdminDashboard = () => {
     const [category, setCategory] = useState('');
     const [startTime, setStartTime] = useState('');
 
-    // AI States
     const [aiPrompt, setAiPrompt] = useState('');
     const [aiPart1, setAiPart1] = useState(5);
     const [aiPart2, setAiPart2] = useState(2);
     const [aiPart3, setAiPart3] = useState(2);
     const [isAiLoading, setIsAiLoading] = useState(false);
 
-    // Filter States
     const [qSearch, setQSearch] = useState('');
     const [qGradeFilter, setQGradeFilter] = useState<Grade | 'all'>('all');
     const [qChapterFilter, setQChapterFilter] = useState<string>('all');
@@ -179,7 +172,6 @@ const AdminDashboard = () => {
     const [rQuizFilter, setRQuizFilter] = useState<string>('all');
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
 
-    // Modals & UI
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [historyView, setHistoryView] = useState<{ student: User, quizId: string, attempts: Result[] } | null>(null);
     const [showBank, setShowBank] = useState<{ type: QuestionType, open: boolean }>({ type: 'mcq', open: false });
@@ -187,7 +179,6 @@ const AdminDashboard = () => {
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
     
-    // New Student Form
     const [newStudentName, setNewStudentName] = useState('');
     const [newStudentCode, setNewStudentCode] = useState('');
     const [newStudentGrade, setNewStudentGrade] = useState<Grade>('12');
@@ -199,7 +190,6 @@ const AdminDashboard = () => {
         setQuizzes(qs); setResults(rs); setUsers(us); setChapters(chs);
     };
 
-    // --- HOOKS AT TOP LEVEL ---
     const filteredQuizzesList = useMemo(() => {
         return quizzes.filter(q => {
             const matchesSearch = q.title.toLowerCase().includes(qSearch.toLowerCase());
@@ -263,10 +253,8 @@ const AdminDashboard = () => {
     const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newStudentName || !newStudentCode) return alert("Điền đủ thông tin!");
-        
         const existing = users.find(u => u.studentCode === newStudentCode.toUpperCase());
         if (existing) return alert("Mã định danh này đã tồn tại!");
-
         const newUser: User = {
             id: uuidv4(),
             username: newStudentCode.toLowerCase(),
@@ -274,9 +262,9 @@ const AdminDashboard = () => {
             role: 'student',
             fullName: newStudentName,
             studentCode: newStudentCode.toUpperCase(),
-            grade: newStudentGrade
+            grade: newStudentGrade,
+            points: 0
         };
-
         await saveUser(newUser);
         alert("Cấp mã học sinh thành công!");
         setNewStudentName(''); setNewStudentCode(''); setIsAddStudentOpen(false);
@@ -337,7 +325,6 @@ const AdminDashboard = () => {
 
     return (
         <div className="flex h-screen bg-[#f8fafc] overflow-hidden text-slate-700 font-sans">
-            {/* SIDEBAR */}
             <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-20 shadow-2xl">
                 <div className="p-8 border-b border-slate-800 flex items-center gap-3">
                     <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg"><Cpu size={18}/></div>
@@ -361,8 +348,6 @@ const AdminDashboard = () => {
                 <header className="h-16 bg-white border-b px-8 flex items-center justify-between shrink-0 shadow-sm z-10"><h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{activeMenu}</h2></header>
 
                 <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
-                    
-                    {/* MENU 1: QUẢN LÝ ĐỀ THI */}
                     {activeMenu === 'quizzes' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-6 rounded-[2rem] border shadow-sm">
@@ -396,7 +381,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MENU 2: SOẠN / CHỈNH ĐỀ */}
                     {activeMenu === 'editor' && (
                         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
@@ -428,7 +412,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MENU 3: SOẠN ĐỀ AI */}
                     {activeMenu === 'ai' && (
                         <div className="max-w-4xl mx-auto space-y-10 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
@@ -447,7 +430,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MENU 4: BẢNG ĐIỂM TỔNG */}
                     {activeMenu === 'results' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
                             <div className="flex flex-col lg:flex-row gap-4 bg-white p-6 rounded-[2rem] border shadow-sm items-center">
@@ -467,12 +449,12 @@ const AdminDashboard = () => {
 
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
                                 <table className="w-full text-left border-collapse">
-                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm bài làm</th><th className="p-6 text-center">Lần nộp</th><th className="p-6 text-center">Thao tác</th></tr></thead>
+                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm bài làm</th><th className="p-6 text-center">Thưởng</th><th className="p-6 text-center">Lần nộp</th><th className="p-6 text-center">Thao tác</th></tr></thead>
                                     <tbody className="divide-y">{latestResultsForTable.map(r => {
                                         const q = quizzes.find(qx => qx.id === r.quizId);
                                         const attempts = results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId);
                                         return (
-                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center flex items-center justify-center gap-2">
+                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center"><span className="text-xs font-black text-yellow-600">+{r.pointsAwarded || 0}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center flex items-center justify-center gap-2">
                                                 <button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/> Xem</button>
                                                 <button onClick={() => handleDeleteResult(r.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
                                             </td></tr>
@@ -483,7 +465,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MENU 5: QUẢN LÝ HỌC SINH */}
                     {activeMenu === 'students' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
                             <div className="flex justify-between items-center bg-white p-5 rounded-[2rem] border shadow-sm">
@@ -497,8 +478,18 @@ const AdminDashboard = () => {
                                 {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter)).map(u => (
                                     <div key={u.id} onClick={() => setSelectedStudent(u)} className="bg-white p-8 rounded-[2.5rem] border hover:border-blue-400 transition-all cursor-pointer shadow-sm text-center relative group">
                                         <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u.id); }} className="absolute top-6 right-6 p-2 bg-red-50 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"><Trash2 size={16}/></button>
-                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4 group-hover:scale-110 transition-transform">{u.fullName.charAt(0)}</div>
-                                        <h4 className="font-black text-slate-800 text-lg">{u.fullName}</h4><p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Mã định danh: {u.studentCode} • Lớp {u.grade}</p>
+                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4 group-hover:scale-110 transition-transform relative">
+                                            {u.fullName.charAt(0)}
+                                            {u.points && u.points > 0 ? <div className="absolute -top-1 -right-1 bg-yellow-400 text-white p-1.5 rounded-full"><Medal size={14}/></div> : null}
+                                        </div>
+                                        <h4 className="font-black text-slate-800 text-lg">{u.fullName}</h4>
+                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Mã: {u.studentCode} • Lớp {u.grade}</p>
+                                        
+                                        <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full border border-yellow-100">
+                                            <Medal size={12}/>
+                                            <span className="text-[9px] font-black uppercase tracking-widest">{u.points || 0} tích lũy</span>
+                                        </div>
+
                                         <div className="mt-6 pt-6 border-t flex justify-around"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Đề đã làm</p><p className="font-black text-slate-700">{new Set(results.filter(r => r.studentId === u.id).map(r => r.quizId)).size}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Điểm TB</p><p className="font-black text-blue-600">{(results.filter(r => r.studentId === u.id).reduce((a,b)=>a+b.score,0)/(results.filter(r => r.studentId === u.id).length || 1)).toFixed(1)}</p></div></div>
                                     </div>
                                 ))}
@@ -506,7 +497,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MENU 6: QUẢN LÝ CHƯƠNG */}
                     {activeMenu === 'chapters' && (
                         <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6"><h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tạo mới chương học</h4><div className="flex flex-col gap-4"><select className="p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select><div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value = ''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700">Lưu Chương</button></div></div></div>
@@ -518,7 +508,6 @@ const AdminDashboard = () => {
                 </div>
             </main>
 
-            {/* MODAL: CẤP MÃ HỌC SINH MỚI */}
             {isAddStudentOpen && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
@@ -545,13 +534,15 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: CHI TIẾT HỌC SINH */}
             {selectedStudent && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
                         <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-5"><div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center font-black text-2xl">{selectedStudent.fullName.charAt(0)}</div><div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Lịch sử luyện tập chi tiết</p></div></div>
-                            <button onClick={() => setSelectedStudent(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
+                            <div className="flex items-center gap-4">
+                                <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded-xl flex items-center gap-2 font-black text-xs uppercase shadow-lg"><Medal size={16}/> {selectedStudent.points || 0} tích lũy</div>
+                                <button onClick={() => setSelectedStudent(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
+                            </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
                             {studentDetailHistory.length > 0 ? studentDetailHistory.map((item, i) => (
@@ -569,7 +560,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: LỊCH SỬ CHI TIẾT 1 ĐỀ */}
             {historyView && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[1100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[70vh] flex flex-col overflow-hidden shadow-2xl">
@@ -579,6 +569,7 @@ const AdminDashboard = () => {
                                 <div key={r.id} className="bg-white p-5 rounded-2xl border flex justify-between items-center">
                                     <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Lần {historyView.attempts.length - i}</p><p className="text-sm font-bold">{new Date(r.submittedAt).toLocaleString()}</p></div>
                                     <div className="flex items-center gap-4">
+                                        <div className="text-right mr-4"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Thưởng</p><p className="text-sm font-black text-yellow-600">+{r.pointsAwarded || 0}</p></div>
                                         <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Điểm</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
                                         <button onClick={() => handleDeleteResult(r.id)} className="p-2 text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
                                     </div>
@@ -589,7 +580,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: NGÂN HÀNG ĐỀ */}
             {showBank.open && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
@@ -620,7 +610,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: PREVIEW ĐỀ */}
             {previewQuiz && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl animate-fade-in-up">
