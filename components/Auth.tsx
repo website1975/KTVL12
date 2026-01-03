@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { User, Role, Grade } from '../types';
-import { findUser, saveUser, getUsers, findUserByStudentCode } from '../services/storage';
+import { findUser, saveUser } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { BookOpen, UserPlus, LogIn, Hash, AlertCircle } from 'lucide-react';
+import { BookOpen, UserPlus, LogIn } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -14,8 +14,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [studentCode, setStudentCode] = useState('');
-  const [grade, setGrade] = useState<Grade>('12');
+  const [grade, setGrade] = useState<Grade>('10');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -30,7 +29,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     try {
       let user = await findUser(u);
       
+      // --- LOGIC TỰ ĐỘNG KHỞI TẠO ADMIN (Safety Net) ---
+      // Chỉ giữ lại cho Admin để tránh trường hợp mất Database không vào được.
       if (!user && u === 'admin' && p === '123') {
+          console.log("Khởi tạo tài khoản Admin lần đầu...");
           user = {
               id: uuidv4(),
               username: 'admin',
@@ -40,6 +42,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           };
           await saveUser(user);
       }
+      // Đã xóa logic tự tạo Học sinh Demo (hs10)
+      // ------------------------------------------
 
       if (user && user.password === p) {
         onLogin(user);
@@ -48,7 +52,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
     } catch (err) {
       console.error(err);
-      setError('Lỗi kết nối Server.');
+      setError('Lỗi kết nối Server. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -56,35 +60,31 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentCode.trim()) { setError('Vui lòng nhập Mã số học sinh.'); return; }
-    
     setError('');
     setIsLoading(true);
     try {
+      // 1. Kiểm tra tên đăng nhập tồn tại chưa
       const existingUser = await findUser(username);
       if (existingUser) {
-        setError('Tên đăng nhập này đã có người sử dụng.');
+        setError('Tên đăng nhập này đã có người sử dụng. Vui lòng chọn tên khác.');
         return;
       }
 
-      const codeExists = await findUserByStudentCode(studentCode.trim());
-      if (codeExists) {
-        setError(`Mã HS ${studentCode.toUpperCase()} đã được đăng ký tài khoản (${codeExists.username}).`);
-        return;
-      }
-
+      // 2. Tạo user mới
       const newUser: User = {
         id: uuidv4(),
-        username: username.trim().toLowerCase(),
-        password: password.trim(),
-        role: 'student',
-        fullName: fullName.trim(),
-        studentCode: studentCode.trim().toUpperCase(),
+        username,
+        password,
+        role: 'student', // Mặc định đăng ký là Học sinh
+        fullName,
         grade,
       };
 
+      // 3. Lưu vào DB
       await saveUser(newUser);
-      alert(`Đăng ký thành công!`);
+      
+      // 4. Đăng nhập luôn
+      alert(`Đăng ký thành công! Chào mừng ${fullName}.`);
       onLogin(newUser);
 
     } catch (err) {
@@ -96,74 +96,106 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-800 p-4">
-      <div className="bg-white rounded-[3rem] shadow-2xl p-10 w-full max-w-md border-8 border-white/20 animate-fade-in-up">
-        <div className="flex justify-center mb-8">
-          <div className="bg-blue-100 p-5 rounded-[2rem] shadow-inner text-blue-600">
-            <BookOpen className="w-10 h-10" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div className="flex justify-center mb-6">
+          <div className="bg-blue-100 p-3 rounded-full">
+            <BookOpen className="w-8 h-8 text-blue-600" />
           </div>
         </div>
         
-        <h2 className="text-2xl font-black text-center text-slate-800 mb-1 uppercase tracking-tight">
-          {isLogin ? 'Đăng Nhập' : 'Đăng Ký Học Sinh'}
+        <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">
+          {isLogin ? 'Đăng Nhập EduQuiz' : 'Đăng Ký Học Sinh Mới'}
         </h2>
-        <p className="text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">
-          EduQuiz VN - THPT PRO
+        <p className="text-center text-gray-500 mb-6">
+          {isLogin ? 'Nhập thông tin để vào hệ thống' : 'Tạo tài khoản để bắt đầu luyện thi'}
         </p>
 
         {error && (
-          <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-2xl text-[11px] font-bold border border-red-100 flex items-center gap-2 animate-bounce">
-            <AlertCircle size={16}/> {error}
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm flex items-center gap-2 animate-pulse">
+            <span className="font-bold">!</span> {error}
           </div>
         )}
 
-        <form onSubmit={isLogin ? handleSubmit : handleRegister} className="space-y-5">
+        <form onSubmit={isLogin ? handleSubmit : handleRegister} className="space-y-4">
           {!isLogin && (
-             <div className="space-y-5 animate-fade-in">
-               <div>
-                 <label className="block text-[10px] font-black text-slate-400 uppercase ml-2 mb-1">Mã số học sinh</label>
-                 <div className="relative">
-                    <Hash className="absolute left-4 top-4 text-slate-300" size={16}/>
-                    <input type="text" required placeholder="VD: 24001" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 outline-none text-sm font-black" value={studentCode} onChange={(e) => setStudentCode(e.target.value)} />
-                 </div>
-               </div>
-               <div>
-                 <label className="block text-[10px] font-black text-slate-400 uppercase ml-2 mb-1">Họ và Tên</label>
-                 <input type="text" required placeholder="Nguyễn Văn A" className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 outline-none text-sm font-black" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-               </div>
+             <div className="animate-fade-in-up">
+               <label className="block text-sm font-medium text-gray-700 mb-1">Họ và Tên Học Sinh</label>
+               <input
+                 type="text"
+                 required
+                 placeholder="Ví dụ: Nguyễn Văn A"
+                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                 value={fullName}
+                 onChange={(e) => setFullName(e.target.value)}
+               />
              </div>
           )}
           
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase ml-2 mb-1">Tên đăng nhập</label>
-            <input type="text" required placeholder="huan123" className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 outline-none text-sm font-black" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+            <input
+              type="text"
+              required
+              placeholder="Viết liền không dấu (vd: huan123)"
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
           </div>
 
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase ml-2 mb-1">Mật khẩu</label>
-            <input type="password" required placeholder="******" className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 outline-none text-sm font-black" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+            <input
+              type="password"
+              required
+              placeholder="******"
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
 
           {!isLogin && (
-            <div className="animate-fade-in">
-              <label className="block text-[10px] font-black text-slate-400 uppercase ml-2 mb-1">Khối lớp</label>
-              <select className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 outline-none text-sm font-black" value={grade} onChange={(e) => setGrade(e.target.value as Grade)}>
-                <option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option>
+            <div className="animate-fade-in-up">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Đang học Khối lớp</label>
+              <select
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value as Grade)}
+              >
+                <option value="10">Lớp 10</option>
+                <option value="11">Lớp 11</option>
+                <option value="12">Lớp 12</option>
               </select>
             </div>
           )}
 
-          <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl transition-all shadow-2xl shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 disabled:opacity-70 text-[11px] uppercase tracking-widest mt-6">
-            {isLoading ? 'Đang xử lý...' : (isLogin ? 'Đăng Nhập' : 'Hoàn Tất Đăng Ký')}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg shadow-blue-200"
+          >
+            {isLoading ? 'Đang xử lý...' : (
+               <>
+                 {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
+                 {isLogin ? 'Đăng Nhập' : 'Tạo Tài Khoản Mới'}
+               </>
+            )}
           </button>
         </form>
         
-        <div className="mt-10 text-center border-t border-slate-50 pt-8">
-          <p className="text-[10px] font-black text-slate-300 uppercase mb-4 tracking-widest">{isLogin ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}</p>
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">
-            {isLogin ? '👉 Đăng ký mới' : '👈 Trở lại Đăng nhập'}
+        <div className="mt-6 text-center border-t pt-4">
+          <p className="text-sm text-gray-600 mb-2">{isLogin ? 'Bạn chưa có tài khoản?' : 'Bạn đã có tài khoản?'}</p>
+          <button
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
+            className="text-blue-600 font-bold hover:underline"
+          >
+            {isLogin ? '👉 Đăng ký thành viên mới tại đây' : '👈 Quay lại Đăng nhập'}
           </button>
         </div>
+
+        {/* Đã xóa phần nút bấm Demo theo yêu cầu */}
       </div>
     </div>
   );
