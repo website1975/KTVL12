@@ -1,16 +1,16 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Quiz, Question, Grade, QuestionType, Result, User, Chapter, SubQuestion, QuizType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Quiz, Question, Grade, QuestionType, Result, User, Chapter, QuizType } from '../types';
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
-    getUsers, deleteUser, getChapters, saveChapter, deleteChapter, changePassword, uploadQuizImage
+    getUsers, getChapters, saveChapter, deleteChapter, uploadQuizImage
 } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { 
     Plus, Trash2, Save, BarChart3, Edit, Cpu, 
     LayoutDashboard, Users, FolderTree, Clock, Layers, 
-    Search, ChevronRight, History, Key, X, Filter, CheckCircle2, 
-    HelpCircle, AlignLeft, BookOpen, Calendar, Eye, XCircle, Target, FileText, ImageIcon, Loader2, Database,
+    Search, X, CheckCircle2, 
+    HelpCircle, AlignLeft, BookOpen, Eye, Target, FileText, ImageIcon, Loader2, Database,
     Trophy, Users2
 } from 'lucide-react';
 import LatexText from './LatexText';
@@ -22,13 +22,13 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
 
-  // --- STATE BỘ LỌC ĐỀ THI ---
+  // --- BỘ LỌC VÀ XEM THỬ ---
   const [quizGradeFilter, setQuizGradeFilter] = useState<Grade | 'all'>('all');
   const [quizChapterFilter, setQuizChapterFilter] = useState<string | 'all'>('all');
   const [quizSearch, setQuizSearch] = useState('');
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
 
-  // --- STATE SOẠN ĐỀ ---
+  // --- TRẠNG THÁI SOẠN ĐỀ ---
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [quizType, setQuizType] = useState<QuizType>('practice');
@@ -39,7 +39,7 @@ const AdminDashboard = () => {
   const [category, setCategory] = useState('');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-  // --- STATE NGÂN HÀNG CÂU HỎI ---
+  // --- NGÂN HÀNG CÂU HỎI ---
   const [showBank, setShowBank] = useState<{ type: QuestionType, open: boolean }>({ type: 'mcq', open: false });
 
   useEffect(() => { refreshData(); }, []);
@@ -152,76 +152,77 @@ const AdminDashboard = () => {
             </div>
 
             <div className="space-y-6">
-                {questions.map((q, idx) => {
-                    if (q.type !== type) return null;
-                    const localIdx = sectionQuestions.findIndex(sq => sq.id === q.id) + 1;
-                    return (
-                        <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
-                            <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
-                            <div className="flex items-center gap-4 mb-6"><span className={`text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest ${type === 'mcq' ? 'bg-blue-50 text-blue-600' : type === 'group-tf' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}>Câu {localIdx}</span></div>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nội dung câu hỏi</label>
-                                    <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all min-h-[120px]" value={q.text} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].text = e.target.value; setQuestions(n); }} placeholder="Nhập câu hỏi (LaTeX $...$)" />
-                                </div>
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Xem trước</label>
-                                    <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-50 min-h-[120px] text-sm font-medium"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
-                                </div>
+                {questions.filter(q => q.type === type).map((q, qIndex) => (
+                    <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
+                        <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
+                        <div className="flex items-center gap-4 mb-6"><span className={`text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest ${type === 'mcq' ? 'bg-blue-50 text-blue-600' : type === 'group-tf' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}>Câu {qIndex + 1}</span></div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nội dung câu hỏi</label>
+                                <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all min-h-[120px]" value={q.text} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].text = e.target.value; setQuestions(n); }} placeholder="Nhập câu hỏi (LaTeX $...$)" />
                             </div>
-                            <div className="mb-8 flex items-center gap-6 p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                                <div className="shrink-0">
-                                    {q.imageUrl ? (
-                                        <div className="relative group/img">
-                                            <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" />
-                                            <button onClick={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].imageUrl = undefined; setQuestions(n); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover/img:opacity-100 transition-all"><X size={12}/></button>
-                                        </div>
-                                    ) : (
-                                        <div className="w-24 h-24 bg-white border rounded-2xl flex flex-col items-center justify-center text-slate-300 gap-1">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/><span className="text-[8px] font-black uppercase">Trống</span></div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Đính kèm hình ảnh</p>
-                                    <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && handleImageUpload(q.id, e.target.files[0])} />
-                                    <label htmlFor={`img-${q.id}`} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border text-slate-600 rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-all shadow-sm"><Plus size={14}/> {q.imageUrl ? 'Thay đổi hình' : 'Tải hình lên'}</label>
-                                </div>
-                            </div>
-                            {type === 'mcq' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                                    {q.options?.map((opt, oi) => (
-                                        <div key={oi} className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-                                            <input type="radio" name={`ans-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].correctAnswer = opt; setQuestions(n); }} className="w-5 h-5 text-blue-600" />
-                                            <span className="text-xs font-black text-slate-300 italic">{String.fromCharCode(65+oi)}.</span>
-                                            <input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].options![oi] = e.target.value; setQuestions(n); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {type === 'group-tf' && (
-                                <div className="space-y-4 mb-8">
-                                    {q.subQuestions?.map((sq, si) => (
-                                        <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                            <span className="text-xs font-black text-blue-600 w-8 italic">{String.fromCharCode(97+si)})</span>
-                                            <input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].subQuestions![si].text = e.target.value; setQuestions(n); }} placeholder="Nội dung ý..." />
-                                            <div className="flex bg-white rounded-xl p-1.5 border">
-                                                {['True', 'False'].map(v => (
-                                                    <button key={v} onClick={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].subQuestions![si].correctAnswer = v as any; setQuestions(n); }} className={`px-5 py-2 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="space-y-4 pt-6 border-t border-slate-50">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Lời giải chi tiết</label>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    <textarea className="w-full p-6 bg-yellow-50/30 border border-yellow-100 rounded-3xl text-sm font-medium outline-none focus:ring-4 focus:ring-yellow-50 transition-all min-h-[100px]" value={q.solution} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].solution = e.target.value; setQuestions(n); }} placeholder="Nhập lời giải..." />
-                                    <div className="w-full p-6 bg-slate-50 rounded-3xl border text-sm font-medium italic text-slate-500"><LatexText text={q.solution || '*Chưa có lời giải...*'} /></div>
-                                </div>
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Xem trước</label>
+                                <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-50 min-h-[120px] text-sm font-medium"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
                             </div>
                         </div>
-                    );
-                })}
+
+                        <div className="mb-8 flex items-center gap-6 p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                            <div className="shrink-0">
+                                {q.imageUrl ? (
+                                    <div className="relative group/img">
+                                        <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" />
+                                        <button onClick={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].imageUrl = undefined; setQuestions(n); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover/img:opacity-100 transition-all"><X size={12}/></button>
+                                    </div>
+                                ) : (
+                                    <div className="w-24 h-24 bg-white border rounded-2xl flex flex-col items-center justify-center text-slate-300 gap-1">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/><span className="text-[8px] font-black uppercase">Trống</span></div>
+                                )}
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Đính kèm hình ảnh</p>
+                                <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && handleImageUpload(q.id, e.target.files[0])} />
+                                <label htmlFor={`img-${q.id}`} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border text-slate-600 rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-all shadow-sm"><Plus size={14}/> {q.imageUrl ? 'Thay đổi hình' : 'Tải hình lên'}</label>
+                            </div>
+                        </div>
+
+                        {type === 'mcq' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                                {q.options?.map((opt, oi) => (
+                                    <div key={oi} className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                        <input type="radio" name={`ans-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].correctAnswer = opt; setQuestions(n); }} className="w-5 h-5 text-blue-600" />
+                                        <span className="text-xs font-black text-slate-300 italic">{String.fromCharCode(65+oi)}.</span>
+                                        <input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].options![oi] = e.target.value; setQuestions(n); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {type === 'group-tf' && (
+                            <div className="space-y-4 mb-8">
+                                {q.subQuestions?.map((sq, si) => (
+                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                        <span className="text-xs font-black text-blue-600 w-8 italic">{String.fromCharCode(97+si)})</span>
+                                        <input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].subQuestions![si].text = e.target.value; setQuestions(n); }} placeholder="Nội dung ý..." />
+                                        <div className="flex bg-white rounded-xl p-1.5 border">
+                                            {['True', 'False'].map(v => (
+                                                <button key={v} onClick={() => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].subQuestions![si].correctAnswer = v as any; setQuestions(n); }} className={`px-5 py-2 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Lời giải chi tiết</label>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <textarea className="w-full p-6 bg-yellow-50/30 border border-yellow-100 rounded-3xl text-sm font-medium outline-none focus:ring-4 focus:ring-yellow-50 transition-all min-h-[100px]" value={q.solution} onChange={e => { const n = [...questions]; const i = n.findIndex(x => x.id === q.id); n[i].solution = e.target.value; setQuestions(n); }} placeholder="Nhập lời giải..." />
+                                <div className="w-full p-6 bg-slate-50 rounded-3xl border text-sm font-medium italic text-slate-500"><LatexText text={q.solution || '*Chưa có lời giải...*'} /></div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -229,6 +230,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden text-slate-700 font-sans">
+      {/* SIDEBAR */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-20 shadow-2xl">
         <div className="p-8 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg"><Cpu size={18}/></div>
@@ -254,6 +256,7 @@ const AdminDashboard = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
+          {/* VIEW: SOẠN ĐỀ */}
           {activeMenu === 'create' && (
             <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
               <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
@@ -273,12 +276,14 @@ const AdminDashboard = () => {
                 </div>
                 <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl shadow-slate-200"><Save size={20}/> Lưu Đề Thi Vào Hệ Thống</button>
               </div>
+
               <QuestionSection title="PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn" type="mcq" icon={CheckCircle2} />
               <QuestionSection title="PHẦN II. Câu trắc nghiệm đúng sai" type="group-tf" icon={HelpCircle} />
               <QuestionSection title="PHẦN III. Câu trắc nghiệm trả lời ngắn" type="short" icon={AlignLeft} />
             </div>
           )}
 
+          {/* VIEW: QUẢN LÝ ĐỀ THI */}
           {activeMenu === 'quizzes' && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-5 rounded-[2rem] border shadow-sm">
@@ -305,12 +310,11 @@ const AdminDashboard = () => {
                           <h3 className="font-black text-slate-800 text-lg mb-8 leading-tight min-h-[56px] group-hover:text-purple-600 transition-colors">{q.title}</h3>
                           
                           <div className="space-y-4 mb-8">
-                            <div className="flex items-center gap-3 text-slate-400"><BookOpen size={16} className="text-blue-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight truncate">Chương: {q.category || 'Mô tả chuyển động...'}</span></div>
+                            <div className="flex items-center gap-3 text-slate-400"><BookOpen size={16} className="text-blue-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight truncate">Chương: {q.category || 'Chưa phân loại'}</span></div>
                             <div className="flex items-center gap-3 text-slate-400"><Layers size={16} className="text-purple-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">{q.questions.length} câu hỏi • {q.durationMinutes} phút</span></div>
                             {q.startTime && <div className="flex items-center gap-3 text-slate-400"><Clock size={16} className="text-red-400 shrink-0"/><span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight italic">Bắt đầu: {new Date(q.startTime).toLocaleString('vi-VN')}</span></div>}
                           </div>
 
-                          {/* THỐNG KÊ CHI TIẾT */}
                           <div className="bg-slate-50/70 rounded-3xl p-6 grid grid-cols-2 gap-4 mb-8 border border-transparent group-hover:bg-purple-50/50 group-hover:border-purple-100 transition-all duration-500">
                             <div className="text-center">
                                 <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -338,6 +342,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
+          {/* VIEW: CHƯƠNG HỌC */}
           {activeMenu === 'chapters' && (
             <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                 <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6">
@@ -362,10 +367,11 @@ const AdminDashboard = () => {
         </div>
       </main>
 
+      {/* MODAL NGÂN HÀNG CÂU HỎI */}
       {showBank.open && (
           <div className="fixed inset-0 bg-slate-900/90 z-[1100] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
-                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
                       <div className="flex items-center gap-4"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center"><Database size={24}/></div><div><h3 className="text-lg font-black uppercase">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest italic">Lọc theo: Khối {grade} • Chương {category || 'Tất cả'}</p></div></div>
                       <button onClick={() => setShowBank({ ...showBank, open: false })} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
                   </div>
@@ -375,13 +381,12 @@ const AdminDashboard = () => {
                       ) : (
                           getBankQuestions(showBank.type).map((q, i) => (
                               <div key={i} className="bg-white p-8 rounded-3xl border shadow-sm flex items-start gap-6 group hover:border-blue-500 transition-all">
-                                  {/* Fix: Added missing closing brace for imageUrl conditional and removed extra closing div on line 399 */}
                                   <div className="flex-1">
                                     <div className="text-sm font-bold text-slate-800 mb-4 leading-relaxed"><LatexText text={q.text}/></div>
-                                    {q.imageUrl && <img src={q.imageUrl} className="w-32 h-20 object-cover rounded-xl border mb-4" />}
+                                    {q.imageUrl && <img src={q.imageUrl} className="w-32 h-20 object-cover rounded-xl border mb-4" alt="bank preview" />}
                                     <p className="text-[9px] font-black text-slate-300 uppercase italic">ID: {q.id.split('-')[0]}</p>
                                   </div>
-                                  <button onClick={() => addFromBank(q)} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-100 hover:scale-105 transition-transform">Chọn câu này</button>
+                                  <button onClick={() => { addFromBank(q); setShowBank({...showBank, open: false}); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-100 hover:scale-105 transition-transform">Chọn câu này</button>
                               </div>
                           ))
                       )}
@@ -390,6 +395,7 @@ const AdminDashboard = () => {
           </div>
       )}
 
+      {/* MODAL XEM THỬ ĐỀ THI */}
       {previewQuiz && (
           <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md">
               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border-8 border-white">
@@ -397,7 +403,7 @@ const AdminDashboard = () => {
                 <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                     <div className="max-w-2xl mx-auto space-y-12 pb-12">
                         {previewQuiz.questions.map((q, i) => (
-                            <div key={q.id} className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 relative"><div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" />}</div></div>
+                            <div key={q.id} className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 relative"><div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="preview q" />}</div></div>
                                 {q.type === 'mcq' && q.options && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-12">{q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-500 flex items-center gap-2"><span className="text-slate-300 font-black italic">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}</div>)}
                                 {q.solution && (<div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl"><p className="text-[10px] font-black text-yellow-600 uppercase mb-3 flex items-center gap-2"><Target size={14}/> Lời giải tham khảo:</p><div className="text-sm font-medium text-slate-600 italic leading-relaxed"><LatexText text={q.solution}/></div></div>)}
                             </div>
