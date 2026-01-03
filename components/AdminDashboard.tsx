@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, QuizType, Result, User, Chapter } from '../types';
 import { 
@@ -449,16 +450,16 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-3"><label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối lớp:</label><div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">{(['all', '10', '11', '12'] as const).map(g => (<button key={g} onClick={() => setStdGrade(g)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${stdGrade === g ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{g === 'all' ? 'Tất cả' : `Khối ${g}`}</button>))}</div></div>
         </div>
         <div className="overflow-x-auto">
-            {/* Sử dụng min-width để bảng không bị bóp lại khi có nhiều cột và nhiều dữ liệu */}
-            <table className="w-full text-left text-[13px] border-collapse min-w-[1000px]">
+            {/* Sử dụng min-width và layout cố định để bảng không bị bóp lại */}
+            <table className="w-full text-left text-[13px] border-collapse min-w-[1000px] table-fixed">
                 <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
                     <tr>
-                        <th className="px-8 py-5 w-[20%]">Họ và tên học sinh</th>
-                        <th className="px-8 py-5 w-[15%]">Tên đăng nhập</th>
-                        <th className="px-8 py-5 w-[10%]">Khối</th>
-                        <th className="px-8 py-5 w-[15%]">Mật khẩu</th>
-                        <th className="px-8 py-5 w-[25%]">Thống kê học tập</th>
-                        <th className="px-8 py-5 w-[15%]">Thao tác</th>
+                        <th className="px-8 py-4 w-[25%]">Họ và tên học sinh</th>
+                        <th className="px-8 py-4 w-[15%]">Tên đăng nhập</th>
+                        <th className="px-8 py-4 w-[10%] text-center">Khối</th>
+                        <th className="px-8 py-4 w-[15%]">Mật khẩu</th>
+                        <th className="px-8 py-4 w-[25%] text-center">Thống kê học tập</th>
+                        <th className="px-8 py-4 w-[10%] text-center">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -466,28 +467,28 @@ const AdminDashboard = () => {
                         const sR = results.filter(r => r.studentId === u.id);
                         const avgScore = sR.length > 0 ? (sR.reduce((a, b) => a + (b.score || 0), 0) / sR.length) : 0;
                         return (
-                            <tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="px-8 py-5 font-bold text-slate-800">{u.fullName}</td>
-                                <td className="px-8 py-5 font-mono text-blue-600">{u.username}</td>
-                                <td className="px-8 py-5">
-                                    <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span>
+                            <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-8 py-3 font-bold text-slate-800 truncate">{u.fullName}</td>
+                                <td className="px-8 py-3 font-mono text-blue-600 truncate">{u.username}</td>
+                                <td className="px-8 py-3 text-center">
+                                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span>
                                 </td>
-                                <td className="px-8 py-5 font-mono text-slate-400">{u.password}</td>
-                                <td className="px-8 py-5">
-                                    <div className="flex flex-col gap-1">
+                                <td className="px-8 py-3 font-mono text-slate-300 select-all truncate">{u.password}</td>
+                                <td className="px-8 py-3">
+                                    <div className="flex flex-col items-center">
                                         <div className="text-[10px] font-black text-slate-400 uppercase">Đã luyện {sR.length} đề</div>
-                                        <div className={`text-xs font-bold ${avgScore >= 5 ? 'text-green-600' : 'text-slate-700'}`}>
-                                            Trung bình: {avgScore.toFixed(1)}đ
+                                        <div className={`text-xs font-bold ${avgScore >= 5 ? 'text-green-600' : 'text-slate-600'}`}>
+                                            TB: {avgScore.toFixed(1)}đ
                                         </div>
                                     </div>
                                 </td>
-                                <td className="px-8 py-5">
+                                <td className="px-8 py-3 text-center">
                                     <button 
                                         onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} 
-                                        className="p-3 bg-slate-50 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all group-hover:text-red-600 shadow-sm"
+                                        className="p-2.5 bg-slate-100 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all shadow-sm"
                                         title="Xóa tài khoản"
                                     >
-                                        <Trash2 size={18}/>
+                                        <Trash2 size={16}/>
                                     </button>
                                 </td>
                             </tr>
