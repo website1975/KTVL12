@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AuthState, User } from './types';
 import { initStorage } from './services/storage';
@@ -16,10 +17,14 @@ const App: React.FC = () => {
     // Initialize dummy data for demo
     initStorage();
     
-    // Check local storage for persistent login (simplified)
+    // Check local storage for persistent login
     const storedUser = localStorage.getItem('eduquiz_current_user');
     if (storedUser) {
-      setAuth({ user: JSON.parse(storedUser), isAuthenticated: true });
+      try {
+        setAuth({ user: JSON.parse(storedUser), isAuthenticated: true });
+      } catch (e) {
+        localStorage.removeItem('eduquiz_current_user');
+      }
     }
   }, []);
 
@@ -42,7 +47,7 @@ const App: React.FC = () => {
       {auth.user.role === 'admin' ? (
         <AdminDashboard />
       ) : (
-        <StudentDashboard user={auth.user} />
+        <StudentDashboard user={auth.user as User} />
       )}
     </Layout>
   );
