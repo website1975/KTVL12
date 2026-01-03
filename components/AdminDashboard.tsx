@@ -15,7 +15,7 @@ import {
     Sparkles, Shuffle, Eye, Cpu, FileUp, Trophy, History, 
     Settings, Filter, FolderTree, FileOutput, Search, Database, 
     ChevronRight, LayoutDashboard, Users, FileText, Send, Layers,
-    Image as ImageIcon, CheckCircle2, AlertCircle
+    Image as ImageIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 import LatexText from './LatexText';
 
@@ -33,7 +33,7 @@ const RichTextEditor = ({ value, onChange, placeholder, rows, className, label, 
         onChange(newVal);
     };
     return (
-        <div className="flex flex-col gap-1 mb-4">
+        <div className="flex flex-col gap-1 mb-4 w-full">
             {label && <label className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">{label}</label>}
             <div className="flex flex-col border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all">
                 <div className="flex items-center gap-0.5 p-1.5 bg-slate-50 border-b border-slate-100">
@@ -52,7 +52,7 @@ const RichTextEditor = ({ value, onChange, placeholder, rows, className, label, 
             </div>
             {showPreview && value && (
                 <div className="mt-2 p-4 bg-blue-50/30 rounded-xl border border-blue-100/50 text-[14px] text-slate-700 shadow-sm animate-fade-in">
-                    <div className="text-[9px] font-black text-blue-400 uppercase mb-2 tracking-widest opacity-70">Xem trước hiển thị:</div>
+                    <div className="text-[9px] font-black text-blue-400 uppercase mb-2 tracking-widest opacity-70">Review:</div>
                     <LatexText text={value} />
                 </div>
             )}
@@ -71,10 +71,11 @@ const AdminDashboard = () => {
   const [filterGrade, setFilterGrade] = useState<Grade | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
-  // Filters for Results
+  // Filters for Results (Phân cấp: Khối -> Chương -> Đề)
   const [resGrade, setResGrade] = useState<Grade | 'all'>('all');
   const [resChapter, setResChapter] = useState<string>('all');
   const [resQuizId, setResQuizId] = useState<string>('all');
+  const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
   // Filters for Students
   const [stdGrade, setStdGrade] = useState<Grade | 'all'>('all');
@@ -126,6 +127,16 @@ const AdminDashboard = () => {
     return chapters.filter(c => tg === 'all' || c.grade === tg).sort((a,b)=>a.order - b.order);
   }, [chapters, grade, filterGrade, activeMenu]);
 
+  // Bộ lọc chương cho trang kết quả
+  const resChapters = useMemo(() => {
+      return chapters.filter(c => resGrade === 'all' || c.grade === resGrade).sort((a,b)=>a.order - b.order);
+  }, [chapters, resGrade]);
+
+  // Bộ lọc đề cho trang kết quả
+  const resAvailableQuizzes = useMemo(() => {
+      return quizzes.filter(q => (resGrade === 'all' || q.grade === resGrade) && (resChapter === 'all' || q.category === resChapter));
+  }, [quizzes, resGrade, resChapter]);
+
   const filteredQuizzes = useMemo(() => {
     return quizzes.filter(q => (filterGrade === 'all' || q.grade === filterGrade) && (filterCategory === 'all' || q.category === filterCategory));
   }, [quizzes, filterGrade, filterCategory]);
@@ -139,6 +150,24 @@ const AdminDashboard = () => {
       return true;
     }).sort((a,b)=>new Date(b.submittedAt).getTime()-new Date(a.submittedAt).getTime());
   }, [results, resGrade, resChapter, resQuizId, quizzes]);
+
+  // Thống kê kết quả nộp theo Đề đang chọn
+  const resultStats = useMemo(() => {
+      if (filteredResults.length === 0) return { totalTakers: 0, highestScore: 0 };
+      const uniqueStudents = new Set(filteredResults.map(r => r.studentId));
+      const maxScore = Math.max(...filteredResults.map(r => r.score));
+      return { totalTakers: uniqueStudents.size, highestScore: maxScore };
+  }, [filteredResults]);
+
+  // Gộp kết quả theo học sinh để hiển thị lượt thi
+  const groupedResults = useMemo(() => {
+      const groups: Record<string, Result[]> = {};
+      filteredResults.forEach(r => {
+          if (!groups[r.studentId]) groups[r.studentId] = [];
+          groups[r.studentId].push(r);
+      });
+      return Object.values(groups).sort((a, b) => Math.max(...b.map(x=>x.score)) - Math.max(...a.map(x=>x.score)));
+  }, [filteredResults]);
 
   const filteredStudents = useMemo(() => {
     return users.filter(u => u.role === 'student' && (stdGrade === 'all' || u.grade === stdGrade));
@@ -159,7 +188,7 @@ const AdminDashboard = () => {
   };
 
   const handleImageUpload = (qIdx: number) => {
-      const url = prompt("Dán URL hình ảnh minh họa (hoặc link ảnh từ Google Drive/Dropbox):");
+      const url = prompt("Dán URL hình ảnh minh họa (hoặc link ảnh từ Google Drive/Dropbox/Imgur...):");
       if (url) {
           const n = [...questions];
           n[qIdx].imageUrl = url;
@@ -199,7 +228,7 @@ const AdminDashboard = () => {
   );
 
   const renderCreateQuiz = () => (
-    <div className="max-w-5xl mx-auto pb-48 animate-fade-in space-y-8">
+    <div className="max-w-4xl mx-auto pb-48 animate-fade-in space-y-12">
         {/* THÔNG TIN CHUNG */}
         <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm border-b-4 border-b-slate-100">
             <h3 className="text-xs font-black uppercase text-slate-400 mb-6 tracking-widest flex items-center gap-2"><Settings size={14}/> Thiết lập thông tin đề thi</h3>
@@ -240,7 +269,7 @@ const AdminDashboard = () => {
             { type: 'group-tf' as QuestionType, title: 'Phần II: Câu trắc nghiệm đúng sai', color: 'purple' },
             { type: 'short' as QuestionType, title: 'Phần III: Câu trắc nghiệm trả lời ngắn', color: 'emerald' }
         ].map(section => (
-            <div key={section.type} className="space-y-4">
+            <div key={section.type} className="space-y-6">
                 <div className="flex justify-between items-center px-2">
                     <h4 className={`text-sm font-black uppercase text-${section.color}-600 tracking-tight flex items-center gap-2`}>
                         <Layers size={18}/> {section.title}
@@ -261,17 +290,17 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-8">
                     {questions.map((q, qIdx) => q.type === section.type && (
-                        <div key={q.id} className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm relative group hover:shadow-md transition-all">
+                        <div key={q.id} className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm relative group hover:shadow-md transition-all">
                             <button 
-                                onClick={() => { const n = [...questions]; n.splice(qIdx, 1); setQuestions(n); }}
+                                onClick={() => { if(confirm('Xóa câu hỏi này?')){ const n = [...questions]; n.splice(qIdx, 1); setQuestions(n); } }}
                                 className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                             >
                                 <Trash2 size={18}/>
                             </button>
                             
-                            <div className="flex items-center gap-3 mb-6">
+                            <div className="flex items-center gap-3 mb-8">
                                 <span className={`w-10 h-10 rounded-2xl bg-${section.color}-50 text-${section.color}-600 flex items-center justify-center font-black text-sm`}>{questions.filter(qu=>qu.type===section.type).indexOf(q) + 1}</span>
                                 <div className="h-px flex-1 bg-slate-100"></div>
                             </div>
@@ -285,7 +314,7 @@ const AdminDashboard = () => {
                             />
 
                             {/* HÌNH ẢNH */}
-                            <div className="mb-6">
+                            <div className="mb-8">
                                 <button 
                                     onClick={() => handleImageUpload(qIdx)}
                                     className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase hover:text-blue-600 transition-colors bg-slate-50 px-4 py-2 rounded-xl border border-slate-100"
@@ -293,14 +322,14 @@ const AdminDashboard = () => {
                                     <ImageIcon size={14}/> {q.imageUrl ? 'Thay đổi hình ảnh' : 'Thêm hình ảnh minh họa'}
                                 </button>
                                 {q.imageUrl && (
-                                    <div className="mt-3 relative inline-block group/img">
-                                        <img src={q.imageUrl} className="max-h-48 rounded-xl border-2 border-slate-100 bg-white" alt="Minh họa" />
-                                        <button onClick={() => { const n=[...questions]; n[qIdx].imageUrl=undefined; setQuestions(n); }} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover/img:opacity-100 transition-all"><X size={12}/></button>
+                                    <div className="mt-4 relative inline-block group/img">
+                                        <img src={q.imageUrl} className="max-h-64 rounded-2xl border-2 border-slate-100 bg-white shadow-sm" alt="Minh họa" />
+                                        <button onClick={() => { const n=[...questions]; n[qIdx].imageUrl=undefined; setQuestions(n); }} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover/img:opacity-100 transition-all shadow-md"><X size={12}/></button>
                                     </div>
                                 )}
                             </div>
 
-                            {/* LỰA CHỌN PHẢN HỒI THEO LOẠI */}
+                            {/* LỰA CHỌN PHẢN HỒI */}
                             {q.type === 'mcq' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                     {q.options?.map((opt, oIdx) => (
@@ -364,21 +393,21 @@ const AdminDashboard = () => {
                                 </div>
                             )}
 
-                            {/* LỜI GIẢI CHI TIẾT */}
-                            <div className="pt-6 border-t border-slate-50">
+                            {/* LỜI GIẢI CHI TIẾT - RỘNG BẰNG CÂU HỎI */}
+                            <div className="pt-8 border-t border-slate-50">
                                 <RichTextEditor 
-                                    label="Lời giải chi tiết" 
+                                    label="Lời giải chi tiết cho câu hỏi này" 
                                     value={q.solution || ''} 
                                     onChange={v => { const n = [...questions]; n[qIdx].solution = v; setQuestions(n); }} 
-                                    placeholder="Nhập hướng dẫn giải để học sinh ôn tập..." 
-                                    rows={4}
+                                    placeholder="Giải thích các bước làm chi tiết..." 
+                                    rows={5}
                                 />
                             </div>
                         </div>
                     ))}
                     {questions.filter(q=>q.type===section.type).length === 0 && (
-                        <div className="py-10 text-center bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
-                            <p className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Chưa có câu hỏi nào trong phần này</p>
+                        <div className="py-12 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100 shadow-sm">
+                            <p className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Không có câu hỏi nào trong mục này</p>
                         </div>
                     )}
                 </div>
@@ -386,7 +415,7 @@ const AdminDashboard = () => {
         ))}
 
         <div className="fixed bottom-8 left-[280px] right-8 flex justify-end pointer-events-none z-[60]">
-            <div className="pointer-events-auto flex items-center gap-3 bg-white/90 backdrop-blur-md p-3 rounded-[2rem] shadow-2xl border border-slate-200">
+            <div className="pointer-events-auto flex items-center gap-3 bg-white/90 backdrop-blur-md p-3 rounded-[2.5rem] shadow-2xl border border-slate-200">
                 <label className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black text-slate-500 cursor-pointer hover:bg-slate-50 transition-all">
                     <input type="checkbox" checked={isPublished} onChange={e => setIsPublished(e.target.checked)} className="w-5 h-5 rounded-lg text-blue-600 focus:ring-blue-500" /> CÔNG KHAI ĐỀ THI
                 </label>
@@ -415,7 +444,7 @@ const AdminDashboard = () => {
 
   const renderResults = () => (
     <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm animate-fade-in">
-        <div className="p-8 border-b border-slate-100 space-y-6 bg-slate-50/50">
+        <div className="p-8 border-b border-slate-100 space-y-8 bg-slate-50/50">
             <div className="flex justify-between items-center">
                 <h3 className="text-sm font-black uppercase flex items-center gap-2"><Trophy size={20} className="text-orange-500"/> Bảng điểm & Kết quả học tập</h3>
                 <div className="flex gap-2">
@@ -423,55 +452,111 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* BỘ LỌC KẾT QUẢ */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* BỘ LỌC PHÂN CẤP */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Khối lớp</label>
-                    <select className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" value={resGrade} onChange={e=>setResGrade(e.target.value as any)}>
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">1. Lọc theo Khối</label>
+                    <select className="w-full bg-white border border-slate-200 rounded-xl p-4 text-xs font-bold outline-none" value={resGrade} onChange={e=>{setResGrade(e.target.value as any); setResChapter('all'); setResQuizId('all');}}>
                         <option value="all">Tất cả Khối</option><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option>
                     </select>
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Chương học</label>
-                    <select className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" value={resChapter} onChange={e=>setResChapter(e.target.value)}>
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">2. Lọc theo Chương</label>
+                    <select className="w-full bg-white border border-slate-200 rounded-xl p-4 text-xs font-bold outline-none" value={resChapter} onChange={e=>{setResChapter(e.target.value); setResQuizId('all');}}>
                         <option value="all">Tất cả Chương</option>
-                        {chapters.map(c => <option key={c.id} value={c.name}>{c.name} (L{c.grade})</option>)}
+                        {resChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                     </select>
                 </div>
-                <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Tên đề thi</label>
-                    <select className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none" value={resQuizId} onChange={e=>setResQuizId(e.target.value)}>
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">3. Lọc theo Đề thi</label>
+                    <select className="w-full bg-white border border-slate-200 rounded-xl p-4 text-xs font-bold outline-none" value={resQuizId} onChange={e=>setResQuizId(e.target.value)}>
                         <option value="all">Tất cả Đề thi</option>
-                        {quizzes.filter(q => (resGrade==='all'||q.grade===resGrade) && (resChapter==='all'||q.category===resChapter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                        {resAvailableQuizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                     </select>
+                </div>
+            </div>
+
+            {/* TỔNG QUAN THỐNG KÊ KẾT QUẢ */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase">Số người thi</p>
+                    <p className="text-2xl font-black text-slate-800 mt-1">{resultStats.totalTakers}</p>
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase">Điểm cao nhất</p>
+                    <p className="text-2xl font-black text-blue-600 mt-1">{resultStats.highestScore.toFixed(2)}</p>
                 </div>
             </div>
         </div>
 
+        {/* DANH SÁCH THI (Gộp theo học sinh) */}
         <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
-                <thead className="bg-slate-50 text-slate-400 font-black uppercase"><tr className="border-b border-slate-100"><th className="px-8 py-5">Thời gian nộp</th><th className="px-8 py-5">Thí sinh</th><th className="px-8 py-5">Đề thi</th><th className="px-8 py-5">Điểm số</th><th className="px-8 py-5">Thời gian làm</th><th className="px-8 py-5">Thao tác</th></tr></thead>
+                <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
+                    <tr><th className="px-8 py-5">Thí sinh</th><th className="px-8 py-5">Đề thi mới nhất</th><th className="px-8 py-5">Điểm cao nhất</th><th className="px-8 py-5">Số lượt thi</th><th className="px-8 py-5">Thao tác</th></tr>
+                </thead>
                 <tbody className="divide-y divide-slate-50">
-                    {filteredResults.map(r => (
-                        <tr key={r.id} className="hover:bg-slate-50/50 transition-colors group">
-                            <td className="px-8 py-5 text-slate-400">{new Date(r.submittedAt).toLocaleString('vi-VN')}</td>
-                            <td className="px-8 py-5">
-                                <div className="font-bold text-slate-800">{r.studentName}</div>
-                                <div className="text-[10px] text-slate-400 uppercase font-black">Lớp {users.find(u=>u.id===r.studentId)?.grade}</div>
-                            </td>
-                            <td className="px-8 py-5">
-                                <div className="font-medium max-w-[200px] truncate">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</div>
-                                <div className="text-[9px] text-slate-400 uppercase font-bold">{quizzes.find(q=>q.id===r.quizId)?.category}</div>
-                            </td>
-                            <td className="px-8 py-5">
-                                <span className={`font-black text-base ${r.score >= 8 ? 'text-green-600' : (r.score >= 5 ? 'text-blue-600' : 'text-red-500')}`}>{r.score.toFixed(2)}</span>
-                            </td>
-                            <td className="px-8 py-5 text-slate-500 font-medium">{Math.floor(r.durationSeconds / 60)}p {r.durationSeconds % 60}s</td>
-                            <td className="px-8 py-5"><button onClick={async () => { if(confirm('Bạn có chắc chắn muốn xóa kết quả này?')) { await deleteResult(r.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></td>
-                        </tr>
-                    ))}
-                    {filteredResults.length === 0 && (
-                        <tr><td colSpan={6} className="py-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Không có dữ liệu kết quả phù hợp</td></tr>
+                    {groupedResults.map((attempts) => {
+                        const last = attempts[0];
+                        const student = users.find(u=>u.id===last.studentId);
+                        const isExp = expandedStudent === last.studentId;
+                        const maxScore = Math.max(...attempts.map(a=>a.score));
+
+                        return (
+                            <React.Fragment key={last.studentId}>
+                                <tr className="hover:bg-slate-50/50 transition-colors group">
+                                    <td className="px-8 py-5">
+                                        <div className="font-bold text-slate-800">{last.studentName}</div>
+                                        <div className="text-[10px] text-slate-400 uppercase font-black">Khối {student?.grade || '?'}</div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <div className="font-medium truncate max-w-[200px]">{quizzes.find(q=>q.id===last.quizId)?.title || 'Đề đã xóa'}</div>
+                                        <div className="text-[10px] text-slate-400">{new Date(last.submittedAt).toLocaleString('vi-VN')}</div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <span className={`font-black text-base ${maxScore >= 8 ? 'text-green-600' : (maxScore >= 5 ? 'text-blue-600' : 'text-red-500')}`}>{maxScore.toFixed(2)}</span>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <div className="flex items-center gap-3">
+                                            <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-black text-[10px]">{attempts.length} lần</span>
+                                            {attempts.length > 1 && (
+                                                <button onClick={()=>setExpandedStudent(isExp ? null : last.studentId)} className="text-blue-600 font-black text-[10px] uppercase hover:underline flex items-center gap-1">
+                                                    {isExp ? <ChevronUp size={12}/> : <ChevronDown size={12}/>} CHI TIẾT
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <button onClick={async () => { if(confirm('Xóa tất cả kết quả của học sinh này?')) { for(const r of attempts) await deleteResult(r.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button>
+                                    </td>
+                                </tr>
+                                {isExp && (
+                                    <tr className="bg-slate-50/30">
+                                        <td colSpan={5} className="px-8 py-0">
+                                            <div className="border-l-4 border-blue-100 ml-4 my-4 p-4 space-y-3">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Lịch sử thi của {last.studentName}:</p>
+                                                {attempts.map((a, idx) => (
+                                                    <div key={a.id} className="flex justify-between items-center text-xs bg-white p-3 rounded-xl border border-slate-100">
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-slate-300 font-bold">#{attempts.length - idx}</span>
+                                                            <span className="font-medium text-slate-500">{new Date(a.submittedAt).toLocaleString('vi-VN')}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-8">
+                                                            <span className="text-slate-400 font-medium">Làm trong {Math.floor(a.durationSeconds / 60)}p {a.durationSeconds % 60}s</span>
+                                                            <span className="font-black text-blue-600">Điểm: {a.score.toFixed(2)}</span>
+                                                            <button onClick={async () => { if(confirm('Xóa lượt thi này?')){ await deleteResult(a.id); refreshData(); } }} className="text-slate-300 hover:text-red-500"><X size={14}/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                    {groupedResults.length === 0 && (
+                        <tr><td colSpan={5} className="py-24 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Không có dữ liệu kết quả thi phù hợp</td></tr>
                     )}
                 </tbody>
             </table>
@@ -485,14 +570,14 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><Users size={24}/></div>
                 <div>
-                    <h3 className="text-sm font-black uppercase tracking-tight">Danh sách Học sinh</h3>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hệ thống có {filteredStudents.length} học sinh</p>
+                    <h3 className="text-sm font-black uppercase tracking-tight">Quản lý Tài khoản Học sinh</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đang hiển thị {filteredStudents.length} học sinh</p>
                 </div>
             </div>
             
             <div className="flex items-center gap-3">
-                <label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối:</label>
-                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối lớp:</label>
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
                     {(['all', '10', '11', '12'] as const).map(g => (
                         <button 
                             key={g} 
@@ -507,7 +592,9 @@ const AdminDashboard = () => {
         </div>
         <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
-                <thead className="bg-slate-50 text-slate-400 font-black uppercase"><tr className="border-b border-slate-100"><th className="px-8 py-5">Họ và tên học sinh</th><th className="px-8 py-5">Tên đăng nhập</th><th className="px-8 py-5">Khối lớp</th><th className="px-8 py-5">Mật khẩu</th><th className="px-8 py-5">Hoạt động</th><th className="px-8 py-5">Thao tác</th></tr></thead>
+                <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
+                    <tr><th className="px-8 py-5">Họ và tên học sinh</th><th className="px-8 py-5">Tên đăng nhập</th><th className="px-8 py-5">Khối</th><th className="px-8 py-5">Mật khẩu</th><th className="px-8 py-5">Thống kê</th><th className="px-8 py-5">Thao tác</th></tr>
+                </thead>
                 <tbody className="divide-y divide-slate-50">
                     {filteredStudents.map(u => {
                         const sR = results.filter(r => r.studentId === u.id);
@@ -515,19 +602,18 @@ const AdminDashboard = () => {
                             <tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-8 py-5 font-bold text-slate-800">{u.fullName}</td>
                                 <td className="px-8 py-5 font-mono text-blue-600">{u.username}</td>
-                                <td className="px-8 py-5"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Khối {u.grade}</span></td>
+                                <td className="px-8 py-5"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span></td>
                                 <td className="px-8 py-5 font-mono text-slate-300">{u.password}</td>
                                 <td className="px-8 py-5">
-                                    <div className="text-[10px] font-black text-slate-400 uppercase">Đã làm {sR.length} đề thi</div>
-                                    <div className="text-xs font-bold text-slate-700">TB: {(sR.reduce((a,b)=>a+b.score,0)/(sR.length||1)).toFixed(1)}</div>
+                                    <div className="text-[10px] font-black text-slate-400 uppercase">Đã làm {sR.length} lượt thi</div>
+                                    <div className="text-xs font-bold text-slate-700">TB: {(sR.reduce((a,b)=>a+b.score,0)/(sR.length||1)).toFixed(1)}đ</div>
                                 </td>
-                                <td className="px-8 py-5"><button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}? Mọi kết quả thi liên quan cũng sẽ bị ảnh hưởng.`)) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></td>
+                                <td className="px-8 py-5">
+                                    <button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button>
+                                </td>
                             </tr>
                         );
                     })}
-                    {filteredStudents.length === 0 && (
-                        <tr><td colSpan={6} className="py-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Chưa có tài khoản học sinh nào đăng ký</td></tr>
-                    )}
                 </tbody>
             </table>
         </div>
@@ -553,7 +639,7 @@ const AdminDashboard = () => {
                         const c:Chapter = { id: editingChId || uuidv4(), grade: selectedGradeCh, name: chName, order: chOrder };
                         if(editingChId) await updateChapter(c); else await saveChapter(c);
                         setChName(''); setEditingChId(null); await refreshData();
-                    }} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">LƯU</button>
+                    }} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">LƯU CHƯƠNG</button>
                 </div>
             </div>
         </div>
@@ -585,7 +671,7 @@ const AdminDashboard = () => {
             <div className="absolute top-0 right-0 p-12 text-blue-50 opacity-10 pointer-events-none"><Sparkles size={160}/></div>
             <div className="flex items-center gap-6 mb-10">
                 <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-blue-200"><Sparkles size={32}/></div>
-                <div><h3 className="text-xl font-black uppercase tracking-tight">Trợ lý AI Soạn Đề</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cấu trúc chuẩn theo chương trình 2024</p></div>
+                <div><h3 className="text-xl font-black uppercase tracking-tight">AI Soạn Đề Thông Minh</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tạo đề thi 3 phần chuẩn Bộ GD&ĐT trong giây lát</p></div>
             </div>
             <div className="space-y-8">
                 <div className="grid grid-cols-2 gap-4">
@@ -593,17 +679,17 @@ const AdminDashboard = () => {
                     <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold outline-none" value={category} onChange={e=>setCategory(e.target.value)}><option value="">Chọn chương học...</option>{availableChapters.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select>
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Mô tả chủ đề chi tiết</label>
-                    <textarea className="w-full bg-slate-50 border border-slate-200 rounded-3xl p-6 text-sm font-medium h-48 focus:ring-2 focus:ring-blue-100 transition-all outline-none" placeholder="Nhập nội dung AI cần soạn, VD: 'Hàm số bậc ba và cực trị hàm số, bao gồm cả bài toán thực tế'..." value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Mô tả chủ đề chi tiết để AI soạn đề chính xác hơn</label>
+                    <textarea className="w-full bg-slate-50 border border-slate-200 rounded-3xl p-6 text-sm font-medium h-56 focus:ring-2 focus:ring-blue-100 transition-all outline-none" placeholder="Ví dụ: Soạn đề về Khối đa diện, tập trung vào công thức tính thể tích và các bài toán thực tế liên quan đến hộp quà, kiến trúc..." value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
                 </div>
                 <div className="bg-slate-50 p-6 rounded-3xl grid grid-cols-3 gap-6 border border-slate-100">
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Trắc nghiệm</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center" value={aiCounts.p1} onChange={e=>setAiCounts({...aiCounts, p1: parseInt(e.target.value)})} /></div>
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Đúng Sai</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center" value={aiCounts.p2} onChange={e=>setAiCounts({...aiCounts, p2: parseInt(e.target.value)})} /></div>
-                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Trả lời ngắn</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center" value={aiCounts.p3} onChange={e=>setAiCounts({...aiCounts, p3: parseInt(e.target.value)})} /></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Trắc nghiệm</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center shadow-sm" value={aiCounts.p1} onChange={e=>setAiCounts({...aiCounts, p1: parseInt(e.target.value)})} /></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Đúng Sai</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center shadow-sm" value={aiCounts.p2} onChange={e=>setAiCounts({...aiCounts, p2: parseInt(e.target.value)})} /></div>
+                    <div><label className="text-[9px] font-black text-slate-400 uppercase">Trả lời ngắn</label><input type="number" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-center shadow-sm" value={aiCounts.p3} onChange={e=>setAiCounts({...aiCounts, p3: parseInt(e.target.value)})} /></div>
                 </div>
                 <button onClick={async () => {
-                    if(!aiTopic) return alert("Nhập chủ đề!"); setIsProcessing(true); setLoadingMsg("AI đang soạn đề thi mới...");
-                    try { const qs = await generateQuizFromPrompt({ grade, topic: aiTopic, part1Count: aiCounts.p1, part2Count: aiCounts.p2, part3Count: aiCounts.p3 }); setQuestions(qs); setTitle(`Đề AI: ${aiTopic}`); setActiveMenu('create'); } catch(e) { alert("Lỗi AI: Vui lòng thử lại với chủ đề rõ ràng hơn."); } finally { setIsProcessing(false); }
+                    if(!aiTopic) return alert("Nhập chủ đề!"); setIsProcessing(true); setLoadingMsg("AI đang phân tích và soạn đề thi...");
+                    try { const qs = await generateQuizFromPrompt({ grade, topic: aiTopic, part1Count: aiCounts.p1, part2Count: aiCounts.p2, part3Count: aiCounts.p3 }); setQuestions(qs); setTitle(`Đề AI: ${aiTopic}`); setActiveMenu('create'); } catch(e) { alert("Lỗi AI: Vui lòng thử lại sau."); } finally { setIsProcessing(false); }
                 }} className="w-full bg-blue-600 text-white py-6 rounded-3xl font-black text-sm uppercase shadow-2xl shadow-blue-100 hover:scale-[1.02] transition-all active:scale-95">BẮT ĐẦU SOẠN ĐỀ VỚI AI</button>
             </div>
         </div>
@@ -615,17 +701,17 @@ const AdminDashboard = () => {
         <div className="bg-white p-16 rounded-[3rem] border-4 border-dashed border-slate-100 shadow-sm">
             <div className="w-20 h-20 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner"><FileUp size={40}/></div>
             <h3 className="text-xl font-black uppercase mb-4 text-slate-800">Nhập đề từ file PDF</h3>
-            <p className="text-slate-400 text-xs font-medium max-w-sm mx-auto mb-10 leading-relaxed">AI sẽ tự động nhận diện cấu trúc đề thi 3 phần và chuyển đổi sang dữ liệu hệ thống (Hỗ trợ định dạng PDF chuẩn).</p>
+            <p className="text-slate-400 text-xs font-medium max-w-sm mx-auto mb-10 leading-relaxed text-center">Tải lên file PDF đề thi của bạn. AI sẽ tự động tách câu hỏi, đáp án và lời giải chi tiết cho hệ thống.</p>
             <input type="file" id="pdf-upload" hidden accept="application/pdf" onChange={e => setPdfFile(e.target.files?.[0] || null)} />
-            <label htmlFor="pdf-upload" className="inline-flex items-center gap-3 px-12 py-4 bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase cursor-pointer hover:bg-slate-900 transition-all shadow-xl active:scale-95">{pdfFile ? pdfFile.name : 'CHỌN FILE PDF TỪ MÁY TÍNH'}</label>
+            <label htmlFor="pdf-upload" className="inline-flex items-center gap-3 px-12 py-4 bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase cursor-pointer hover:bg-slate-900 transition-all shadow-xl active:scale-95">{pdfFile ? pdfFile.name : 'CHỌN FILE PDF TỪ THIẾT BỊ'}</label>
             {pdfFile && (
                 <button onClick={async () => {
-                    setIsProcessing(true); setLoadingMsg("AI đang đọc và phân tích PDF...");
+                    setIsProcessing(true); setLoadingMsg("AI đang đọc dữ liệu từ PDF...");
                     const reader = new FileReader(); reader.readAsDataURL(pdfFile);
                     reader.onload = async () => {
-                        try { const base64 = (reader.result as string).split(',')[1]; const qs = await parseQuestionsFromPDF(base64); setQuestions(qs); setTitle(`Đề từ PDF: ${pdfFile.name}`); setActiveMenu('create'); } catch(e) { alert("Lỗi đọc PDF hoặc cấu trúc file không phù hợp."); } finally { setIsProcessing(false); }
+                        try { const base64 = (reader.result as string).split(',')[1]; const qs = await parseQuestionsFromPDF(base64); setQuestions(qs); setTitle(`Đề từ PDF: ${pdfFile.name}`); setActiveMenu('create'); } catch(e) { alert("Lỗi phân tích PDF."); } finally { setIsProcessing(false); }
                     };
-                }} className="block mx-auto mt-8 text-blue-600 font-black text-[10px] uppercase underline underline-offset-4 tracking-widest hover:text-blue-700">Bắt đầu phân tích dữ liệu</button>
+                }} className="block mx-auto mt-8 text-blue-600 font-black text-[10px] uppercase underline underline-offset-4 tracking-widest hover:text-blue-700">Tiến hành phân tích</button>
             )}
         </div>
     </div>
@@ -680,7 +766,7 @@ const AdminDashboard = () => {
             </div>
         </main>
 
-        {/* MODAL NGÂN HÀNG CÂU HỎI THEO PHẦN */}
+        {/* MODAL NGÂN HÀNG CÂU HỎI THEO KHỐI ĐANG CHỌN */}
         {showBankModal && (
             <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                 <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up">
@@ -688,32 +774,28 @@ const AdminDashboard = () => {
                         <div className="flex items-center gap-3">
                             <Database size={20} className="text-blue-400"/>
                             <div>
-                                <h3 className="font-black uppercase text-sm leading-none mb-1">Ngân hàng câu hỏi</h3>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đang lọc phần: {bankTargetPart === 'mcq' ? 'Trắc nghiệm (P1)' : (bankTargetPart === 'group-tf' ? 'Đúng Sai (P2)' : 'Trả lời ngắn (P3)')}</p>
+                                <h3 className="font-black uppercase text-sm leading-none mb-1">Ngân hàng câu hỏi Lớp {grade}</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loại: {bankTargetPart === 'mcq' ? 'Trắc nghiệm' : (bankTargetPart === 'group-tf' ? 'Đúng Sai' : 'Trả lời ngắn')}</p>
                             </div>
                         </div>
                         <button onClick={() => { setShowBankModal(false); setBankTargetPart(null); }} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-all"><X size={20}/></button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50">
-                        {quizzes.length === 0 ? <p className="text-center text-slate-400 py-10 font-bold uppercase text-[10px]">Chưa có đề thi nào có sẵn</p> : quizzes.map(q => {
+                        {quizzes.filter(q=>q.grade===grade).length === 0 ? <p className="text-center text-slate-400 py-10 font-bold uppercase text-[10px]">Chưa có đề thi nào trong khối {grade} để lấy câu hỏi</p> : quizzes.filter(q=>q.grade===grade).map(q => {
                             const filteredBankQs = q.questions.filter(qi => qi.type === bankTargetPart);
                             if (filteredBankQs.length === 0) return null;
                             return (
                                 <div key={q.id} className="mb-10">
                                     <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 border-b border-slate-200 pb-2 flex justify-between items-center">
-                                        <span>{q.title}</span>
-                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-400 font-bold tracking-tight">Lớp {q.grade}</span>
+                                        <span>Đề thi: {q.title}</span>
+                                        <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[9px] font-black uppercase">{q.category}</span>
                                     </h4>
                                     <div className="grid grid-cols-1 gap-4">
                                         {filteredBankQs.map((qItem, qiIdx) => (
-                                            <div key={qItem.id} className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start group hover:border-blue-400 hover:shadow-lg transition-all">
-                                                <div className="flex-1 text-[13px] leading-relaxed">
-                                                    <div className="font-bold flex gap-2 mb-2"><span className="text-blue-600">Câu {qiIdx+1}.</span><LatexText text={qItem.text}/></div>
-                                                    {qItem.type === 'mcq' && (
-                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 opacity-60 text-[11px]">
-                                                            {qItem.options?.map((opt, oi) => <div key={oi}><strong>{String.fromCharCode(65+oi)}.</strong> {opt}</div>)}
-                                                        </div>
-                                                    )}
+                                            <div key={qItem.id} className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-start group hover:border-blue-400 hover:shadow-lg transition-all">
+                                                <div className="flex-1 text-[13px] leading-relaxed pr-6">
+                                                    <div className="font-bold flex gap-2 mb-2"><span className="text-blue-600">#{qiIdx+1}.</span><LatexText text={qItem.text}/></div>
+                                                    {qItem.imageUrl && <div className="my-2"><img src={qItem.imageUrl} className="max-h-24 rounded border"/></div>}
                                                 </div>
                                                 <button 
                                                     onClick={() => { 
@@ -721,7 +803,7 @@ const AdminDashboard = () => {
                                                         setShowBankModal(false); 
                                                         setBankTargetPart(null);
                                                     }} 
-                                                    className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all shadow-lg active:scale-95"
+                                                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all shadow-lg active:scale-95"
                                                 >
                                                     + Thêm vào đề
                                                 </button>
@@ -745,7 +827,7 @@ const AdminDashboard = () => {
                             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl"><FileText size={24}/></div>
                             <div>
                                 <h3 className="text-lg font-black uppercase line-clamp-1">{viewingQuiz.title}</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Khối {viewingQuiz.grade} • {viewingQuiz.questions.length} câu • {viewingQuiz.durationMinutes} phút</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Lớp {viewingQuiz.grade} • {viewingQuiz.questions.length} câu • {viewingQuiz.durationMinutes} phút</p>
                             </div>
                         </div>
                         <button onClick={() => setViewingQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
@@ -764,7 +846,6 @@ const AdminDashboard = () => {
                             {viewingQuiz.questions.filter(q=>q.type==='short').length > 0 && (
                                 <section className="pt-8 border-t border-slate-100"><h4 className="font-black text-sm uppercase mb-6 border-l-4 border-emerald-600 pl-3 text-emerald-600">PHẦN III. Câu trắc nghiệm trả lời ngắn.</h4><div className="space-y-8">{viewingQuiz.questions.filter(q=>q.type==='short').map((q, i) => (<div key={q.id} className="text-[15px] leading-relaxed"><div className="font-bold flex gap-2"><span className="shrink-0 text-emerald-600">Câu {i+1}.</span><LatexText text={q.text}/></div>{q.imageUrl && <img src={q.imageUrl} className="my-4 max-h-48 rounded-xl border border-slate-100" alt="Minh họa" />}<div className="mt-3 pl-8 text-slate-400 italic font-medium">Đáp số: .................................................</div></div>))}</div></section>
                             )}
-                            <div className="text-center font-black uppercase text-xs mt-10 border-t border-slate-100 pt-10 tracking-[0.5em] text-slate-300">--- HẾT ---</div>
                         </div>
                     </div>
                 </div>
