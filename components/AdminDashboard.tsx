@@ -215,22 +215,22 @@ const AdminDashboard = () => {
         });
     }, [selectedStudent, results, quizzes]);
 
-    // Lọc ngân hàng câu hỏi theo KHỐI đang soạn và LOẠI câu cần thêm
+    // Ngân hàng đề: Lọc theo khối của đề đang soạn và loại câu hỏi đang chọn
     const bankQuestions = useMemo(() => {
         if (!showBank.open) return [];
         return quizzes
-            .filter(q => q.grade === grade) // Lọc theo khối của đề hiện tại
+            .filter(q => q.grade === grade) 
             .flatMap(q => q.questions.map(quest => ({ ...quest, quizTitle: q.title })))
-            .filter(q => q.type === showBank.type); // Lọc theo loại câu hỏi cần (Part I, II or III)
+            .filter(q => q.type === showBank.type);
     }, [showBank, quizzes, grade]);
 
     // --- ACTIONS ---
     const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newStudentName || !newStudentCode) return alert("Vui lòng điền đủ thông tin!");
+        if (!newStudentName || !newStudentCode) return alert("Điền đủ thông tin!");
         
         const existing = users.find(u => u.studentCode === newStudentCode.toUpperCase());
-        if (existing) return alert("Mã định danh này đã tồn tại trong hệ thống!");
+        if (existing) return alert("Mã định danh này đã tồn tại!");
 
         const newUser: User = {
             id: uuidv4(),
@@ -267,13 +267,13 @@ const AdminDashboard = () => {
     };
 
     const handleDeleteResult = async (id: string) => {
-        if (!confirm('Bạn có muốn xóa kết quả thi này vì nghi ngờ gian lận?')) return;
+        if (!confirm('Bạn có muốn xóa kết quả thi này?')) return;
         await deleteResult(id);
         refreshData();
     };
 
     const handleDeleteUser = async (id: string) => {
-        if (!confirm('Bạn có chắc muốn xóa học sinh này và mọi lịch sử thi liên quan?')) return;
+        if (!confirm('Bạn có muốn xóa học sinh này và mọi dữ liệu liên quan?')) return;
         await deleteUser(id);
         refreshData();
     };
@@ -495,7 +495,7 @@ const AdminDashboard = () => {
                                 <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required placeholder="VD: Nguyễn Văn A" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (Cần ghi nhớ)</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (Duy nhất)</label>
                                 <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-black outline-none focus:border-blue-500 transition-all uppercase" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value)} required placeholder="VD: HS12-001" />
                             </div>
                             <div className="space-y-1">
@@ -554,7 +554,7 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* MODAL: NGÂN HÀNG ĐỀ (Lọc thông minh theo Khối và Loại câu) */}
+            {/* MODAL: NGÂN HÀNG ĐỀ */}
             {showBank.open && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
