@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter } from '../types';
 
@@ -68,6 +69,20 @@ export const saveUser = async (user: User): Promise<void> => {
 export const findUser = async (username: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
   const { data, error } = await supabase.from('users').select('data').eq('username', username).single();
+  if (error || !data) return undefined;
+  return data.data as User;
+};
+
+// Hàm mới: Tìm học sinh theo Mã số (Để chặn đăng ký trùng mã)
+export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
+  if (!supabase) return undefined;
+  // Truy vấn trong cột JSONB 'data' tìm trường 'studentCode'
+  const { data, error } = await supabase
+    .from('users')
+    .select('data')
+    .filter('data->>studentCode', 'eq', code.toUpperCase())
+    .maybeSingle();
+  
   if (error || !data) return undefined;
   return data.data as User;
 };
