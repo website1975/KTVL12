@@ -429,7 +429,7 @@ const AdminDashboard = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6"><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-slate-400 uppercase">Số người thi</p><p className="text-2xl font-black text-slate-800 mt-1">{resultStats.totalTakers}</p></div><div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-slate-400 uppercase">Điểm cao nhất</p><p className="text-2xl font-black text-blue-600 mt-1">{resultStats.highestScore.toFixed(2)}</p></div></div>
         </div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-[13px]"><thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100"><tr><th className="px-8 py-5">Thí sinh</th><th className="px-8 py-5">Đề thi mới nhất</th><th className="px-8 py-5">Điểm cao nhất</th><th className="px-8 py-5">Số lượt thi</th><th className="px-8 py-5">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-50">
+        <div className="overflow-x-auto"><table className="w-full text-left text-[13px] border-collapse min-w-[900px]"><thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100"><tr><th className="px-8 py-5">Thí sinh</th><th className="px-8 py-5">Đề thi mới nhất</th><th className="px-8 py-5">Điểm cao nhất</th><th className="px-8 py-5">Số lượt thi</th><th className="px-8 py-5">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-50">
                     {groupedResults.map((attempts) => {
                         const last = attempts[0]; const student = users.find(u=>u.id===last.studentId); const isExp = expandedStudent === last.studentId; const maxScore = Math.max(...attempts.map(a=>a.score));
                         return (<React.Fragment key={last.studentId}><tr className="hover:bg-slate-50/50 transition-colors group"><td className="px-8 py-5"><div className="font-bold text-slate-800">{last.studentName}</div><div className="text-[10px] text-slate-400 uppercase font-black">Khối {student?.grade || '?'}</div></td><td className="px-8 py-5"><div className="font-medium truncate max-w-[200px]">{quizzes.find(q=>q.id===last.quizId)?.title || 'Đề đã xóa'}</div><div className="text-[10px] text-slate-400">{new Date(last.submittedAt).toLocaleString('vi-VN')}</div></td><td className="px-8 py-5"><span className={`font-black text-base ${maxScore >= 8 ? 'text-green-600' : (maxScore >= 5 ? 'text-blue-600' : 'text-red-500')}`}>{maxScore.toFixed(2)}</span></td><td className="px-8 py-5"><div className="flex items-center gap-3"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-black text-[10px]">{attempts.length} lần</span>{attempts.length > 1 && (<button onClick={()=>setExpandedStudent(isExp ? null : last.studentId)} className="text-blue-600 font-black text-[10px] uppercase hover:underline flex items-center gap-1">{isExp ? <ChevronUp size={12}/> : <ChevronDown size={12}/>} XEM CHI TIẾT</button>)}</div></td><td className="px-8 py-5"><button onClick={async () => { if(confirm('Xóa tất cả kết quả của học sinh này?')) { for(const r of attempts) await deleteResult(r.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></td></tr>
@@ -449,22 +449,56 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-4"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><Users size={24}/></div><div><h3 className="text-sm font-black uppercase tracking-tight">Quản lý Tài khoản Học sinh</h3><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đang hiển thị {filteredStudents.length} học sinh</p></div></div>
             <div className="flex items-center gap-3"><label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo khối lớp:</label><div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">{(['all', '10', '11', '12'] as const).map(g => (<button key={g} onClick={() => setStdGrade(g)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${stdGrade === g ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{g === 'all' ? 'Tất cả' : `Khối ${g}`}</button>))}</div></div>
         </div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-[13px]"><thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100"><tr><th className="px-8 py-5">Họ và tên học sinh</th><th className="px-8 py-5">Tên đăng nhập</th><th className="px-8 py-5">Khối</th><th className="px-8 py-5">Mật khẩu</th><th className="px-8 py-5">Thống kê</th><th className="px-8 py-5">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-50">
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13px] border-collapse min-w-[1000px]">
+                <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-100">
+                    <tr>
+                        <th className="px-8 py-5 w-[20%]">Họ và tên học sinh</th>
+                        <th className="px-8 py-5 w-[15%]">Tên đăng nhập</th>
+                        <th className="px-8 py-5 w-[10%]">Khối</th>
+                        <th className="px-8 py-5 w-[15%]">Mật khẩu</th>
+                        <th className="px-8 py-5 w-[25%]">Thống kê học tập</th>
+                        <th className="px-8 py-5 w-[15%]">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
                     {filteredStudents.map(u => {
                         const sR = results.filter(r => r.studentId === u.id);
-                        return (<tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
+                        const avgScore = sR.length > 0 ? (sR.reduce((a, b) => a + (b.score || 0), 0) / sR.length) : 0;
+                        return (
+                            <tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-8 py-5 font-bold text-slate-800">{u.fullName}</td>
                                 <td className="px-8 py-5 font-mono text-blue-600">{u.username}</td>
-                                <td className="px-8 py-5"><span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span></td>
-                                <td className="px-8 py-5 font-mono text-slate-300">{u.password}</td>
-                                <td className="px-8 py-5"><div className="text-[10px] font-black text-slate-400 uppercase">Đã làm {sR.length} lượt thi</div><div className="text-xs font-bold text-slate-700">TB: {(sR.reduce((a,b)=>a+b.score,0)/(sR.length||1)).toFixed(1)}đ</div></td>
-                                <td className="px-8 py-5"><button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} className="p-2 text-slate-300 hover:text-red-500 transition-all group-hover:text-red-600"><Trash2 size={18}/></button></td>
-                            </tr>);
+                                <td className="px-8 py-5">
+                                    <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg font-black text-[10px] uppercase">Lớp {u.grade}</span>
+                                </td>
+                                <td className="px-8 py-5 font-mono text-slate-400">{u.password}</td>
+                                <td className="px-8 py-5">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="text-[10px] font-black text-slate-400 uppercase">Đã luyện {sR.length} đề</div>
+                                        <div className={`text-xs font-bold ${avgScore >= 5 ? 'text-green-600' : 'text-slate-700'}`}>
+                                            Trung bình: {avgScore.toFixed(1)}đ
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-8 py-5">
+                                    <button 
+                                        onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?`)) { await deleteUser(u.id); refreshData(); } }} 
+                                        className="p-3 bg-slate-50 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all group-hover:text-red-600 shadow-sm"
+                                        title="Xóa tài khoản"
+                                    >
+                                        <Trash2 size={18}/>
+                                    </button>
+                                </td>
+                            </tr>
+                        );
                     })}
                     {filteredStudents.length === 0 && (
-                        <tr><td colSpan={6} className="py-24 text-center text-slate-300 font-black uppercase text-xs tracking-widest">Không có tài khoản học sinh nào</td></tr>
+                        <tr><td colSpan={6} className="py-24 text-center text-slate-300 font-black uppercase text-xs tracking-widest bg-white">Không có tài khoản học sinh nào</td></tr>
                     )}
-                </tbody></table></div>
+                </tbody>
+            </table>
+        </div>
     </div>
   );
 
