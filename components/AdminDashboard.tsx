@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -73,7 +73,25 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                 {sectionQuestions.map((q, idx) => (
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
                         <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
-                        <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 mb-6 inline-block">Câu {idx + 1}</span>
+                        
+                        <div className="flex items-center gap-4 mb-6">
+                            <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 inline-block">Câu {idx + 1}</span>
+                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-1 rounded-xl border border-blue-100">
+                                <TargetIcon size={12} className="text-blue-500" />
+                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Điểm:</span>
+                                <input 
+                                    type="text" 
+                                    className="bg-transparent text-xs font-black text-blue-700 outline-none w-12 text-center" 
+                                    value={q.points} 
+                                    onChange={e => {
+                                        const nl = [...questions];
+                                        const i = nl.findIndex(x => x.id === q.id);
+                                        nl[i].points = e.target.value;
+                                        setQuestions(nl);
+                                    }}
+                                />
+                            </div>
+                        </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
                             <div className="space-y-2">
