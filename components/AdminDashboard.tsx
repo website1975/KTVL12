@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -33,8 +33,12 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
     const addManual = () => {
+        // Lấy điểm của câu cuối cùng cùng loại để làm mặc định cho câu mới
+        const lastQ = sectionQuestions[sectionQuestions.length - 1];
+        const defaultPoints = lastQ ? lastQ.points : (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5);
+
         const newQ: Question = {
-            id: uuidv4(), type, text: '', points: type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5,
+            id: uuidv4(), type, text: '', points: defaultPoints,
             options: type === 'mcq' ? ['', '', '', ''] : undefined,
             correctAnswer: '', solution: '',
             subQuestions: type === 'group-tf' ? [
@@ -45,6 +49,14 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
             ] : undefined
         };
         setQuestions([...questions, newQ]);
+    };
+
+    const applyPointsToAll = (points: string | number) => {
+        const newQuestions = questions.map(q => {
+            if (q.type === type) return { ...q, points };
+            return q;
+        });
+        setQuestions(newQuestions);
     };
 
     return (
@@ -76,21 +88,37 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                         
                         <div className="flex items-center gap-4 mb-6">
                             <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 inline-block">Câu {idx + 1}</span>
-                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-1 rounded-xl border border-blue-100">
-                                <TargetIcon size={12} className="text-blue-500" />
-                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Điểm:</span>
+                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-1.5 rounded-2xl border border-blue-100">
+                                <TargetIcon size={14} className="text-blue-500" />
+                                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Điểm:</span>
                                 <input 
                                     type="text" 
-                                    className="bg-transparent text-xs font-black text-blue-700 outline-none w-12 text-center" 
+                                    className="bg-transparent text-xs font-black text-blue-700 outline-none w-14 text-center border-b border-blue-200 focus:border-blue-500 transition-colors" 
                                     value={q.points} 
                                     onChange={e => {
+                                        const val = e.target.value;
                                         const nl = [...questions];
                                         const i = nl.findIndex(x => x.id === q.id);
-                                        nl[i].points = e.target.value;
+                                        nl[i].points = val;
                                         setQuestions(nl);
                                     }}
                                 />
+                                {idx === 0 && sectionQuestions.length > 1 && (
+                                    <button 
+                                        onClick={() => applyPointsToAll(q.points)}
+                                        title="Áp dụng mức điểm này cho toàn bộ câu trong phần này"
+                                        className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                                    >
+                                        <CopyCheck size={12} />
+                                        <span className="text-[8px] font-black uppercase">Áp dụng hết</span>
+                                    </button>
+                                )}
                             </div>
+                            {type === 'group-tf' && (
+                                <div className="text-[9px] font-bold text-slate-400 italic">
+                                    (Quy định: 0.1 - 0.25 - 0.5 - Full)
+                                </div>
+                            )}
                         </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
