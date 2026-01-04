@@ -32,6 +32,16 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
+// --- Helper for Offline Mode ---
+const getLocalUsers = (): User[] => {
+  const stored = localStorage.getItem('eduquiz_users_offline');
+  return stored ? JSON.parse(stored) : [];
+};
+
+const saveLocalUsers = (users: User[]) => {
+  localStorage.setItem('eduquiz_users_offline', JSON.stringify(users));
+};
+
 // --- Storage (Images) ---
 export const uploadQuizImage = async (file: File): Promise<string> => {
     if (!supabase) throw new Error("Chưa kết nối Database");
@@ -54,13 +64,23 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
 
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
-  if (!supabase) return [];
+  if (!supabase) return getLocalUsers();
   const { data, error } = await supabase.from('users').select('*');
-  if (error) return [];
+  if (error) return getLocalUsers();
   return data.map((row: any) => ({ ...row.data, id: row.id } as User));
 };
 
 export const saveUser = async (user: User): Promise<void> => {
+  // Save to Local first for safety
+  const local = getLocalUsers();
+  const existingIdx = local.findIndex(u => u.id === user.id || (u.studentCode && u.studentCode === user.studentCode));
+  if (existingIdx >= 0) {
+    local[existingIdx] = user;
+  } else {
+    local.push(user);
+  }
+  saveLocalUsers(local);
+
   if (!supabase) return;
   const { error } = await supabase.from('users').upsert({ 
     id: user.id, 
@@ -71,13 +91,20 @@ export const saveUser = async (user: User): Promise<void> => {
 };
 
 export const addPointsToUser = async (userId: string, pointsToAdd: number): Promise<void> => {
+  const local = getLocalUsers();
+  const user = local.find(u => u.id === userId);
+  if (user) {
+    user.points = (user.points || 0) + pointsToAdd;
+    saveLocalUsers(local);
+  }
+
   if (!supabase) {
     const stored = localStorage.getItem('eduquiz_current_user');
     if (stored) {
-      const user = JSON.parse(stored);
-      if (user.id === userId) {
-        user.points = (user.points || 0) + pointsToAdd;
-        localStorage.setItem('eduquiz_current_user', JSON.stringify(user));
+      const u = JSON.parse(stored);
+      if (u.id === userId) {
+        u.points = (u.points || 0) + pointsToAdd;
+        localStorage.setItem('eduquiz_current_user', JSON.stringify(u));
       }
     }
     return;
@@ -89,7 +116,6 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number): Prom
     userData.points = (userData.points || 0) + pointsToAdd;
     await supabase.from('users').update({ data: userData }).eq('id', userId);
     
-    // Đồng bộ lại local storage nếu là user hiện tại
     const stored = localStorage.getItem('eduquiz_current_user');
     if (stored) {
       const u = JSON.parse(stored);
@@ -101,6 +127,10 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number): Prom
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
+  const local = getLocalUsers();
+  const localFound = local.find(u => u.username === username);
+  if (localFound) return localFound;
+
   if (!supabase) return undefined;
   const { data, error } = await supabase.from('users').select('data').eq('username', username).single();
   if (error || !data) return undefined;
@@ -108,6 +138,10 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
+  const local = getLocalUsers();
+  const localFound = local.find(u => u.studentCode === code.toUpperCase());
+  if (localFound) return localFound;
+
   if (!supabase) return undefined;
   const { data, error } = await supabase
     .from('users')
@@ -120,12 +154,22 @@ export const findUserByStudentCode = async (code: string): Promise<User | undefi
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
+  const local = getLocalUsers().filter(u => u.id !== id);
+  saveLocalUsers(local);
+
   if (!supabase) return;
   await supabase.from('users').delete().eq('id', id);
 };
 
 export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
-  if (!supabase) return false;
+  const local = getLocalUsers();
+  const u = local.find(x => x.id === userId);
+  if (u) {
+    u.password = newPass;
+    saveLocalUsers(local);
+  }
+
+  if (!supabase) return !!u;
   const { data: rows, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
   if (fetchError || !rows) return false;
   const currentUser = rows.data as User;
