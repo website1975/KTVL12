@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, Question, Grade, QuestionType, Result, User, Chapter, QuizType } from '../types';
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
-    getUsers, getChapters, saveChapter, deleteChapter, uploadQuizImage, deleteResult, deleteUser, saveUser
+    getUsers, getChapters, saveChapter, deleteChapter, uploadQuizImage, deleteResult, deleteUser, saveUser, changePassword
 } from '../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -33,7 +33,6 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
     const addManual = () => {
-        // Lấy điểm của câu cuối cùng cùng loại để làm mặc định cho câu mới
         const lastQ = sectionQuestions[sectionQuestions.length - 1];
         const defaultPoints = lastQ ? lastQ.points : (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5);
 
@@ -114,11 +113,6 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                                     </button>
                                 )}
                             </div>
-                            {type === 'group-tf' && (
-                                <div className="text-[9px] font-bold text-slate-400 italic">
-                                    (Quy định: 0.1 - 0.25 - 0.5 - Full)
-                                </div>
-                            )}
                         </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
@@ -217,8 +211,10 @@ const AdminDashboard = () => {
     const [rChapterFilter, setRChapterFilter] = useState<string>('all');
     const [rQuizFilter, setRQuizFilter] = useState<string>('all');
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
+    const [sSearch, setSSearch] = useState('');
 
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+    const [editStudent, setEditStudent] = useState<User | null>(null);
     const [historyView, setHistoryView] = useState<{ student: User, quizId: string, attempts: Result[] } | null>(null);
     const [showBank, setShowBank] = useState<{ type: QuestionType, open: boolean }>({ type: 'mcq', open: false });
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
@@ -228,12 +224,71 @@ const AdminDashboard = () => {
     const [newStudentName, setNewStudentName] = useState('');
     const [newStudentCode, setNewStudentCode] = useState('');
     const [newStudentGrade, setNewStudentGrade] = useState<Grade>('12');
+    const [newStudentPass, setNewStudentPass] = useState('123456');
+
+    const csvInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { refreshData(); }, []);
 
     const refreshData = async () => {
         const [qs, rs, us, chs] = await Promise.all([getQuizzes(), getResults(), getUsers(), getChapters()]);
         setQuizzes(qs); setResults(rs); setUsers(us); setChapters(chs);
+    };
+
+    const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const text = event.target?.result as string;
+            if (!text) return;
+
+            const lines = text.split('\n');
+            const newUsers: User[] = [];
+            let importCount = 0;
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                // Hỗ trợ cả dấu phẩy và dấu chấm phẩy
+                const cols = line.includes(';') ? line.split(';') : line.split(',');
+                if (cols.length < 3) continue;
+
+                const mahs = cols[0].trim().toUpperCase();
+                const ten = cols[1].trim();
+                const lop = (cols[2].trim() || '12') as Grade;
+                const pass = cols[3]?.trim() || '123456';
+
+                if (!mahs || !ten) continue;
+
+                const newUser: User = {
+                    id: uuidv4(),
+                    username: mahs.toLowerCase(),
+                    password: pass,
+                    role: 'student',
+                    fullName: ten,
+                    studentCode: mahs,
+                    grade: lop,
+                    points: 0
+                };
+                newUsers.push(newUser);
+                importCount++;
+            }
+
+            if (newUsers.length > 0) {
+                if (confirm(`Bạn có chắc muốn nhập ${importCount} học sinh từ file?`)) {
+                    for (const u of newUsers) {
+                        await saveUser(u);
+                    }
+                    alert(`Đã nhập thành công ${importCount} học sinh!`);
+                    refreshData();
+                }
+            }
+        };
+        reader.readAsText(file);
+        if (csvInputRef.current) csvInputRef.current.value = '';
     };
 
     const filteredQuizzesList = useMemo(() => {
@@ -244,16 +299,6 @@ const AdminDashboard = () => {
             return matchesSearch && matchesGrade && matchesChapter;
         });
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
-
-    const resultStats = useMemo(() => {
-        if (rQuizFilter === 'all') return null;
-        const qResults = results.filter(r => r.quizId === rQuizFilter);
-        if (qResults.length === 0) return { max: 0, count: 0, avg: 0 };
-        const max = Math.max(...qResults.map(r => r.score));
-        const uniqueStudents = new Set(qResults.map(r => r.studentId)).size;
-        const avg = qResults.reduce((a, b) => a + b.score, 0) / qResults.length;
-        return { max, count: uniqueStudents, avg };
-    }, [results, rQuizFilter]);
 
     const latestResultsForTable = useMemo(() => {
         const filtered = results.filter(r => {
@@ -300,11 +345,11 @@ const AdminDashboard = () => {
         e.preventDefault();
         if (!newStudentName || !newStudentCode) return alert("Điền đủ thông tin!");
         const existing = users.find(u => u.studentCode === newStudentCode.toUpperCase());
-        if (existing) return alert("Mã định danh này đã tồn tại!");
+        if (existing) return alert("Mã số học sinh này đã tồn tại!");
         const newUser: User = {
             id: uuidv4(),
             username: newStudentCode.toLowerCase(),
-            password: '123',
+            password: newStudentPass,
             role: 'student',
             fullName: newStudentName,
             studentCode: newStudentCode.toUpperCase(),
@@ -312,8 +357,28 @@ const AdminDashboard = () => {
             points: 0
         };
         await saveUser(newUser);
-        alert("Cấp mã học sinh thành công!");
-        setNewStudentName(''); setNewStudentCode(''); setIsAddStudentOpen(false);
+        alert("Thêm học sinh mới thành công!");
+        setNewStudentName(''); setNewStudentCode(''); setNewStudentPass('123456'); setIsAddStudentOpen(false);
+        refreshData();
+    };
+
+    const handleResetPassword = async (studentId: string) => {
+        if (!confirm('Bạn có muốn đặt lại mật khẩu về mặc định "123456" cho học sinh này?')) return;
+        const success = await changePassword(studentId, '123456');
+        if (success) {
+            alert('Mật khẩu đã được đặt lại về "123456"');
+            refreshData();
+        } else {
+            alert('Có lỗi xảy ra, vui lòng thử lại');
+        }
+    };
+
+    const handleUpdateStudent = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editStudent) return;
+        await saveUser(editStudent);
+        alert('Cập nhật thông tin thành công!');
+        setEditStudent(null);
         refreshData();
     };
 
@@ -485,23 +550,14 @@ const AdminDashboard = () => {
                                 <select className="flex-1 px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rQuizFilter} onChange={e => setRQuizFilter(e.target.value)}><option value="all">Chọn đề thi</option>{quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select>
                             </div>
 
-                            {resultStats && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
-                                    <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><Trophy size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><h4 className="text-xl font-black">{resultStats.max.toFixed(2)}</h4></div></div>
-                                    <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><Users size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Số học sinh</p><h4 className="text-xl font-black">{resultStats.count}</h4></div></div>
-                                    <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center"><TrendingUp size={24}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm trung bình</p><h4 className="text-xl font-black">{resultStats.avg.toFixed(2)}</h4></div></div>
-                                </div>
-                            )}
-
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
                                 <table className="w-full text-left border-collapse">
                                     <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm bài làm</th><th className="p-6 text-center">Thưởng</th><th className="p-6 text-center">Lần nộp</th><th className="p-6 text-center">Thao tác</th></tr></thead>
                                     <tbody className="divide-y">{latestResultsForTable.map(r => {
                                         const q = quizzes.find(qx => qx.id === r.quizId);
-                                        const attempts = results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId);
                                         return (
                                             <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center"><span className="text-xs font-black text-yellow-600">+{r.pointsAwarded || 0}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center flex items-center justify-center gap-2">
-                                                <button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/> Xem</button>
+                                                <button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts: results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId) }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/> Xem</button>
                                                 <button onClick={() => handleDeleteResult(r.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
                                             </td></tr>
                                         );
@@ -513,32 +569,80 @@ const AdminDashboard = () => {
 
                     {activeMenu === 'students' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-                            <div className="flex justify-between items-center bg-white p-5 rounded-[2rem] border shadow-sm">
-                                <div className="flex gap-4 items-center">
-                                    <Users className="text-slate-300 ml-4" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Lọc khối:</span>
-                                    <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Tất cả</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
-                                </div>
-                                <button onClick={() => setIsAddStudentOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all"><UserPlus size={16}/> Thêm mã học sinh</button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter)).map(u => (
-                                    <div key={u.id} onClick={() => setSelectedStudent(u)} className="bg-white p-8 rounded-[2.5rem] border hover:border-blue-400 transition-all cursor-pointer shadow-sm text-center relative group">
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u.id); }} className="absolute top-6 right-6 p-2 bg-red-50 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"><Trash2 size={16}/></button>
-                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center font-black text-2xl mb-4 group-hover:scale-110 transition-transform relative">
-                                            {u.fullName.charAt(0)}
-                                            {u.points && u.points > 0 ? <div className="absolute -top-1 -right-1 bg-yellow-400 text-white p-1.5 rounded-full"><Medal size={14}/></div> : null}
-                                        </div>
-                                        <h4 className="font-black text-slate-800 text-lg">{u.fullName}</h4>
-                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Mã: {u.studentCode} • Lớp {u.grade}</p>
-                                        
-                                        <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full border border-yellow-100">
-                                            <Medal size={12}/>
-                                            <span className="text-[9px] font-black uppercase tracking-widest">{u.points || 0} tích lũy</span>
-                                        </div>
-
-                                        <div className="mt-6 pt-6 border-t flex justify-around"><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Đề đã làm</p><p className="font-black text-slate-700">{new Set(results.filter(r => r.studentId === u.id).map(r => r.quizId)).size}</p></div><div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Điểm TB</p><p className="font-black text-blue-600">{(results.filter(r => r.studentId === u.id).reduce((a,b)=>a+b.score,0)/(results.filter(r => r.studentId === u.id).length || 1)).toFixed(1)}</p></div></div>
+                            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-[2rem] border shadow-sm gap-4">
+                                <div className="flex flex-1 gap-4 items-center">
+                                    <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border rounded-2xl flex-1 max-w-md">
+                                        <Search className="text-slate-300" size={18}/>
+                                        <input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm tên hoặc MSHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
                                     </div>
-                                ))}
+                                    <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Tất cả khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="file" 
+                                        accept=".csv,.txt" 
+                                        className="hidden" 
+                                        ref={csvInputRef} 
+                                        onChange={handleCsvImport}
+                                    />
+                                    <button 
+                                        onClick={() => csvInputRef.current?.click()}
+                                        className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all"
+                                    >
+                                        <FileSpreadsheet size={16}/> Nhập từ CSV
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsAddStudentOpen(true)} 
+                                        className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all"
+                                    >
+                                        <UserPlus size={16}/> Thêm học sinh
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            <th className="p-6">Học sinh</th>
+                                            <th className="p-6">Mã định danh (MSHS)</th>
+                                            <th className="p-6 text-center">Khối</th>
+                                            <th className="p-6 text-center">Tích lũy</th>
+                                            <th className="p-6 text-center">Quản lý tài khoản</th>
+                                            <th className="p-6 text-center">Xóa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter) && (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || u.studentCode?.toLowerCase().includes(sSearch.toLowerCase()))).map(u => (
+                                            <tr key={u.id} className="group hover:bg-slate-50/50">
+                                                <td className="p-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">{u.fullName.charAt(0)}</div>
+                                                        <span className="font-black text-slate-800">{u.fullName}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-6 font-black text-slate-400">{u.studentCode}</td>
+                                                <td className="p-6 text-center font-bold text-slate-500">{u.grade}</td>
+                                                <td className="p-6 text-center">
+                                                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full border border-yellow-100">
+                                                        <Medal size={12}/>
+                                                        <span className="text-[10px] font-black uppercase">{u.points || 0}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-6 text-center">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button onClick={() => setEditStudent(u)} className="p-2.5 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all" title="Sửa thông tin"><UserCog size={16}/></button>
+                                                        <button onClick={() => handleResetPassword(u.id)} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all" title="Reset Mật khẩu về 123456"><RefreshCw size={16}/></button>
+                                                        <button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all" title="Xem lịch sử làm bài"><Eye size={16}/></button>
+                                                    </div>
+                                                </td>
+                                                <td className="p-6 text-center">
+                                                    <button onClick={() => handleDeleteUser(u.id)} className="p-2.5 bg-red-50 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     )}
@@ -558,23 +662,55 @@ const AdminDashboard = () => {
                 <div className="fixed inset-0 bg-slate-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
                         <button onClick={() => setIsAddStudentOpen(false)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 transition-colors"><X size={24}/></button>
-                        <h3 className="text-xl font-black uppercase text-slate-800 mb-8 flex items-center gap-3"><UserPlus className="text-blue-600"/> Cấp mã định danh mới</h3>
+                        <h3 className="text-xl font-black uppercase text-slate-800 mb-8 flex items-center gap-3"><UserPlus className="text-blue-600"/> Thêm học sinh mới</h3>
                         <form onSubmit={handleAddStudent} className="space-y-6">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Họ và Tên</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Họ và Tên học sinh</label>
                                 <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required placeholder="VD: Nguyễn Văn A" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (Duy nhất)</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (MSHS)</label>
                                 <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-black outline-none focus:border-blue-500 transition-all uppercase" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value)} required placeholder="VD: HS12-001" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Khối lớp</label>
+                                    <select className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}>
+                                        <option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mật khẩu</label>
+                                    <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={newStudentPass} onChange={e => setNewStudentPass(e.target.value)} required />
+                                </div>
+                            </div>
+                            <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-100 mt-4">Xác nhận thêm mới</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {editStudent && (
+                <div className="fixed inset-0 bg-slate-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
+                        <button onClick={() => setEditStudent(null)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 transition-colors"><X size={24}/></button>
+                        <h3 className="text-xl font-black uppercase text-slate-800 mb-8 flex items-center gap-3"><UserCog className="text-orange-600"/> Sửa thông tin học sinh</h3>
+                        <form onSubmit={handleUpdateStudent} className="space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Họ và Tên</label>
+                                <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={editStudent.fullName} onChange={e => setEditStudent({...editStudent, fullName: e.target.value})} required />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (Không thể đổi)</label>
+                                <input type="text" className="w-full bg-slate-200 border rounded-2xl p-4 font-black outline-none opacity-50" value={editStudent.studentCode} readOnly />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase px-1">Khối lớp</label>
-                                <select className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}>
+                                <select className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none" value={editStudent.grade} onChange={e => setEditStudent({...editStudent, grade: e.target.value as Grade})}>
                                     <option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
                                 </select>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-100 mt-4">Xác nhận cấp mã</button>
+                            <button type="submit" className="w-full bg-orange-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl mt-4">Lưu cập nhật</button>
                         </form>
                     </div>
                 </div>
