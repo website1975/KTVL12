@@ -244,21 +244,35 @@ const AdminDashboard = () => {
             const text = event.target?.result as string;
             if (!text) return;
 
-            const lines = text.split('\n');
+            // Xử lý các dòng
+            const lines = text.split(/\r?\n/);
             const newUsers: User[] = [];
             let importCount = 0;
 
-            for (let i = 1; i < lines.length; i++) {
+            for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
 
-                // Hỗ trợ cả dấu phẩy và dấu chấm phẩy
-                const cols = line.includes(';') ? line.split(';') : line.split(',');
-                if (cols.length < 3) continue;
+                // Tự động nhận diện phân cách: Tab (\t), Phẩy (,), Chấm phẩy (;), hoặc khoảng trắng nhiều (regex)
+                let cols: string[] = [];
+                if (line.includes('\t')) {
+                    cols = line.split('\t');
+                } else if (line.includes(';')) {
+                    cols = line.split(';');
+                } else if (line.includes(',')) {
+                    cols = line.split(',');
+                } else {
+                    cols = line.split(/\s{2,}/); // Khoảng trắng ít nhất 2 ký tự (giả định MAHS Hoten cách nhau nhiều space)
+                }
+                
+                // Bỏ qua dòng tiêu đề nếu chứa chữ MAHS hoặc Hoten
+                if (line.toUpperCase().includes('MAHS') || line.toUpperCase().includes('HOTEN')) continue;
 
-                const mahs = cols[0].trim().toUpperCase();
-                const ten = cols[1].trim();
-                const lop = (cols[2].trim() || '12') as Grade;
+                if (cols.length < 2) continue;
+
+                const mahs = cols[0]?.trim().toUpperCase();
+                const ten = cols[1]?.trim();
+                const lop = (cols[2]?.trim() || '12') as Grade;
                 const pass = cols[3]?.trim() || '123456';
 
                 if (!mahs || !ten) continue;
@@ -278,13 +292,15 @@ const AdminDashboard = () => {
             }
 
             if (newUsers.length > 0) {
-                if (confirm(`Bạn có chắc muốn nhập ${importCount} học sinh từ file?`)) {
+                if (confirm(`Hệ thống tìm thấy ${importCount} học sinh. Bạn có chắc muốn nhập vào danh sách?`)) {
                     for (const u of newUsers) {
                         await saveUser(u);
                     }
                     alert(`Đã nhập thành công ${importCount} học sinh!`);
                     refreshData();
                 }
+            } else {
+                alert("Không tìm thấy dữ liệu hợp lệ trong file. Kiểm tra lại định dạng: MAHS [tab] Hoten [tab] Khoi [tab] pass");
             }
         };
         reader.readAsText(file);
@@ -573,9 +589,17 @@ const AdminDashboard = () => {
                                 <div className="flex flex-1 gap-4 items-center">
                                     <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border rounded-2xl flex-1 max-w-md">
                                         <Search className="text-slate-300" size={18}/>
-                                        <input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm tên hoặc MSHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
+                                        <input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm theo tên hoặc MSHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
                                     </div>
-                                    <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Tất cả khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
+                                    <div className="flex items-center gap-2">
+                                        <Filter size={16} className="text-slate-400" />
+                                        <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
+                                            <option value="all">Tất cả khối</option>
+                                            <option value="12">Khối 12</option>
+                                            <option value="11">Khối 11</option>
+                                            <option value="10">Khối 10</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
                                     <input 
