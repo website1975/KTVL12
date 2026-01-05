@@ -429,8 +429,8 @@ const AdminDashboard = () => {
                                             <div className="flex justify-between items-start mb-6">
                                                 <div className="flex flex-col gap-1.5">
                                                     <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${gradeBadge}`}>{q.grade === 'all' ? 'CHUNG' : `KHỐI ${q.grade}`}</span>
-                                                    <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1.5 w-fit ${q.isPublished ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
-                                                        {q.isPublished ? <Check size={10}/> : <X size={10}/>}
+                                                    <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1.5 w-fit border ${q.isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                                                        {q.isPublished ? <Check size={10} strokeWidth={4}/> : <X size={10} strokeWidth={4}/>}
                                                         {q.isPublished ? 'Đang công khai' : 'Bản nháp'}
                                                     </div>
                                                 </div>
@@ -477,9 +477,9 @@ const AdminDashboard = () => {
                                 </div>
                                 <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> {editingId ? 'Cập nhật đề thi' : 'Lưu đề thi mới'}</button>
                             </div>
-                            <QuestionSection title="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
-                            <QuestionSection title="PHẦN II. ĐÚNG/SAI" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
-                            <QuestionSection title="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
+                            <QuestionSection title="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
+                            <QuestionSection title="PHẦN II. ĐÚNG/SAI" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
+                            <QuestionSection title="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
                         </div>
                     )}
 
