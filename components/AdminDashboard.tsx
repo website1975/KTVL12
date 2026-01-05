@@ -87,6 +87,8 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                         
                         <div className="flex items-center gap-4 mb-6">
                             <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 inline-block">Câu {idx + 1}</span>
+                            
+                            {/* NÚT SET ĐIỂM TỪNG CÂU & SET TẤT CẢ */}
                             <div className="flex items-center gap-2 bg-blue-50 px-4 py-1.5 rounded-2xl border border-blue-100">
                                 <TargetIcon size={14} className="text-blue-500" />
                                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Điểm:</span>
@@ -102,16 +104,18 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                                         setQuestions(nl);
                                     }}
                                 />
-                                {idx === 0 && sectionQuestions.length > 1 && (
-                                    <button 
-                                        onClick={() => applyPointsToAll(q.points)}
-                                        title="Áp dụng mức điểm này cho toàn bộ câu trong phần này"
-                                        className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5"
-                                    >
-                                        <CopyCheck size={12} />
-                                        <span className="text-[8px] font-black uppercase">Áp dụng hết</span>
-                                    </button>
-                                )}
+                                <button 
+                                    onClick={() => {
+                                        if(confirm(`Áp dụng mức ${q.points} điểm cho TOÀN BỘ các câu trong phần này?`)) {
+                                            applyPointsToAll(q.points);
+                                        }
+                                    }}
+                                    title="Áp dụng mức điểm này cho toàn bộ câu cùng loại"
+                                    className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5 shadow-md active:scale-90"
+                                >
+                                    <CopyCheck size={12} />
+                                    <span className="text-[8px] font-black uppercase">Set hết</span>
+                                </button>
                             </div>
                         </div>
                         
@@ -162,11 +166,9 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                                         onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
                                         placeholder="Nhập hướng dẫn giải (hệ thống sẽ hiện sau khi học sinh nộp bài)..." 
                                     />
-                                    <div className="absolute top-4 right-4 text-[8px] font-black text-yellow-300 uppercase select-none group-focus-within:opacity-0 transition-opacity">Draft Mode</div>
                                 </div>
                                 <div className="space-y-2">
                                     <div className="w-full p-6 bg-yellow-50/40 border border-yellow-100 rounded-3xl text-sm min-h-[140px] overflow-auto shadow-inner relative">
-                                        <span className="absolute top-4 right-4 text-[8px] font-black text-yellow-500/30 uppercase select-none">Live Preview</span>
                                         <div className="text-slate-600 italic leading-relaxed">
                                             <LatexText text={q.solution || '*Chưa có lời giải chi tiết cho câu này.*'} />
                                         </div>
@@ -353,11 +355,9 @@ const AdminDashboard = () => {
     const bankQuestions = useMemo(() => {
         if (!bankModal.type) return [];
         let allQs: Question[] = [];
-        // Lấy tất cả câu hỏi cùng loại từ các đề cùng khối lớp
         quizzes.filter(q => q.grade === grade).forEach(q => {
             allQs = [...allQs, ...q.questions.filter(qu => qu.type === bankModal.type)];
         });
-        // Lọc trùng nội dung câu hỏi
         return allQs.filter((v, i, a) => a.findIndex(t => t.text === v.text) === i);
     }, [quizzes, grade, bankModal.type]);
 
@@ -455,41 +455,60 @@ const AdminDashboard = () => {
                                     const attempts = quizResults.length;
                                     const maxScore = attempts > 0 ? Math.max(...quizResults.map(r => r.score)) : 0;
                                     
+                                    // PHÂN BIỆT MÀU SẮC THEO KHỐI
+                                    let themeClass = "bg-white border-slate-200 hover:border-blue-400";
+                                    let badgeClass = "bg-slate-100 text-slate-400";
+                                    let infoBg = "bg-slate-50";
+
+                                    if (q.grade === '12') {
+                                        themeClass = "bg-blue-50/20 border-blue-200 hover:border-blue-500 shadow-blue-500/5";
+                                        badgeClass = q.isPublished ? "bg-blue-600 text-white" : "bg-slate-300 text-white";
+                                        infoBg = "bg-blue-50/50";
+                                    } else if (q.grade === '11') {
+                                        themeClass = "bg-purple-50/20 border-purple-200 hover:border-purple-500 shadow-purple-500/5";
+                                        badgeClass = q.isPublished ? "bg-purple-600 text-white" : "bg-slate-300 text-white";
+                                        infoBg = "bg-purple-50/50";
+                                    } else if (q.grade === '10') {
+                                        themeClass = "bg-orange-50/20 border-orange-200 hover:border-orange-500 shadow-orange-500/5";
+                                        badgeClass = q.isPublished ? "bg-orange-600 text-white" : "bg-slate-300 text-white";
+                                        infoBg = "bg-orange-50/50";
+                                    }
+
                                     return (
-                                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border hover:border-blue-400 transition-all group flex flex-col shadow-sm">
+                                        <div key={q.id} className={`rounded-[2.5rem] p-8 border transition-all group flex flex-col shadow-sm ${themeClass}`}>
                                             <div className="flex justify-between items-start mb-6">
-                                                <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${q.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{q.isPublished ? 'CÔNG KHAI' : 'NHÁP'}</span>
+                                                <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${badgeClass}`}>{q.isPublished ? (q.type === 'test' ? 'BÀI THI' : 'LUYỆN TẬP') : 'BẢN NHÁP'}</span>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <button onClick={() => startEdit(q)} title="Chỉnh sửa đề" className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit size={16}/></button>
-                                                    <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} title="Xóa đề" className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                                    <button onClick={() => startEdit(q)} title="Chỉnh sửa đề" className="p-2.5 bg-white/80 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm border"><Edit size={16}/></button>
+                                                    <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} title="Xóa đề" className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-100"><Trash2 size={16}/></button>
                                                 </div>
                                             </div>
-                                            <h3 className="font-black text-slate-800 text-lg mb-4 leading-tight min-h-[56px]">{q.title}</h3>
+                                            <h3 className="font-black text-slate-800 text-lg mb-4 leading-tight min-h-[56px] line-clamp-2">{q.title}</h3>
                                             
-                                            <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-2 gap-y-4 gap-x-2 mb-6 text-center">
+                                            <div className={`${infoBg} rounded-2xl p-5 grid grid-cols-2 gap-y-4 gap-x-2 mb-6 text-center border border-white/50 shadow-inner`}>
                                                 <div className="border-r border-slate-200">
-                                                    <p className="text-[8px] font-black text-slate-300 uppercase">Khối</p>
-                                                    <p className="text-xs font-black">{q.grade}</p>
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Khối lớp</p>
+                                                    <p className="text-xs font-black">Khối {q.grade}</p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-[8px] font-black text-slate-300 uppercase">Số câu</p>
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Câu hỏi</p>
                                                     <p className="text-xs font-black">{q.questions.length}</p>
                                                 </div>
                                                 <div className="border-t border-r border-slate-200 pt-3">
-                                                    <p className="text-[8px] font-black text-slate-300 uppercase">Lượt làm</p>
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Số lượt thi</p>
                                                     <p className="text-xs font-black text-blue-600">{attempts}</p>
                                                 </div>
                                                 <div className="border-t border-slate-200 pt-3">
-                                                    <p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao</p>
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Kỷ lục</p>
                                                     <p className="text-xs font-black text-emerald-600">{maxScore.toFixed(1)}</p>
                                                 </div>
                                             </div>
                                             
                                             <button 
                                                 onClick={() => setPreviewQuiz(q)} 
-                                                className="mt-auto pt-4 border-t flex items-center justify-center gap-2 text-[10px] font-black text-blue-600 uppercase hover:underline"
+                                                className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[10px] font-black text-blue-600 uppercase hover:underline"
                                             >
-                                                <Eye size={14}/> XEM TRƯỚC ĐỀ
+                                                <Eye size={14}/> XEM CHI TIẾT ĐỀ THI
                                             </button>
                                         </div>
                                     );
@@ -566,7 +585,7 @@ const AdminDashboard = () => {
                                             className="w-full bg-slate-50 border rounded-[2rem] p-8 font-bold outline-none min-h-[200px] text-sm focus:bg-white focus:border-blue-300 transition-all shadow-inner leading-relaxed" 
                                             value={aiPrompt} 
                                             onChange={e => setAiPrompt(e.target.value)} 
-                                            placeholder="Ví dụ: Đạo hàm và các ứng dụng của đạo hàm để khảo sát và vẽ đồ thị hàm số. Bao gồm các bài toán cực trị, giá trị lớn nhất nhỏ nhất và tiệm cận..." 
+                                            placeholder="Ví dụ: Đạo hàm và các ứng dụng của đạo hàm để khảo sát và vẽ đồ thị hàm số..." 
                                         />
                                     </div>
                                     <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all disabled:opacity-50">
@@ -583,47 +602,15 @@ const AdminDashboard = () => {
                             <div className="bg-white p-8 rounded-[3rem] border shadow-sm flex flex-col gap-6">
                                 <h3 className="text-xl font-black uppercase text-slate-800 flex items-center gap-3"><BarChart3 className="text-blue-600"/> Bảng điểm tổng quát</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Lọc theo Khối</label>
-                                        <select 
-                                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" 
-                                            value={rGradeFilter} 
-                                            onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}
-                                        >
-                                            <option value="all">Tất cả khối</option>
-                                            <option value="12">Khối 12</option>
-                                            <option value="11">Khối 11</option>
-                                            <option value="10">Khối 10</option>
-                                        </select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Lọc theo Chương</label>
-                                        <select 
-                                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" 
-                                            value={rChapterFilter} 
-                                            onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}
-                                        >
-                                            <option value="all">Tất cả chương</option>
-                                            {chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Lọc theo Đề thi</label>
-                                        <select 
-                                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" 
-                                            value={rQuizFilter} 
-                                            onChange={e => setRQuizFilter(e.target.value)}
-                                        >
-                                            <option value="all">Tất cả đề</option>
-                                            {quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
-                                        </select>
-                                    </div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Khối lớp</label><select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}><option value="all">Tất cả khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Chương học</label><select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}><option value="all">Tất cả chương</option>{chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Tên đề thi</label><select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={rQuizFilter} onChange={e => setRQuizFilter(e.target.value)}><option value="all">Tất cả đề</option>{quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select></div>
                                 </div>
                             </div>
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead>
-                                        <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Thí sinh</th><th className="p-6">Bài thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Thời gian</th><th className="p-6 text-center">Ngày nộp</th><th className="p-6 text-center">Xóa</th></tr>
+                                        <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Thí sinh</th><th className="p-6">Bài thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th><th className="p-6 text-center">Xóa</th></tr>
                                     </thead>
                                     <tbody className="divide-y">
                                         {filteredResults.length > 0 ? filteredResults.sort((a, b) => parseISO(b.submittedAt).getTime() - parseISO(a.submittedAt).getTime()).map(r => {
@@ -634,13 +621,12 @@ const AdminDashboard = () => {
                                                     <td className="p-6 text-sm text-slate-500">{quiz?.title || 'Đề đã bị xóa'}</td>
                                                     <td className="p-6 text-center font-black text-slate-400">{quiz?.grade || '-'}</td>
                                                     <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                                    <td className="p-6 text-center text-slate-400 text-xs">{Math.floor(r.durationSeconds/60)}:{r.durationSeconds%60 < 10 ? '0' : ''}{r.durationSeconds%60}</td>
                                                     <td className="p-6 text-center text-slate-400 text-xs">{format(parseISO(r.submittedAt), 'HH:mm dd/MM')}</td>
                                                     <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa kết quả?')) { deleteResult(r.id); refreshData(); } }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button></td>
                                                 </tr>
                                             );
                                         }) : (
-                                            <tr><td colSpan={7} className="p-10 text-center text-slate-300 font-black uppercase tracking-widest">Không có dữ liệu phù hợp</td></tr>
+                                            <tr><td colSpan={6} className="p-10 text-center text-slate-300 font-black uppercase tracking-widest">Không có dữ liệu phù hợp</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -652,48 +638,32 @@ const AdminDashboard = () => {
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
                             <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-5 rounded-[2.5rem] border shadow-sm gap-5">
                                 <div className="flex flex-1 flex-col sm:flex-row gap-4 items-center w-full">
-                                    <div className="flex items-center gap-3 px-5 py-3 bg-slate-50 border rounded-2xl flex-1 w-full sm:max-w-xs">
-                                        <Search className="text-slate-300" size={18}/>
-                                        <input type="text" className="bg-transparent outline-none text-xs font-black w-full uppercase" placeholder="Tên / MAHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
-                                    </div>
+                                    <div className="flex items-center gap-3 px-5 py-3 bg-slate-50 border rounded-2xl flex-1 w-full sm:max-w-xs"><Search className="text-slate-300" size={18}/><input type="text" className="bg-transparent outline-none text-xs font-black w-full uppercase" placeholder="Tên / MAHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} /></div>
                                     <div className="flex items-center gap-4 shrink-0">
                                         <div className="relative">
-                                            <select className="pl-4 pr-10 py-3 bg-white border rounded-2xl text-[10px] font-black uppercase outline-none min-w-[120px] appearance-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
-                                                <option value="all">Tất cả khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
-                                            </select>
+                                            <select className="pl-4 pr-10 py-3 bg-white border rounded-2xl text-[10px] font-black uppercase outline-none min-w-[120px] appearance-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}><option value="all">Khối lớp</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
                                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300"><ChevronRight size={14} className="rotate-90" /></div>
                                         </div>
-                                        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-2xl">
-                                            <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Số lượng:</span>
-                                            <span className="text-sm font-black text-blue-800">{filteredStudents.length}</span>
-                                        </div>
+                                        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-2xl"><span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">SL Học sinh:</span><span className="text-sm font-black text-blue-800">{filteredStudents.length}</span></div>
                                     </div>
                                 </div>
                                 <div className="flex gap-2 w-full lg:w-auto">
                                     <button onClick={() => setIsAddStudentOpen(true)} className="bg-slate-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-black transition-all flex items-center gap-2"><UserPlus size={16}/> Thêm học sinh</button>
-                                    <input type="file" accept=".csv,.txt" className="hidden" ref={csvInputRef} onChange={handleCsvImport} />
-                                    <button onClick={() => csvInputRef.current?.click()} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-emerald-700 transition-all flex items-center gap-2"><FileSpreadsheet size={16}/> Nhập CSV</button>
+                                    <input type="file" accept=".csv,.txt" className="hidden" ref={csvInputRef} onChange={handleCsvImport} /><button onClick={() => csvInputRef.current?.click()} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-emerald-700 transition-all flex items-center gap-2"><FileSpreadsheet size={16}/> Nhập CSV</button>
                                 </div>
                             </div>
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6">Mã số (MAHS)</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Tích lũy</th><th className="p-6 text-center">Quản lý</th><th className="p-6 text-center">Xóa</th></tr>
-                                    </thead>
+                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6">Mã số</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Tích lũy</th><th className="p-6 text-center">Quản lý</th><th className="p-6 text-center">Xóa</th></tr></thead>
                                     <tbody className="divide-y">
                                         {filteredStudents.map(u => (
                                             <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="p-6"><span className="font-bold text-slate-800">{u.fullName}</span></td>
+                                                <td className="p-6 font-bold text-slate-800">{u.fullName}</td>
                                                 <td className="p-6 font-black text-slate-400 uppercase">{u.studentCode}</td>
                                                 <td className="p-6 text-center font-bold text-slate-500">{u.grade}</td>
                                                 <td className="p-6 text-center font-black text-blue-600">{u.points || 0}</td>
-                                                <td className="p-6 text-center">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button>
-                                                        <button onClick={() => { if(confirm('Đặt mật khẩu về 123?')) changePassword(u.id, '123'); }} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all"><RefreshCw size={14}/></button>
-                                                    </div>
-                                                </td>
-                                                <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa học sinh này?')) { deleteUser(u.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                                <td className="p-6 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button><button onClick={() => { if(confirm('Đặt mật khẩu về 123?')) changePassword(u.id, '123'); }} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all"><RefreshCw size={14}/></button></div></td>
+                                                <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa?')) { deleteUser(u.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -702,7 +672,7 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* MODAL XEM TRƯỚC ĐỀ (ADMIN) */}
+                    {/* MODAL XEM TRƯỚC ĐỀ */}
                     {previewQuiz && (
                         <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                             <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border-8 border-white">
@@ -715,78 +685,50 @@ const AdminDashboard = () => {
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl">
-                                            <Download size={16}/> Xuất File Word
-                                        </button>
+                                        <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl"><Download size={16}/> Xuất File Word</button>
                                         <button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><XCircle size={24}/></button>
                                     </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                                     <div className="max-w-3xl mx-auto space-y-12 pb-12">
-                                        {/* Phần I */}
+                                        {/* Render Phần I, II, III (Giữ nguyên định dạng thụt lề từ bước trước) */}
                                         {previewQuiz.questions.some(q => q.type === 'mcq') && (
                                             <div className="space-y-6">
                                                 <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest border-b-2 border-blue-100 pb-2">PHẦN I. Câu trắc nghiệm nhiều lựa chọn</h4>
                                                 {previewQuiz.questions.filter(q => q.type === 'mcq').map((q, i) => (
                                                     <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                                            <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                                            <LatexText text={q.text}/>
-                                                        </div>
+                                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><LatexText text={q.text}/></div>
                                                         {q.options && (
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">
-                                                                {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
-                                                            </div>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">{q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}</div>
                                                         )}
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
-
-                                        {/* Phần II */}
                                         {previewQuiz.questions.some(q => q.type === 'group-tf') && (
                                             <div className="space-y-6">
                                                 <h4 className="text-sm font-black text-purple-700 uppercase tracking-widest border-b-2 border-purple-100 pb-2">PHẦN II. Câu trắc nghiệm Đúng/Sai</h4>
                                                 {previewQuiz.questions.filter(q => q.type === 'group-tf').map((q, i) => (
                                                     <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                                            <span className="text-purple-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                                            <LatexText text={q.text}/>
-                                                        </div>
+                                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4"><span className="text-purple-600 shrink-0 font-black italic underline">Câu {i+1}.</span><LatexText text={q.text}/></div>
                                                         {q.subQuestions && (
-                                                            <div className="space-y-4 pl-16">
-                                                                {q.subQuestions.map((sq, si) => (
-                                                                    <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
-                                                                        <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
-                                                                        <LatexText text={sq.text}/>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
+                                                            <div className="space-y-4 pl-16">{q.subQuestions.map((sq, si) => (<div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3"><span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>))}</div>
                                                         )}
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
-
-                                        {/* Phần III */}
                                         {previewQuiz.questions.some(q => q.type === 'short') && (
                                             <div className="space-y-6">
                                                 <h4 className="text-sm font-black text-orange-700 uppercase tracking-widest border-b-2 border-orange-100 pb-2">PHẦN III. Câu trắc nghiệm Trả lời ngắn</h4>
                                                 {previewQuiz.questions.filter(q => q.type === 'short').map((q, i) => (
-                                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                                        <div className="text-slate-800 text-[15px] font-bold leading-relaxed flex items-start gap-4">
-                                                            <span className="text-orange-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                                            <LatexText text={q.text}/>
-                                                        </div>
-                                                    </div>
+                                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100"><div className="text-slate-800 text-[15px] font-bold leading-relaxed flex items-start gap-4"><span className="text-orange-600 shrink-0 font-black italic underline">Câu {i+1}.</span><LatexText text={q.text}/></div></div>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                                <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10">
-                                    <button onClick={() => { startEdit(previewQuiz!); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Vào Trình Chỉnh Sửa Đề</button>
-                                </div>
+                                <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10"><button onClick={() => { startEdit(previewQuiz!); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 transition-all">Vào Trình Chỉnh Sửa Đề</button></div>
                             </div>
                         </div>
                     )}
@@ -795,144 +737,40 @@ const AdminDashboard = () => {
                         <div className="fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                             <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl border-8 border-white overflow-hidden animate-fade-in-up">
                                 <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                                    <div className="flex items-center gap-4">
-                                        <div className="p-3 bg-blue-600 rounded-2xl"><Database size={24}/></div>
-                                        <div>
-                                            <h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type === 'mcq' ? 'Trắc nghiệm' : bankModal.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn'}</h3>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lọc từ các đề cũ khối {grade}</p>
-                                        </div>
-                                    </div>
+                                    <div className="flex items-center gap-4"><div className="p-3 bg-blue-600 rounded-2xl"><Database size={24}/></div><div><h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type === 'mcq' ? 'Trắc nghiệm' : bankModal.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn'}</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lọc từ các đề cũ khối {grade}</p></div></div>
                                     <button onClick={() => setBankModal({ open: false, type: null })} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar">
-                                    {bankQuestions.length === 0 ? (
-                                        <div className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest">Không tìm thấy câu hỏi phù hợp trong kho lưu trữ</div>
-                                    ) : (
+                                    {bankQuestions.length === 0 ? (<div className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest">Không tìm thấy câu hỏi phù hợp</div>) : (
                                         bankQuestions.map((bq) => (
-                                            <div key={bq.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-start gap-4 hover:border-blue-400 transition-all group">
-                                                <div className="flex-1">
-                                                    <div className="text-slate-800 font-bold mb-2 leading-relaxed"><LatexText text={bq.text}/></div>
-                                                    <div className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Khối {grade} • Loại: {bq.type}</div>
-                                                </div>
-                                                <button 
-                                                    onClick={() => {
-                                                        const newQ = { ...bq, id: uuidv4() };
-                                                        setQuestions([...questions, newQ]);
-                                                        alert("Đã thêm câu hỏi vào đề!");
-                                                    }}
-                                                    className="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm shrink-0"
-                                                >
-                                                    Thêm vào đề
-                                                </button>
-                                            </div>
+                                            <div key={bq.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-start gap-4 hover:border-blue-400 transition-all group"><div className="flex-1"><div className="text-slate-800 font-bold mb-2 leading-relaxed"><LatexText text={bq.text}/></div><div className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Loại: {bq.type}</div></div><button onClick={() => { const newQ = { ...bq, id: uuidv4() }; setQuestions([...questions, newQ]); alert("Đã thêm!"); }} className="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm shrink-0">Thêm vào đề</button></div>
                                         ))
                                     )}
                                 </div>
-                                <div className="p-6 border-t bg-white text-center">
-                                    <button onClick={() => setBankModal({ open: false, type: null })} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200">Đóng ngân hàng</button>
-                                </div>
+                                <div className="p-6 border-t bg-white text-center"><button onClick={() => setBankModal({ open: false, type: null })} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200">Đóng ngân hàng</button></div>
                             </div>
                         </div>
                     )}
 
-                    {/* CHI TIẾT HỌC SINH MODAL */}
+                    {/* CHI TIẾT HỌC SINH (LỊCH SỬ THI) - GIỮ NGUYÊN */}
                     {selectedStudent && (
                         <div className="fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                             <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl border-8 border-white overflow-hidden animate-fade-in-up">
-                                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                                    <div className="flex items-center gap-5">
-                                        <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><History size={32}/></div>
-                                        <div>
-                                            <h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lớp {selectedStudent.grade} • MAHS: {selectedStudent.studentCode}</p>
-                                        </div>
+                                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><div className="flex items-center gap-5"><div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><History size={32}/></div><div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lớp {selectedStudent.grade} • MAHS: {selectedStudent.studentCode}</p></div></div><button onClick={() => setSelectedStudent(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button></div>
+                                <div className="flex-1 overflow-y-auto p-8 bg-slate-50 custom-scrollbar">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Trophy size={20}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Tích lũy</p><p className="text-lg font-black">{selectedStudent.points || 0}</p></div></div>
+                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><FileText size={20}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Đã luyện</p><p className="text-lg font-black">{results.filter(r => r.studentId === selectedStudent.id).length}</p></div></div>
+                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><TargetIcon size={20}/></div><div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao</p><p className="text-lg font-black">{Math.max(0, ...results.filter(r => r.studentId === selectedStudent.id).map(r => r.score)).toFixed(1)}</p></div></div>
                                     </div>
-                                    <button onClick={() => setSelectedStudent(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50 custom-scrollbar">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4">
-                                            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Trophy size={20}/></div>
-                                            <div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm tích lũy</p><p className="text-lg font-black">{selectedStudent.points || 0}</p></div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4">
-                                            <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><FileText size={20}/></div>
-                                            <div><p className="text-[8px] font-black text-slate-300 uppercase">Đề đã làm</p><p className="text-lg font-black">{results.filter(r => r.studentId === selectedStudent.id).length}</p></div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4">
-                                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><TargetIcon size={20}/></div>
-                                            <div><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="text-lg font-black">{Math.max(0, ...results.filter(r => r.studentId === selectedStudent.id).map(r => r.score)).toFixed(2)}</p></div>
-                                        </div>
-                                    </div>
-
                                     <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
-                                        <div className="p-6 border-b bg-slate-50 flex items-center gap-3">
-                                            <History className="text-slate-400" size={18}/>
-                                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Lịch sử bài làm chi tiết</span>
-                                        </div>
                                         <table className="w-full text-left border-collapse">
-                                            <thead>
-                                                <tr className="border-b text-[8px] font-black text-slate-300 uppercase tracking-[0.2em]"><th className="p-6">Tên đề thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th></tr>
-                                            </thead>
-                                            <tbody className="divide-y">
-                                                {results.filter(r => r.studentId === selectedStudent.id).sort((a,b) => parseISO(b.submittedAt).getTime() - parseISO(a.submittedAt).getTime()).map(r => {
-                                                    const quiz = quizzes.find(q => q.id === r.quizId);
-                                                    return (
-                                                        <tr key={r.id} className="hover:bg-slate-50/50">
-                                                            <td className="p-6 font-bold text-slate-700 text-sm">{quiz?.title || 'Đề đã xóa'}</td>
-                                                            <td className="p-6 text-center font-black text-slate-400 text-xs">{quiz?.grade || '-'}</td>
-                                                            <td className="p-6 text-center font-black text-blue-600 text-sm">{r.score.toFixed(2)}</td>
-                                                            <td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'HH:mm dd/MM/yy')}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                                {results.filter(r => r.studentId === selectedStudent.id).length === 0 && (
-                                                    <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-bold uppercase tracking-widest text-xs">Thí sinh chưa thực hiện bài thi nào</td></tr>
-                                                )}
-                                            </tbody>
+                                            <thead><tr className="border-b bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Đề thi</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th></tr></thead>
+                                            <tbody className="divide-y">{results.filter(r => r.studentId === selectedStudent.id).map(r => (<tr key={r.id} className="hover:bg-slate-50/50"><td className="p-6 font-bold text-sm">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td><td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td><td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'HH:mm dd/MM/yy')}</td></tr>))}</tbody>
                                         </table>
                                     </div>
                                 </div>
-                                <div className="p-6 border-t bg-white text-center">
-                                    <button onClick={() => setSelectedStudent(null)} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200">Đóng thông tin</button>
-                                </div>
                             </div>
-                        </div>
-                    )}
-
-                    {isAddStudentOpen && (
-                        <div className="fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                            <form onSubmit={handleAddStudentManual} className="bg-white rounded-[3rem] w-full max-w-md shadow-2xl border-8 border-white overflow-hidden animate-fade-in-up">
-                                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                                    <div className="flex items-center gap-4">
-                                        <div className="p-3 bg-blue-600 rounded-2xl"><UserPlus size={24}/></div>
-                                        <div><h3 className="text-xl font-black uppercase tracking-tight">Thêm học sinh</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Nhập thủ công</p></div>
-                                    </div>
-                                    <button type="button" onClick={() => setIsAddStudentOpen(false)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
-                                </div>
-                                <div className="p-8 space-y-6">
-                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Họ và tên</label><input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:bg-white focus:border-blue-300 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nguyễn Văn A..." required /></div>
-                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Mã số học sinh (MAHS)</label><input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none uppercase focus:bg-white focus:border-blue-300 transition-all" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value.toUpperCase())} placeholder="VD: HS001..." required /></div>
-                                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Khối lớp</label><select className="w-full bg-slate-50 border rounded-2xl p-4 font-black uppercase outline-none focus:bg-white focus:border-blue-300 transition-all" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
-                                    <p className="text-[9px] text-slate-400 italic bg-blue-50 p-4 rounded-xl border border-blue-100">* Mật khẩu mặc định sau khi tạo sẽ là: <b>123</b></p>
-                                    <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-700 active:scale-95 transition-all">Xác nhận thêm mới</button>
-                                </div>
-                            </form>
-                        </div>
-                    )}
-
-                    {activeMenu === 'chapters' && (
-                        <div className="max-w-2xl mx-auto space-y-8 animate-fade-in pb-20">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6">
-                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tạo mới chương học</h4>
-                                <div className="flex flex-col gap-4">
-                                    <select className="p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
-                                    <div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value=''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700">Lưu Chương</button></div>
-                                </div>
-                            </div>
-                            {['12', '11', '10'].map(g => (
-                                <div key={g} className="space-y-3 mt-6"><h5 className="text-[10px] font-black text-slate-300 uppercase px-6 tracking-[0.2em]">Khối {g}</h5>{chapters.filter(c => c.grade === g).map(c => (<div key={c.id} className="bg-white p-6 px-10 rounded-[2rem] border flex justify-between items-center group shadow-sm hover:border-blue-200 transition-all"><span className="font-black text-sm text-slate-700">{c.name}</span><button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button></div>))}</div>
-                            ))}
                         </div>
                     )}
                 </div>
