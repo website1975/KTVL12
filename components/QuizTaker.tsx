@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Quiz, User, Result, Question } from '../types';
-import { saveResult, addPointsToUser } from '../services/storage';
+import { saveResult, addPointsToUser, getResults } from '../services/storage';
 import { addMinutes, differenceInSeconds, parseISO } from 'date-fns';
-import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb, Menu, X, Send, Trophy, Sparkles } from 'lucide-react';
+import { Timer, Check, RotateCcw, Home, Eye, ListChecks, ArrowLeft, Save, AlertCircle, Lightbulb, Menu, X, Send, Trophy, Sparkles, Loader2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from './LatexText';
 
@@ -49,6 +49,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const [totalTimeSpent, setTotalTimeSpent] = useState(0);
   const [pointsEarned, setPointsEarned] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (currentView !== 'taking') return;
@@ -119,6 +120,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   };
 
   const handleSubmit = async (auto: boolean = false) => {
+      if (isSubmitting) return;
       if (!auto) {
           const unanswered = (quiz.questions?.length || 0) - Object.keys(answers).length;
           let msg = "Bạn có chắc chắn muốn nộp bài thi không?";
@@ -126,16 +128,27 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           if (!window.confirm(msg)) return;
       }
 
+      setIsSubmitting(true);
       const score = calculateTotalScore();
       const durationMins = safeParseScore(quiz.durationMinutes) || 30;
       const spent = Math.max(0, (durationMins * 60) - timeLeft);
       
       // LOGIC TÍNH ĐIỂM TÍCH LŨY (REWARD POINTS)
       let earned = 0;
-      if (quiz.type === 'test' && score >= 8.0) {
-          earned = 1;
-      } else if (quiz.type === 'practice' && spent >= 2700) { // 2700s = 45m
-          earned = 1;
+      if (quiz.type === 'test') {
+          if (score >= 8.0) {
+              earned = 1;
+          }
+      } else if (quiz.type === 'practice' && spent >= 2700) { // >= 45 phút (2700s)
+          // Kiểm tra xem đây có phải lần làm đầu tiên của đề này không
+          const allResults = await getResults();
+          const previousAttempts = allResults.filter(r => r.studentId === student.id && r.quizId === quiz.id);
+          
+          if (previousAttempts.length === 0) {
+              earned = 1; // Lần đầu tiên: cộng 1 điểm
+          } else {
+              earned = 0.5; // Lần sau: cộng 0.5 điểm
+          }
       }
 
       setFinalScore(score);
@@ -161,6 +174,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
       setCurrentView('result');
       setIsSidebarOpen(false);
+      setIsSubmitting(false);
   };
 
   const formatTime = (s: number) => {
@@ -208,7 +222,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                       {pointsEarned > 0 && (
                           <div className="flex items-center justify-center gap-3 py-4 bg-yellow-400/10 rounded-2xl border border-yellow-200 animate-pulse">
                               <Sparkles className="text-yellow-500" size={24}/>
-                              <span className="text-yellow-700 font-black uppercase text-xs tracking-widest">Bạn đã nhận được +{pointsEarned} điểm tích lũy!</span>
+                              <span className="text-yellow-700 font-black uppercase text-[10px] tracking-widest">Bạn đã nhận được +{pointsEarned} điểm tích lũy!</span>
                           </div>
                       )}
                   </div>
@@ -254,8 +268,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               <div className="border-t border-slate-700 pt-3">
                   {!isReview ? (
                       <div className="grid grid-cols-2 gap-2">
-                          <button onClick={() => handleSubmit(false)} className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"><Send size={14} /> NỘP BÀI</button>
-                          <button onClick={handleReset} className="w-full py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"><RotateCcw size={14} /> LÀM LẠI</button>
+                          <button onClick={() => handleSubmit(false)} disabled={isSubmitting} className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <Send size={14} />} NỘP BÀI</button>
+                          <button onClick={handleReset} disabled={isSubmitting} className="w-full py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"><RotateCcw size={14} /> LÀM LẠI</button>
                       </div>
                   ) : (<button onClick={onExit} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-xs"><Home size={14}/> VỀ TRANG CHỦ</button>)}
               </div>
@@ -333,14 +347,24 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                 )}
                                 {q.type === 'short' && (
                                     <div className="mt-2 flex items-center gap-3">
-                                        <span className="font-bold text-gray-700 whitespace-nowrap">Đáp số {idx+1}:</span>
+                                        <span className="font-bold text-gray-700 whitespace-nowrap uppercase text-sm tracking-tight">Đáp số {idx+1}:</span>
                                         <div className="relative w-full max-w-xs">
-                                            <input type="text" value={answers[q.id] || ''} onChange={e => handleAnswer(q.id, e.target.value)} disabled={isReview} placeholder="Nhập kết quả..." className={`w-full px-4 py-2 border rounded-xl font-medium outline-none transition-colors ${isReview ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100 border-gray-300'}`} />
-                                            {isReview && <div className="mt-2 text-sm font-bold text-green-600 flex items-center gap-1"><Check size={14}/> Đáp án đúng: {q.correctAnswer}</div>}
+                                            <input 
+                                                type="text" 
+                                                value={answers[q.id] || ''} 
+                                                onChange={e => handleAnswer(q.id, e.target.value)} 
+                                                disabled={isReview} 
+                                                autoComplete="off" 
+                                                autoCorrect="off"
+                                                spellCheck={false}
+                                                placeholder="Nhập kết quả..." 
+                                                className={`w-full px-4 py-2 border rounded-xl font-black outline-none transition-all ${isReview ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') : 'focus:border-blue-500 focus:ring-4 focus:ring-blue-100 border-gray-300 shadow-inner bg-slate-50/50 focus:bg-white'}`} 
+                                            />
+                                            {isReview && <div className="mt-2 text-[10px] font-black text-emerald-600 flex items-center gap-1 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-lg w-fit border border-emerald-100"><Check size={12}/> Đáp án đúng: {q.correctAnswer}</div>}
                                         </div>
                                     </div>
                                 )}
-                                {isReview && q.solution && <div className="mt-6 animate-fade-in"><div className="bg-yellow-50 border border-yellow-200 p-6 rounded-2xl"><h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-2"><Lightbulb size={18} className="fill-yellow-400 text-yellow-600"/> Lời giải chi tiết</h4><div className="text-gray-800 leading-relaxed text-sm"><LatexText text={q.solution} /></div></div></div>}
+                                {isReview && q.solution && <div className="mt-6 animate-fade-in"><div className="bg-yellow-50/50 border border-yellow-100 p-6 rounded-2xl"><h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-3 uppercase text-[10px] tracking-[0.2em]"><Lightbulb size={16} className="text-yellow-600"/> Lời giải chi tiết</h4><div className="text-gray-700 leading-relaxed text-sm"><LatexText text={q.solution} /></div></div></div>}
                             </div>
                         </div>
                     );
