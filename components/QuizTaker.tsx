@@ -307,7 +307,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                 )}
                                 {q.type === 'short' && (
                                     <div className="mt-2 flex items-center gap-3">
-                                        <span className="font-bold text-gray-700 whitespace-nowrap uppercase text-sm tracking-tight">Đáp số {idx+1}:</span>
+                                        <span className="font-bold text-gray-700 whitespace-nowrap uppercase text-sm tracking-tight">Đáp số:</span>
                                         <div className="relative w-full max-w-xs">
                                             <input 
                                                 type="text" 
