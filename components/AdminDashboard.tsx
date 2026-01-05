@@ -60,21 +60,21 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
 
     return (
         <div className="space-y-6 mt-10">
-            <div className="flex items-center justify-between bg-white p-6 rounded-3xl border shadow-sm">
+            <div className="flex items-center justify-between bg-white p-6 rounded-none border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-2xl ${type === 'mcq' ? 'bg-blue-50 text-blue-600' : type === 'group-tf' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}>
+                    <div className={`p-3 rounded-none border-2 border-gray-800 ${type === 'mcq' ? 'bg-blue-100 text-blue-700' : type === 'group-tf' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
                         <Icon size={24}/>
                     </div>
                     <div>
-                        <h3 className="font-black text-slate-800 uppercase tracking-tight">{title}</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sectionQuestions.length} câu</p>
+                        <h3 className="font-black text-gray-900 uppercase tracking-tight">{title}</h3>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{sectionQuestions.length} câu</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
+                    <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-gray-800 text-gray-700 text-[10px] font-black uppercase hover:bg-gray-50 transition-all rounded-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-0.5 active:translate-y-0.5">
                         <Database size={14}/> Ngân hàng đề
                     </button>
-                    <button onClick={addManual} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">
+                    <button onClick={addManual} className="flex items-center gap-2 px-6 py-3 bg-gray-800 text-white rounded-none text-[10px] font-black uppercase shadow-[2px_2px_0px_0px_rgba(59,130,246,1)]">
                         <Plus size={14}/> Thêm mới
                     </button>
                 </div>
@@ -82,17 +82,17 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
 
             <div className="space-y-6">
                 {sectionQuestions.map((q, idx) => (
-                    <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm relative group animate-fade-in-up">
-                        <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
+                    <div key={q.id} className="bg-white p-8 rounded-none border-2 border-gray-800 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] relative group animate-fade-in-up">
+                        <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={24}/></button>
                         
                         <div className="flex items-center gap-4 mb-6">
-                            <span className="text-[10px] font-black px-4 py-1.5 rounded-xl uppercase tracking-widest bg-slate-100 text-slate-500 inline-block">Câu {idx + 1}</span>
-                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-1.5 rounded-2xl border border-blue-100">
+                            <span className="text-[10px] font-black px-4 py-1.5 border-2 border-gray-800 rounded-none uppercase tracking-widest bg-gray-50 text-gray-700 inline-block">Câu {idx + 1}</span>
+                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-1.5 border-2 border-blue-200 rounded-none">
                                 <TargetIcon size={14} className="text-blue-500" />
                                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Điểm:</span>
                                 <input 
                                     type="text" 
-                                    className="bg-transparent text-xs font-black text-blue-700 outline-none w-14 text-center border-b border-blue-200 focus:border-blue-500 transition-colors" 
+                                    className="bg-transparent text-xs font-black text-blue-700 outline-none w-14 text-center border-b-2 border-blue-200 focus:border-blue-500 transition-colors" 
                                     value={q.points} 
                                     onChange={e => {
                                         const val = e.target.value;
@@ -105,8 +105,8 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                                 {idx === 0 && sectionQuestions.length > 1 && (
                                     <button 
                                         onClick={() => applyPointsToAll(q.points)}
-                                        title="Áp dụng mức điểm này cho toàn bộ câu trong phần này"
-                                        className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                                        title="Áp dụng cho tất cả"
+                                        className="ml-2 p-1.5 bg-blue-600 text-white rounded-none hover:bg-blue-700 transition-all flex items-center gap-1.5"
                                     >
                                         <CopyCheck size={12} />
                                         <span className="text-[8px] font-black uppercase">Áp dụng hết</span>
@@ -117,60 +117,52 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
                             <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nội dung câu hỏi</label>
-                                <textarea className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold outline-none min-h-[120px] focus:border-blue-300 transition-colors" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nhập câu hỏi (dùng $...$ cho Toán)..." />
+                                <label className="text-[9px] font-black text-gray-400 uppercase ml-1">Nội dung câu hỏi (Markdown + LaTeX)</label>
+                                <textarea className="w-full p-6 bg-gray-50 border-2 border-gray-200 rounded-none text-sm font-bold outline-none min-h-[120px] focus:border-blue-400 transition-colors" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="Nhập câu hỏi..." />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[9px] font-black text-blue-400 uppercase ml-2">Xem trước nội dung</label>
-                                <div className="w-full p-6 bg-blue-50/30 rounded-3xl border border-blue-100 min-h-[120px] text-sm overflow-auto"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
+                                <label className="text-[9px] font-black text-blue-400 uppercase ml-1">Xem trước sắc nét</label>
+                                <div className="w-full p-6 bg-blue-50/20 rounded-none border-2 border-blue-100 min-h-[120px] text-sm overflow-auto"><LatexText text={q.text || '*Đang nhập liệu...*'} /></div>
                             </div>
                         </div>
 
-                        <div className="mb-8 flex items-center gap-6 p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                            <div className="shrink-0">{q.imageUrl ? <img src={q.imageUrl} className="w-24 h-24 object-cover rounded-2xl border" alt="q" /> : <div className="w-24 h-24 bg-white border rounded-2xl flex items-center justify-center text-slate-300">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/>}</div>}</div>
-                            <div><input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-colors">Tải hình ảnh minh họa</label></div>
+                        <div className="mb-8 flex items-center gap-6 p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-none">
+                            <div className="shrink-0">{q.imageUrl ? <img src={q.imageUrl} className="w-24 h-24 object-cover border-2 border-gray-800" alt="q" /> : <div className="w-24 h-24 bg-white border-2 border-gray-200 flex items-center justify-center text-gray-300">{uploadingId === q.id ? <Loader2 className="animate-spin" size={20}/> : <ImageIcon size={24}/>}</div>}</div>
+                            <div><input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-5 py-2.5 bg-white border-2 border-gray-800 text-[10px] font-black uppercase cursor-pointer hover:bg-gray-100 transition-colors rounded-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none">Tải ảnh minh họa</label></div>
                         </div>
 
                         {type === 'mcq' && q.options && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                 {q.options.map((opt, oi) => (
-                                    <div key={oi} className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><input type="radio" name={`ans-${q.id}`} checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} /><input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].options![oi] = e.target.value; setQuestions(nl); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} /></div>
+                                    <div key={oi} className="flex items-center gap-4 bg-gray-50 p-5 border-2 border-gray-200 rounded-none"><input type="radio" name={`ans-${q.id}`} className="w-5 h-5 accent-blue-600" checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} /><input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].options![oi] = e.target.value; setQuestions(nl); }} placeholder={`Đáp án ${String.fromCharCode(65+oi)}...`} /></div>
                                 ))}
                             </div>
                         )}
                         {type === 'group-tf' && (
                             <div className="space-y-4 mb-8">
                                 {q.subQuestions?.map((sq, si) => (
-                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-xs font-black text-blue-600 w-8">{String.fromCharCode(97+si)})</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung ý..." /><div className="flex bg-white rounded-xl p-1 border">{['True', 'False'].map(v => <button key={v} onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].correctAnswer = v as any; setQuestions(nl); }} className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>)}</div></div>
+                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-gray-50 p-5 border-2 border-gray-200 rounded-none"><span className="text-xs font-black text-blue-700 w-8">{String.fromCharCode(97+si)})</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung ý..." /><div className="flex bg-white border-2 border-gray-800 rounded-none p-1">{['True', 'False'].map(v => <button key={v} onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].correctAnswer = v as any; setQuestions(nl); }} className={`px-4 py-1.5 text-[10px] font-black transition-all ${sq.correctAnswer === v ? 'bg-gray-800 text-white' : 'text-gray-400'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>)}</div></div>
                                 ))}
                             </div>
                         )}
                         {type === 'short' && (
-                            <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
+                            <div className="mb-8 flex items-center gap-4 bg-gray-50 p-5 border-2 border-gray-200 rounded-none"><span className="text-[10px] font-black text-orange-700 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-black outline-none border-b-2 border-gray-300 focus:border-orange-500" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
                         )}
 
-                        <div className="pt-8 border-t border-slate-100 space-y-4">
+                        <div className="pt-8 border-t-2 border-gray-100 space-y-4">
                             <div className="flex items-center gap-2 mb-2">
-                                <Lightbulb size={16} className="text-yellow-500 fill-yellow-200" />
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lời giải chi tiết cho học sinh</label>
+                                <Lightbulb size={16} className="text-yellow-600" />
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Lời giải chi tiết (Hiện sau khi nộp)</label>
                             </div>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                <div className="relative group">
-                                    <textarea 
-                                        className="w-full p-6 bg-yellow-50/20 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[140px] focus:bg-yellow-50/50 focus:border-yellow-300 transition-all font-medium placeholder:text-yellow-200/50" 
-                                        value={q.solution} 
-                                        onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
-                                        placeholder="Nhập hướng dẫn giải (hệ thống sẽ hiện sau khi học sinh nộp bài)..." 
-                                    />
-                                    <div className="absolute top-4 right-4 text-[8px] font-black text-yellow-300 uppercase select-none group-focus-within:opacity-0 transition-opacity">Draft Mode</div>
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="w-full p-6 bg-yellow-50/40 border border-yellow-100 rounded-3xl text-sm min-h-[140px] overflow-auto shadow-inner relative">
-                                        <span className="absolute top-4 right-4 text-[8px] font-black text-yellow-500/30 uppercase select-none">Live Preview</span>
-                                        <div className="text-slate-600 italic leading-relaxed">
-                                            <LatexText text={q.solution || '*Chưa có lời giải chi tiết cho câu này.*'} />
-                                        </div>
-                                    </div>
+                                <textarea 
+                                    className="w-full p-6 bg-yellow-50/20 border-2 border-yellow-100 rounded-none text-sm outline-none min-h-[140px] focus:bg-yellow-50/40 focus:border-yellow-400 transition-all font-bold" 
+                                    value={q.solution} 
+                                    onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
+                                    placeholder="Nhập hướng dẫn giải chi tiết..." 
+                                />
+                                <div className="w-full p-6 bg-white border-2 border-gray-100 rounded-none text-sm min-h-[140px] overflow-auto italic">
+                                    <LatexText text={q.solution || '*Chưa có lời giải chi tiết.*'} />
                                 </div>
                             </div>
                         </div>
@@ -244,7 +236,6 @@ const AdminDashboard = () => {
             const text = event.target?.result as string;
             if (!text) return;
 
-            // Xử lý các dòng
             const lines = text.split(/\r?\n/);
             const newUsers: User[] = [];
             let importCount = 0;
@@ -252,21 +243,15 @@ const AdminDashboard = () => {
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
-
-                // Tự động nhận diện phân cách: Tab (\t), Phẩy (,), Chấm phẩy (;), hoặc khoảng trắng nhiều (regex)
-                let cols: string[] = [];
-                if (line.includes('\t')) {
-                    cols = line.split('\t');
-                } else if (line.includes(';')) {
-                    cols = line.split(';');
-                } else if (line.includes(',')) {
-                    cols = line.split(',');
-                } else {
-                    cols = line.split(/\s{2,}/); // Khoảng trắng ít nhất 2 ký tự (giả định MAHS Hoten cách nhau nhiều space)
-                }
                 
-                // Bỏ qua dòng tiêu đề nếu chứa chữ MAHS hoặc Hoten
-                if (line.toUpperCase().includes('MAHS') || line.toUpperCase().includes('HOTEN')) continue;
+                let cols: string[] = [];
+                if (line.includes('\t')) cols = line.split('\t');
+                else if (line.includes(';')) cols = line.split(';');
+                else if (line.includes(',')) cols = line.split(',');
+                else cols = line.split(/\s{2,}/);
+
+                const lineUpper = line.toUpperCase();
+                if (lineUpper.includes('MAHS') || lineUpper.includes('HOTEN')) continue;
 
                 if (cols.length < 2) continue;
 
@@ -292,7 +277,7 @@ const AdminDashboard = () => {
             }
 
             if (newUsers.length > 0) {
-                if (confirm(`Hệ thống tìm thấy ${importCount} học sinh. Bạn có chắc muốn nhập vào danh sách?`)) {
+                if (confirm(`Tìm thấy ${importCount} học sinh. Nhập vào hệ thống?`)) {
                     for (const u of newUsers) {
                         await saveUser(u);
                     }
@@ -300,7 +285,7 @@ const AdminDashboard = () => {
                     refreshData();
                 }
             } else {
-                alert("Không tìm thấy dữ liệu hợp lệ trong file. Kiểm tra lại định dạng: MAHS [tab] Hoten [tab] Khoi [tab] pass");
+                alert("Không có dữ liệu hợp lệ. Mẫu: MAHS [tab] Hoten [tab] Khoi [tab] pass");
             }
         };
         reader.readAsText(file);
@@ -315,6 +300,14 @@ const AdminDashboard = () => {
             return matchesSearch && matchesGrade && matchesChapter;
         });
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
+
+    const filteredStudents = useMemo(() => {
+        return users.filter(u => 
+            u.role === 'student' && 
+            (sGradeFilter === 'all' || u.grade === sGradeFilter) && 
+            (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())))
+        );
+    }, [users, sSearch, sGradeFilter]);
 
     const latestResultsForTable = useMemo(() => {
         const filtered = results.filter(r => {
@@ -333,30 +326,6 @@ const AdminDashboard = () => {
         return Object.values(grouped);
     }, [results, quizzes, rGradeFilter, rChapterFilter, rQuizFilter]);
 
-    const studentDetailHistory = useMemo(() => {
-        if (!selectedStudent) return [];
-        const sResults = results.filter(r => r.studentId === selectedStudent.id);
-        const groupedByQuiz = sResults.reduce((acc, curr) => {
-            if (!acc[curr.quizId]) acc[curr.quizId] = [];
-            acc[curr.quizId].push(curr);
-            return acc;
-        }, {} as Record<string, Result[]>);
-
-        return Object.entries(groupedByQuiz).map(([qid, rs]) => {
-            const q = quizzes.find(qx => qx.id === qid);
-            const max = Math.max(...rs.map(r => r.score));
-            return { quizId: qid, quizTitle: q?.title || 'Đề đã xóa', category: q?.category || 'N/A', count: rs.length, maxScore: max };
-        });
-    }, [selectedStudent, results, quizzes]);
-
-    const bankQuestions = useMemo(() => {
-        if (!showBank.open) return [];
-        return quizzes
-            .filter(q => q.grade === grade) 
-            .flatMap(q => q.questions.map(quest => ({ ...quest, quizTitle: q.title })))
-            .filter(q => q.type === showBank.type);
-    }, [showBank, quizzes, grade]);
-
     const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newStudentName || !newStudentCode) return alert("Điền đủ thông tin!");
@@ -373,28 +342,20 @@ const AdminDashboard = () => {
             points: 0
         };
         await saveUser(newUser);
-        alert("Thêm học sinh mới thành công!");
+        alert("Thêm học sinh thành công!");
         setNewStudentName(''); setNewStudentCode(''); setNewStudentPass('123456'); setIsAddStudentOpen(false);
         refreshData();
     };
 
     const handleResetPassword = async (studentId: string) => {
-        if (!confirm('Bạn có muốn đặt lại mật khẩu về mặc định "123456" cho học sinh này?')) return;
+        if (!confirm('Đặt lại mật khẩu về "123456"?')) return;
         const success = await changePassword(studentId, '123456');
-        if (success) {
-            alert('Mật khẩu đã được đặt lại về "123456"');
-            refreshData();
-        } else {
-            alert('Có lỗi xảy ra, vui lòng thử lại');
-        }
+        if (success) { alert('Thành công!'); refreshData(); }
     };
 
-    const handleUpdateStudent = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editStudent) return;
-        await saveUser(editStudent);
-        alert('Cập nhật thông tin thành công!');
-        setEditStudent(null);
+    const handleDeleteUser = async (id: string) => {
+        if (!confirm('Xóa học sinh này?')) return;
+        await deleteUser(id);
         refreshData();
     };
 
@@ -402,6 +363,33 @@ const AdminDashboard = () => {
         setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type);
         setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions);
         setCategory(q.category || ''); setStartTime(q.startTime || ''); setActiveMenu('editor');
+    };
+
+    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsAiLoading(true);
+        try {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = (event.target?.result as string).split(',')[1];
+                try {
+                    const newQs = await parseQuestionsFromPDF(base64);
+                    setQuestions(prev => [...prev, ...newQs]);
+                    alert(`Đã trích xuất thành công ${newQs.length} câu hỏi!`);
+                } catch (err: any) {
+                    alert("Lỗi khi bóc tách PDF: " + (err.message || "Đã có lỗi xảy ra"));
+                } finally {
+                    setIsAiLoading(false);
+                }
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error(error);
+            setIsAiLoading(false);
+        }
+        e.target.value = '';
     };
 
     const handleSave = async () => {
@@ -417,47 +405,19 @@ const AdminDashboard = () => {
     };
 
     const handleDeleteResult = async (id: string) => {
-        if (!confirm('Bạn có muốn xóa kết quả thi này?')) return;
+        if (!confirm('Xóa kết quả này?')) return;
         await deleteResult(id);
         refreshData();
     };
 
-    const handleDeleteUser = async (id: string) => {
-        if (!confirm('Bạn có muốn xóa học sinh này và mọi dữ liệu liên quan?')) return;
-        await deleteUser(id);
-        refreshData();
-    };
-
-    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return;
-        setIsAiLoading(true);
-        try {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const base64 = (reader.result as string).split(',')[1];
-                const pdfQs = await parseQuestionsFromPDF(base64);
-                setQuestions([...questions, ...pdfQs]); setIsAiLoading(false);
-            };
-        } catch (e) { alert("Lỗi bóc tách!"); setIsAiLoading(false); }
-    };
-
-    const handleAiGenerate = async () => {
-        if (!aiPrompt) return alert("Nhập yêu cầu AI!");
-        setIsAiLoading(true);
-        try {
-            const aiQs = await generateQuizFromPrompt({ grade, topic: aiPrompt, part1Count: aiPart1, part2Count: aiPart2, part3Count: aiPart3 });
-            setQuestions([...questions, ...aiQs]); alert("AI soạn xong!"); setActiveMenu('editor');
-        } catch (e) { alert("Lỗi AI!"); } finally { setIsAiLoading(false); }
-    };
-
     return (
-        <div className="flex h-screen bg-[#f8fafc] overflow-hidden text-slate-700 font-sans">
-            <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-20 shadow-2xl">
-                <div className="p-8 border-b border-slate-800 flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg"><Cpu size={18}/></div>
-                    <span className="font-black text-[11px] tracking-[0.2em] uppercase italic">EduQuiz Admin</span>
+        <div className="flex h-screen bg-gray-100 overflow-hidden text-gray-800 font-sans antialiased">
+            <aside className="w-64 bg-gray-900 text-white flex flex-col shrink-0 z-20 border-r-2 border-black">
+                <div className="p-8 border-b-2 border-gray-800 flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-600 flex items-center justify-center border-2 border-white shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]"><Cpu size={18}/></div>
+                    <span className="font-black text-[12px] tracking-[0.1em] uppercase">EduQuiz Admin</span>
                 </div>
-                <nav className="flex-1 p-4 space-y-1">
+                <nav className="flex-1 p-4 space-y-2">
                     {[
                         { id: 'quizzes', icon: LayoutDashboard, label: '1. QUẢN LÝ ĐỀ THI' },
                         { id: 'editor', icon: Plus, label: '2. SOẠN / CHỈNH ĐỀ', action: () => { setEditingId(null); setTitle(''); setQuestions([]); setStartTime(''); } },
@@ -466,41 +426,41 @@ const AdminDashboard = () => {
                         { id: 'students', icon: Users, label: '5. QUẢN LÝ HỌC SINH' },
                         { id: 'chapters', icon: FolderTree, label: '6. QUẢN LÝ CHƯƠNG' }
                     ].map(m => (
-                        <button key={m.id} onClick={() => { setActiveMenu(m.id as any); if(m.action) m.action(); }} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMenu === m.id ? 'bg-blue-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-800'}`}><m.icon size={16}/> {m.label}</button>
+                        <button key={m.id} onClick={() => { setActiveMenu(m.id as any); if(m.action) m.action(); }} className={`w-full flex items-center gap-3 px-5 py-4 rounded-none text-[10px] font-black uppercase tracking-widest transition-all ${activeMenu === m.id ? 'bg-blue-600 text-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}><m.icon size={16}/> {m.label}</button>
                     ))}
                 </nav>
             </aside>
 
             <main className="flex-1 flex flex-col overflow-hidden">
-                <header className="h-16 bg-white border-b px-8 flex items-center justify-between shrink-0 shadow-sm z-10"><h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{activeMenu}</h2></header>
+                <header className="h-16 bg-white border-b-2 border-gray-800 px-8 flex items-center justify-between shrink-0 shadow-sm z-10"><h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">{activeMenu}</h2></header>
 
-                <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
+                <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
                     {activeMenu === 'quizzes' && (
                         <div className="space-y-8 animate-fade-in">
-                            <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-6 rounded-[2rem] border shadow-sm">
-                                <div className="flex-1 w-full flex items-center gap-3 px-4 py-2 bg-slate-50 border rounded-2xl"><Search className="text-slate-300" size={18}/><input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm tên đề..." value={qSearch} onChange={e => setQSearch(e.target.value)} /></div>
-                                <select className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase" value={qGradeFilter} onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}><option value="all">KHỐI LỚP</option><option value="12">KHỐI 12</option><option value="11">KHỐI 11</option><option value="10">KHỐI 10</option></select>
-                                <select className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase" value={qChapterFilter} onChange={e => setQChapterFilter(e.target.value)}><option value="all">CHƯƠNG HỌC</option>{chapters.filter(c => qGradeFilter === 'all' || c.grade === qGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
+                            <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-6 border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-none">
+                                <div className="flex-1 w-full flex items-center gap-3 px-4 py-2 bg-gray-50 border-2 border-gray-200 rounded-none"><Search className="text-gray-400" size={18}/><input type="text" className="bg-transparent outline-none text-xs font-black w-full" placeholder="Tìm tên đề..." value={qSearch} onChange={e => setQSearch(e.target.value)} /></div>
+                                <select className="px-4 py-3 bg-white border-2 border-gray-800 rounded-none text-[10px] font-black uppercase" value={qGradeFilter} onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}><option value="all">KHỐI LỚP</option><option value="12">KHỐI 12</option><option value="11">KHỐI 11</option><option value="10">KHỐI 10</option></select>
+                                <select className="px-4 py-3 bg-white border-2 border-gray-800 rounded-none text-[10px] font-black uppercase" value={qChapterFilter} onChange={e => setQChapterFilter(e.target.value)}><option value="all">CHƯƠNG HỌC</option>{chapters.filter(c => qGradeFilter === 'all' || c.grade === qGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {filteredQuizzesList.map(q => {
                                     const stats = { count: results.filter(r => r.quizId === q.id).length, max: Math.max(0, ...results.filter(r => r.quizId === q.id).map(r => r.score)) };
                                     return (
-                                        <div key={q.id} className="bg-white rounded-[2.5rem] p-8 border hover:border-blue-400 transition-all group relative flex flex-col shadow-sm">
+                                        <div key={q.id} className="bg-white rounded-none p-8 border-2 border-gray-800 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:border-blue-600 transition-all group relative flex flex-col">
                                             <div className="flex justify-between items-start mb-6">
-                                                <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${q.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{q.isPublished ? 'CÔNG KHAI' : 'NHÁP'}</span>
+                                                <span className={`px-4 py-1.5 border-2 border-gray-800 rounded-none text-[9px] font-black uppercase tracking-widest ${q.isPublished ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-400'}`}>{q.isPublished ? 'CÔNG KHAI' : 'NHÁP'}</span>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <button onClick={() => startEdit(q)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Edit size={16}/></button>
-                                                    <button onClick={async () => { if(confirm('Xóa đề này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 text-red-500 rounded-xl"><Trash2 size={16}/></button>
+                                                    <button onClick={() => startEdit(q)} className="p-2.5 bg-blue-50 text-blue-600 border border-blue-200"><Edit size={16}/></button>
+                                                    <button onClick={async () => { if(confirm('Xóa đề này?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 text-red-500 border border-red-200"><Trash2 size={16}/></button>
                                                 </div>
                                             </div>
-                                            <h3 className="font-black text-slate-800 text-lg mb-6 leading-tight min-h-[56px]">{q.title}</h3>
-                                            <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-3 gap-2 mb-6 text-center">
-                                                <div><p className="text-[8px] font-black text-slate-300 uppercase">Câu hỏi</p><p className="text-xs font-black">{q.questions.length}</p></div>
-                                                <div className="border-l"><p className="text-[8px] font-black text-slate-300 uppercase">Lượt làm</p><p className="text-xs font-black">{stats.count}</p></div>
-                                                <div className="border-l"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao</p><p className="text-xs font-black text-blue-600">{stats.max.toFixed(1)}</p></div>
+                                            <h3 className="font-black text-gray-900 text-lg mb-6 leading-tight min-h-[56px]">{q.title}</h3>
+                                            <div className="bg-gray-50 border-2 border-gray-100 p-5 grid grid-cols-3 gap-2 mb-6 text-center">
+                                                <div><p className="text-[8px] font-black text-gray-300 uppercase">Câu hỏi</p><p className="text-xs font-black">{q.questions.length}</p></div>
+                                                <div className="border-l-2 border-gray-100"><p className="text-[8px] font-black text-gray-300 uppercase">Lượt làm</p><p className="text-xs font-black">{stats.count}</p></div>
+                                                <div className="border-l-2 border-gray-100"><p className="text-[8px] font-black text-gray-300 uppercase">Điểm cao</p><p className="text-xs font-black text-blue-600">{stats.max.toFixed(1)}</p></div>
                                             </div>
-                                            <button onClick={() => setPreviewQuiz(q)} className="mt-auto pt-4 border-t flex items-center justify-center gap-2 text-[10px] font-black text-blue-600 uppercase hover:underline"><Eye size={14}/> XEM TRƯỚC ĐỀ</button>
+                                            <button onClick={() => setPreviewQuiz(q)} className="mt-auto pt-4 border-t-2 border-gray-100 flex items-center justify-center gap-2 text-[10px] font-black text-blue-600 uppercase hover:underline"><Eye size={14}/> XEM TRƯỚC ĐỀ</button>
                                         </div>
                                     );
                                 })}
@@ -508,160 +468,78 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {activeMenu === 'editor' && (
-                        <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b pb-8">
-                                    <input type="text" className="text-3xl font-black outline-none bg-transparent placeholder-slate-200 w-full" placeholder="Tên đề thi..." value={title} onChange={e => setTitle(e.target.value)} />
-                                    <label className="flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:scale-105 transition-all relative shadow-xl">
-                                        {isAiLoading && <span className="absolute -top-1 -right-1 flex h-4 w-4"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500"></span></span>}
-                                        <FileUp size={16}/> {isAiLoading ? 'ĐANG XỬ LÝ...' : 'BÓC TÁCH ĐỀ PDF'}
-                                        <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfExtract}/>
-                                    </label>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Khối lớp</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Hình thức</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={quizType} onChange={e => setQuizType(e.target.value as any)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{isPublished ? 'CÔNG KHAI' : 'NHÁP'}</button></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Thời gian (Phút)</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={duration} onChange={e => setDuration(parseInt(e.target.value))} /></div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Chương học</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={category} onChange={e => setCategory(e.target.value)}><option value="">Chọn chương</option>{chapters.filter(c => c.grade === grade).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
-                                    {quizType === 'test' && (
-                                        <div className="space-y-2 animate-fade-in"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Lịch bắt đầu</label><input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
-                                    )}
-                                </div>
-                                <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> {editingId ? 'CẬP NHẬT ĐỀ THI' : 'LƯU ĐỀ THI MỚI'}</button>
-                            </div>
-                            <QuestionSection title="PHẦN I. Câu trắc nghiệm" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
-                            <QuestionSection title="PHẦN II. Câu đúng sai" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
-                            <QuestionSection title="PHẦN III. Trả lời ngắn" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
-                        </div>
-                    )}
-
-                    {activeMenu === 'ai' && (
-                        <div className="max-w-4xl mx-auto space-y-10 animate-fade-in">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
-                                <div className="flex items-center gap-4 text-purple-600 border-b pb-6"><Sparkles size={32}/><h3 className="text-2xl font-black uppercase tracking-tight">Soạn đề bằng AI</h3></div>
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giao nhiệm vụ cho AI</label>
-                                    <textarea className="w-full p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] text-sm font-bold outline-none focus:ring-4 focus:ring-purple-50 transition-all min-h-[250px]" placeholder="Nhập yêu cầu..." value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} />
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần I</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart1} onChange={e => setAiPart1(parseInt(e.target.value))} /></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần II</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart2} onChange={e => setAiPart2(parseInt(e.target.value))} /></div>
-                                    <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Phần III</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={aiPart3} onChange={e => setAiPart3(parseInt(e.target.value))} /></div>
-                                </div>
-                                <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-purple-600 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-purple-700 transition-all shadow-xl disabled:opacity-50">{isAiLoading ? <Loader2 className="animate-spin"/> : <Sparkles size={20}/>} {isAiLoading ? 'AI ĐANG LÀM VIỆC...' : 'BẮT ĐẦU SOẠN'}</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeMenu === 'results' && (
-                        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-                            <div className="flex flex-col lg:flex-row gap-4 bg-white p-6 rounded-[2rem] border shadow-sm items-center">
-                                <div className="flex items-center gap-3 mr-4"><Filter className="text-slate-300" size={20}/><span className="text-[10px] font-black text-slate-400 uppercase">Lọc:</span></div>
-                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}><option value="all">Khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
-                                <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}><option value="all">Chương</option>{chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
-                                <select className="flex-1 px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={rQuizFilter} onChange={e => setRQuizFilter(e.target.value)}><option value="all">Chọn đề thi</option>{quizzes.filter(q => (rGradeFilter === 'all' || q.grade === rGradeFilter) && (rChapterFilter === 'all' || q.category === rChapterFilter)).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select>
-                            </div>
-
-                            <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                                <table className="w-full text-left border-collapse">
-                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Học sinh</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm bài làm</th><th className="p-6 text-center">Thưởng</th><th className="p-6 text-center">Lần nộp</th><th className="p-6 text-center">Thao tác</th></tr></thead>
-                                    <tbody className="divide-y">{latestResultsForTable.map(r => {
-                                        const q = quizzes.find(qx => qx.id === r.quizId);
-                                        return (
-                                            <tr key={r.id} className="group hover:bg-slate-50/50"><td className="p-6 font-black text-slate-800">{r.studentName}</td><td className="p-6 text-center text-xs font-black text-slate-400">{q?.grade}</td><td className="p-6 text-center"><span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{r.score.toFixed(2)}</span></td><td className="p-6 text-center"><span className="text-xs font-black text-yellow-600">+{r.pointsAwarded || 0}</span></td><td className="p-6 text-center text-xs font-bold text-slate-400">{new Date(r.submittedAt).toLocaleDateString()}</td><td className="p-6 text-center flex items-center justify-center gap-2">
-                                                <button onClick={() => { const std = users.find(u => u.id === r.studentId); if(std) setHistoryView({ student: std, quizId: r.quizId, attempts: results.filter(rx => rx.studentId === r.studentId && rx.quizId === r.quizId) }); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/> Xem</button>
-                                                <button onClick={() => handleDeleteResult(r.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14}/></button>
-                                            </td></tr>
-                                        );
-                                    })}</tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
                     {activeMenu === 'students' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-                            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-[2rem] border shadow-sm gap-4">
-                                <div className="flex flex-1 gap-4 items-center">
-                                    <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border rounded-2xl flex-1 max-w-md">
-                                        <Search className="text-slate-300" size={18}/>
-                                        <input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm theo tên hoặc MSHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
+                            {/* THANH CÔNG CỤ THEO THỨ TỰ YÊU CẦU: MAHS -> KHOI -> SOLUONG */}
+                            <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-5 border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-none gap-5">
+                                <div className="flex flex-1 flex-col sm:flex-row gap-4 items-center w-full">
+                                    {/* 1. Tìm theo MAHS */}
+                                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-none flex-1 w-full sm:max-w-xs">
+                                        <Search className="text-gray-400" size={18}/>
+                                        <input type="text" className="bg-transparent outline-none text-xs font-black w-full" placeholder="Tìm theo MAHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <Filter size={16} className="text-slate-400" />
-                                        <select className="px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
-                                            <option value="all">Tất cả khối</option>
-                                            <option value="12">Khối 12</option>
-                                            <option value="11">Khối 11</option>
-                                            <option value="10">Khối 10</option>
+                                    
+                                    {/* 2. Chọn Khối */}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <select className="px-4 py-3 bg-white border-2 border-gray-800 rounded-none text-[10px] font-black uppercase outline-none min-w-[120px]" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
+                                            <option value="all">TẤT CẢ KHỐI</option>
+                                            <option value="12">KHỐI 12</option>
+                                            <option value="11">KHỐI 11</option>
+                                            <option value="10">KHỐI 10</option>
                                         </select>
                                     </div>
+
+                                    {/* 3. Textbox số lượng học sinh */}
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-2 border-blue-600 rounded-none shrink-0">
+                                        <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">SỐ LƯỢNG:</span>
+                                        <input 
+                                          type="text" 
+                                          readOnly 
+                                          className="w-12 bg-transparent text-center font-black text-blue-700 outline-none border-none text-sm" 
+                                          value={filteredStudents.length} 
+                                        />
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="file" 
-                                        accept=".csv,.txt" 
-                                        className="hidden" 
-                                        ref={csvInputRef} 
-                                        onChange={handleCsvImport}
-                                    />
-                                    <button 
-                                        onClick={() => csvInputRef.current?.click()}
-                                        className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all"
-                                    >
-                                        <FileSpreadsheet size={16}/> Nhập từ CSV
-                                    </button>
-                                    <button 
-                                        onClick={() => setIsAddStudentOpen(true)} 
-                                        className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all"
-                                    >
-                                        <UserPlus size={16}/> Thêm học sinh
-                                    </button>
+                                
+                                <div className="flex gap-2 w-full lg:w-auto">
+                                    <input type="file" accept=".csv,.txt" className="hidden" ref={csvInputRef} onChange={handleCsvImport} />
+                                    <button onClick={() => csvInputRef.current?.click()} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-white border-2 border-gray-800 px-6 py-3 rounded-none text-[10px] font-black uppercase hover:bg-gray-50 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"><FileSpreadsheet size={16}/> Nhập CSV</button>
+                                    <button onClick={() => setIsAddStudentOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-none text-[10px] font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-700 active:translate-y-0.5"><UserPlus size={16}/> Thêm mới</button>
                                 </div>
                             </div>
                             
-                            <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                                <table className="w-full text-left border-collapse">
+                            <div className="bg-white rounded-none border-2 border-gray-800 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead>
-                                        <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        <tr className="bg-gray-900 border-b-2 border-gray-800 text-[10px] font-black text-white uppercase tracking-widest">
                                             <th className="p-6">Học sinh</th>
-                                            <th className="p-6">Mã định danh (MSHS)</th>
+                                            <th className="p-6">Mã số (MAHS)</th>
                                             <th className="p-6 text-center">Khối</th>
                                             <th className="p-6 text-center">Tích lũy</th>
-                                            <th className="p-6 text-center">Quản lý tài khoản</th>
+                                            <th className="p-6 text-center">Quản lý</th>
                                             <th className="p-6 text-center">Xóa</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y">
-                                        {users.filter(u => u.role === 'student' && (sGradeFilter === 'all' || u.grade === sGradeFilter) && (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || u.studentCode?.toLowerCase().includes(sSearch.toLowerCase()))).map(u => (
-                                            <tr key={u.id} className="group hover:bg-slate-50/50">
+                                    <tbody className="divide-y-2 divide-gray-100">
+                                        {filteredStudents.map(u => (
+                                            <tr key={u.id} className="group hover:bg-gray-50">
                                                 <td className="p-6">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">{u.fullName.charAt(0)}</div>
-                                                        <span className="font-black text-slate-800">{u.fullName}</span>
+                                                        <div className="w-10 h-10 bg-gray-800 text-white rounded-none flex items-center justify-center font-black text-sm border-2 border-gray-800 shadow-[2px_2px_0px_0px_rgba(59,130,246,1)]">{u.fullName.charAt(0)}</div>
+                                                        <span className="font-black text-gray-800">{u.fullName}</span>
                                                     </div>
                                                 </td>
-                                                <td className="p-6 font-black text-slate-400">{u.studentCode}</td>
-                                                <td className="p-6 text-center font-bold text-slate-500">{u.grade}</td>
-                                                <td className="p-6 text-center">
-                                                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full border border-yellow-100">
-                                                        <Medal size={12}/>
-                                                        <span className="text-[10px] font-black uppercase">{u.points || 0}</span>
-                                                    </div>
-                                                </td>
+                                                <td className="p-6 font-black text-gray-400 uppercase">{u.studentCode}</td>
+                                                <td className="p-6 text-center font-bold text-gray-500">{u.grade}</td>
+                                                <td className="p-6 text-center"><span className="px-3 py-1 bg-yellow-100 text-yellow-800 border-2 border-yellow-300 font-black text-[10px]">+{u.points || 0}</span></td>
                                                 <td className="p-6 text-center">
                                                     <div className="flex items-center justify-center gap-2">
-                                                        <button onClick={() => setEditStudent(u)} className="p-2.5 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all" title="Sửa thông tin"><UserCog size={16}/></button>
-                                                        <button onClick={() => handleResetPassword(u.id)} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all" title="Reset Mật khẩu về 123456"><RefreshCw size={16}/></button>
-                                                        <button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all" title="Xem lịch sử làm bài"><Eye size={16}/></button>
+                                                        <button onClick={() => handleResetPassword(u.id)} className="p-2.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-600 hover:text-white transition-all" title="Reset PW"><RefreshCw size={14}/></button>
+                                                        <button onClick={() => setEditStudent(u)} className="p-2.5 bg-white border-2 border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white transition-all"><UserCog size={14}/></button>
                                                     </div>
                                                 </td>
                                                 <td className="p-6 text-center">
-                                                    <button onClick={() => handleDeleteUser(u.id)} className="p-2.5 bg-red-50 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                                                    <button onClick={() => handleDeleteUser(u.id)} className="p-2.5 text-gray-200 hover:text-red-500"><Trash2 size={16}/></button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -671,162 +549,120 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
+                    {activeMenu === 'editor' && (
+                        <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
+                           <div className="bg-white p-10 rounded-none border-2 border-gray-800 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] space-y-8">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-2 border-gray-100 pb-8">
+                                    <input type="text" className="text-3xl font-black outline-none bg-transparent placeholder-gray-200 w-full" placeholder="Tên đề thi mới..." value={title} onChange={e => setTitle(e.target.value)} />
+                                    <label className="flex items-center gap-2 px-6 py-4 bg-gray-900 text-white rounded-none text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all relative shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] active:translate-y-0.5">
+                                        {isAiLoading && <Loader2 className="animate-spin" size={16}/>}
+                                        <FileUp size={16}/> {isAiLoading ? 'XỬ LÝ AI...' : 'NHẬP TỪ PDF'}
+                                        <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfExtract}/>
+                                    </label>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Khối lớp</label><select className="w-full border-2 border-gray-800 rounded-none p-4 text-xs font-black bg-white outline-none" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Hình thức</label><select className="w-full border-2 border-gray-800 rounded-none p-4 text-xs font-black bg-white outline-none" value={quizType} onChange={e => setQuizType(e.target.value as any)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select></div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-none font-black text-[10px] uppercase border-2 transition-all ${isPublished ? 'bg-emerald-600 text-white border-gray-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-gray-400 border-gray-200'}`}>{isPublished ? 'CÔNG KHAI' : 'BẢN NHÁP'}</button></div>
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Thời gian (Phút)</label><input type="number" className="w-full border-2 border-gray-800 rounded-none p-4 text-xs font-black bg-white outline-none" value={duration} onChange={e => setDuration(parseInt(e.target.value))} /></div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Chương học</label><select className="w-full border-2 border-gray-800 rounded-none p-4 text-xs font-black bg-white outline-none" value={category} onChange={e => setCategory(e.target.value)}><option value="">Chọn chương học</option>{chapters.filter(c => c.grade === grade).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                                    {quizType === 'test' && (
+                                        <div className="space-y-1 animate-fade-in"><label className="text-[9px] font-black text-gray-400 uppercase px-1">Lịch bắt đầu</label><input type="datetime-local" className="w-full border-2 border-gray-800 rounded-none p-4 text-xs font-black bg-white outline-none" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
+                                    )}
+                                </div>
+                                <button onClick={handleSave} className="w-full bg-blue-600 text-white py-6 rounded-none font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-blue-700 transition-all shadow-[6px_6px_0px_0px_rgba(31,41,55,1)] active:shadow-none active:translate-y-1"><Save size={20}/> {editingId ? 'CẬP NHẬT ĐỀ THI' : 'LƯU ĐỀ THI MỚI'}</button>
+                            </div>
+                            <QuestionSection title="PHẦN I. Câu trắc nghiệm" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setShowBank({ type: t, open: true })} />
+                        </div>
+                    )}
+
+                    {/* CHAPTERS MENU */}
                     {activeMenu === 'chapters' && (
                         <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6"><h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tạo mới chương học</h4><div className="flex flex-col gap-4"><select className="p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select><div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border rounded-2xl text-sm font-bold outline-none" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value = ''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700">Lưu Chương</button></div></div></div>
+                             <div className="bg-white p-10 rounded-none border-2 border-gray-800 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
+                                <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Tạo mới chương học</h4>
+                                <div className="flex flex-col gap-4">
+                                    <select className="p-5 bg-white border-2 border-gray-800 rounded-none text-sm font-black outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
+                                    <div className="flex gap-3">
+                                        <input type="text" className="flex-1 p-5 bg-white border-2 border-gray-800 rounded-none text-sm font-bold outline-none" placeholder="Tên chương học..." id="ch-name" />
+                                        <button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value = ''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-none font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-0.5">Lưu Chương</button>
+                                    </div>
+                                </div>
+                            </div>
                             {['12', '11', '10'].map(g => (
-                                <div key={g} className="space-y-3"><h5 className="text-[10px] font-black text-slate-300 uppercase px-6 tracking-[0.2em]">Khối {g}</h5>{chapters.filter(c => c.grade === g).map(c => (<div key={c.id} className="bg-white p-6 px-10 rounded-[2rem] border flex justify-between items-center group hover:border-blue-400 transition-all shadow-sm"><span className="font-black text-sm text-slate-700">{c.name}</span><button onClick={async () => { if(confirm('Xóa?')) { await deleteChapter(c.id); refreshData(); } }} className="p-3 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button></div>))}</div>
+                                <div key={g} className="space-y-3">
+                                    <h5 className="text-[10px] font-black text-gray-400 uppercase px-6 tracking-[0.2em]">Danh sách chương Khối {g}</h5>
+                                    {chapters.filter(c => c.grade === g).map(c => (
+                                        <div key={c.id} className="bg-white p-6 px-10 rounded-none border-2 border-gray-800 flex justify-between items-center group hover:border-blue-500 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                            <span className="font-black text-sm text-gray-800">{c.name}</span>
+                                            <button onClick={async () => { if(confirm('Xóa?')) { await deleteChapter(c.id); refreshData(); } }} className="p-3 text-gray-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
+                                        </div>
+                                    ))}
+                                </div>
                             ))}
                         </div>
                     )}
                 </div>
             </main>
 
+            {/* Modal Thêm học sinh thủ công */}
             {isAddStudentOpen && (
-                <div className="fixed inset-0 bg-slate-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
-                        <button onClick={() => setIsAddStudentOpen(false)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 transition-colors"><X size={24}/></button>
-                        <h3 className="text-xl font-black uppercase text-slate-800 mb-8 flex items-center gap-3"><UserPlus className="text-blue-600"/> Thêm học sinh mới</h3>
+                <div className="fixed inset-0 bg-gray-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-none border-4 border-gray-800 w-full max-w-md p-10 shadow-[10px_10px_0px_0px_rgba(59,130,246,1)] relative">
+                        <button onClick={() => setIsAddStudentOpen(false)} className="absolute top-6 right-6 p-2 text-gray-300 hover:text-red-500 transition-colors"><X size={24}/></button>
+                        <h3 className="text-xl font-black uppercase text-gray-900 mb-8 flex items-center gap-3 underline decoration-blue-600 decoration-4"><UserPlus size={24}/> Thêm học sinh</h3>
                         <form onSubmit={handleAddStudent} className="space-y-6">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Họ và Tên học sinh</label>
-                                <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required placeholder="VD: Nguyễn Văn A" />
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Họ và Tên học sinh</label>
+                                <input type="text" className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-bold outline-none focus:bg-blue-50 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required placeholder="Nguyễn Văn A" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (MSHS)</label>
-                                <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-black outline-none focus:border-blue-500 transition-all uppercase" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value)} required placeholder="VD: HS12-001" />
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Mã định danh (MAHS)</label>
+                                <input type="text" className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-black outline-none focus:bg-blue-50 transition-all uppercase" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value)} required placeholder="HS24001" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Khối lớp</label>
-                                    <select className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Khối lớp</label>
+                                    <select className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-black outline-none" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}>
                                         <option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mật khẩu</label>
-                                    <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={newStudentPass} onChange={e => setNewStudentPass(e.target.value)} required />
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Mật khẩu</label>
+                                    <input type="text" className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-bold outline-none" value={newStudentPass} onChange={e => setNewStudentPass(e.target.value)} required />
                                 </div>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-100 mt-4">Xác nhận thêm mới</button>
+                            <button type="submit" className="w-full bg-gray-800 text-white py-5 rounded-none font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] mt-4 active:translate-y-1 active:shadow-none">Lưu Học Sinh</button>
                         </form>
                     </div>
                 </div>
             )}
 
+            {/* Modal Sửa học sinh */}
             {editStudent && (
-                <div className="fixed inset-0 bg-slate-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
-                        <button onClick={() => setEditStudent(null)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 transition-colors"><X size={24}/></button>
-                        <h3 className="text-xl font-black uppercase text-slate-800 mb-8 flex items-center gap-3"><UserCog className="text-orange-600"/> Sửa thông tin học sinh</h3>
-                        <form onSubmit={handleUpdateStudent} className="space-y-6">
+                <div className="fixed inset-0 bg-gray-900/90 z-[1200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-none border-4 border-gray-800 w-full max-w-md p-10 shadow-[10px_10px_0px_0px_rgba(245,158,11,1)] relative">
+                        <button onClick={() => setEditStudent(null)} className="absolute top-6 right-6 p-2 text-gray-300 hover:text-red-500 transition-colors"><X size={24}/></button>
+                        <h3 className="text-xl font-black uppercase text-gray-900 mb-8 flex items-center gap-3"><UserCog className="text-orange-600"/> Cập nhật thông tin</h3>
+                        <form onSubmit={(e) => { e.preventDefault(); if(editStudent) { saveUser(editStudent); setEditStudent(null); refreshData(); } }} className="space-y-6">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Họ và Tên</label>
-                                <input type="text" className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" value={editStudent.fullName} onChange={e => setEditStudent({...editStudent, fullName: e.target.value})} required />
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Họ và Tên</label>
+                                <input type="text" className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-bold outline-none" value={editStudent.fullName} onChange={e => setEditStudent({...editStudent, fullName: e.target.value})} required />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Mã định danh (Không thể đổi)</label>
-                                <input type="text" className="w-full bg-slate-200 border rounded-2xl p-4 font-black outline-none opacity-50" value={editStudent.studentCode} readOnly />
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Mã số (Không thể sửa)</label>
+                                <input type="text" className="w-full bg-gray-100 border-2 border-gray-300 rounded-none p-4 font-black outline-none opacity-50 uppercase" value={editStudent.studentCode} readOnly />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Khối lớp</label>
-                                <select className="w-full bg-slate-50 border rounded-2xl p-4 font-bold outline-none" value={editStudent.grade} onChange={e => setEditStudent({...editStudent, grade: e.target.value as Grade})}>
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Khối lớp</label>
+                                <select className="w-full bg-white border-2 border-gray-800 rounded-none p-4 font-black outline-none" value={editStudent.grade} onChange={e => setEditStudent({...editStudent, grade: e.target.value as Grade})}>
                                     <option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
                                 </select>
                             </div>
-                            <button type="submit" className="w-full bg-orange-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl mt-4">Lưu cập nhật</button>
+                            <button type="submit" className="w-full bg-orange-600 text-white py-5 rounded-none font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(31,41,55,1)] mt-4 active:translate-y-1 active:shadow-none transition-all">Lưu Thay Đổi</button>
                         </form>
-                    </div>
-                </div>
-            )}
-
-            {selectedStudent && (
-                <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                            <div className="flex items-center gap-5"><div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center font-black text-2xl">{selectedStudent.fullName.charAt(0)}</div><div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Lịch sử luyện tập chi tiết</p></div></div>
-                            <div className="flex items-center gap-4">
-                                <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded-xl flex items-center gap-2 font-black text-xs uppercase shadow-lg"><Medal size={16}/> {selectedStudent.points || 0} tích lũy</div>
-                                <button onClick={() => setSelectedStudent(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
-                            {studentDetailHistory.length > 0 ? studentDetailHistory.map((item, i) => (
-                                <div key={i} className="bg-white p-6 rounded-3xl border flex items-center justify-between group hover:shadow-md transition-all">
-                                    <div className="flex-1"><h4 className="font-black text-slate-800 mb-1">{item.quizTitle}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.category}</p></div>
-                                    <div className="flex gap-8 items-center">
-                                        <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Số lần làm</p><p className="font-black text-slate-700">{item.count}</p></div>
-                                        <div className="text-center"><p className="text-[8px] font-black text-slate-300 uppercase">Điểm cao nhất</p><p className="font-black text-blue-600">{item.maxScore.toFixed(2)}</p></div>
-                                        <button onClick={() => { const std = users.find(u => u.id === selectedStudent.id); if(std) setHistoryView({ student: std, quizId: item.quizId, attempts: results.filter(r => r.studentId === selectedStudent.id && r.quizId === item.quizId) }); }} className="p-2 bg-slate-100 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={16}/></button>
-                                    </div>
-                                </div>
-                            )) : <div className="text-center py-20 text-slate-400 font-bold">Học sinh này chưa làm đề nào.</div>}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {historyView && (
-                <div className="fixed inset-0 bg-slate-900/90 z-[1100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[70vh] flex flex-col overflow-hidden shadow-2xl">
-                        <div className="p-8 bg-blue-600 text-white flex justify-between items-center shrink-0"><div><h3 className="text-lg font-black uppercase">Lịch sử: {historyView.student.fullName}</h3><p className="text-[10px] font-bold text-blue-100">{quizzes.find(q=>q.id===historyView.quizId)?.title}</p></div><button onClick={() => setHistoryView(null)} className="p-2 hover:bg-white/10 rounded-full"><X size={24}/></button></div>
-                        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 space-y-4">
-                            {historyView.attempts.sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((r, i) => (
-                                <div key={r.id} className="bg-white p-5 rounded-2xl border flex justify-between items-center">
-                                    <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Lần {historyView.attempts.length - i}</p><p className="text-sm font-bold">{new Date(r.submittedAt).toLocaleString()}</p></div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-right mr-4"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Thưởng</p><p className="text-sm font-black text-yellow-600">+{r.pointsAwarded || 0}</p></div>
-                                        <div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Điểm</p><p className="text-lg font-black text-blue-600">{r.score.toFixed(2)}</p></div>
-                                        <button onClick={() => handleDeleteResult(r.id)} className="p-2 text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {showBank.open && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[1050] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white animate-fade-in-up">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h3 className="text-lg font-black uppercase tracking-widest">Ngân hàng câu hỏi {showBank.type.toUpperCase()}</h3>
-                                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Đang lọc theo: Khối {grade}</p>
-                            </div>
-                            <button onClick={() => setShowBank({ ...showBank, open: false })} className="p-2 hover:bg-red-600 rounded-xl transition-colors"><X size={24}/></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-4">
-                            {bankQuestions.length > 0 ? bankQuestions.map((q, i) => (
-                                <div key={i} className="bg-white p-8 rounded-3xl border border-slate-100 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm">
-                                    <div className="flex-1 pr-10">
-                                        <p className="text-[8px] font-black text-slate-300 uppercase mb-2">Nguồn: {q.quizTitle}</p>
-                                        <div className="text-sm font-medium leading-relaxed"><LatexText text={q.text}/></div>
-                                    </div>
-                                    <button onClick={() => { setQuestions([...questions, { ...q, id: uuidv4() }]); setShowBank({ ...showBank, open: false }); }} className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:scale-105 transition-all">Lấy câu này</button>
-                                </div>
-                            )) : (
-                                <div className="text-center py-20">
-                                    <Info className="mx-auto text-slate-300 mb-4" size={48}/>
-                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Không tìm thấy câu hỏi "{showBank.type}" nào trong Khối {grade}.</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {previewQuiz && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl animate-fade-in-up">
-                        <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><div className="flex items-center gap-5"><FileText size={24}/><h3 className="text-lg font-black uppercase tracking-tight">{previewQuiz.title}</h3></div><button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X size={24}/></button></div>
-                        <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
-                            {previewQuiz.questions.map((q, i) => (
-                                <div key={q.id || i} className="bg-white p-10 rounded-[2rem] shadow-sm border mb-8 relative"><div className="text-slate-800 font-bold mb-6 flex items-start gap-4"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><div className="flex flex-col gap-4"><LatexText text={q.text}/>{q.imageUrl && <img src={q.imageUrl} className="max-w-full rounded-2xl border" alt="p" />}</div></div>
-                                {q.type === 'mcq' && q.options && (<div className="grid grid-cols-2 gap-4 ml-12">{q.options.map((opt, oi) => <div key={oi} className="text-sm text-slate-500">{String.fromCharCode(65+oi)}. <LatexText text={opt}/></div>)}</div>)}
-                                {q.solution && (<div className="mt-8 pt-6 border-t border-yellow-100 bg-yellow-50/50 p-6 rounded-2xl"><p className="text-[10px] font-black text-yellow-600 uppercase mb-3">Lời giải tham khảo:</p><div className="text-sm font-medium text-slate-600 italic"><LatexText text={q.solution}/></div></div>)}</div>
-                            ))}
-                        </div>
                     </div>
                 </div>
             )}
