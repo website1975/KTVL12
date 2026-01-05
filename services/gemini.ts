@@ -8,24 +8,23 @@ const cleanJsonString = (str: string): string => {
 };
 
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
-  // Always use {apiKey: process.env.API_KEY} for initializing GoogleGenAI
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Nhiệm vụ: Chuyển đổi đề thi Toán từ PDF sang JSON.
-    Quy tắc bóc tách:
-    1. PHẦN I (mcq): Nhận diện dấu '*' ở đầu phương án là đáp án đúng (VD: *A. Nội dung).
-    2. PHẦN II (group-tf): Nhận diện (Đ) là True, (S) là False ở cuối mỗi ý a, b, c, d.
-    3. PHẦN III (short): Lấy giá trị sau từ "Đáp án:" hoặc "Kết quả:".
-    4. LỜI GIẢI: Tất cả nội dung sau chữ "Lời giải:" đưa vào trường 'solution'.
+    Quy tắc bóc tách quan trọng:
+    1. TRƯỜNG 'text': Chỉ chứa nội dung câu hỏi. TUYỆT ĐỐI KHÔNG bao gồm các cụm từ như "Đáp án:", "Đáp số:", "Kết quả là:" hoặc giá trị đáp án vào trong chuỗi 'text'.
+    2. PHẦN I (mcq): Nhận diện dấu '*' hoặc định dạng trắc nghiệm để lấy 'correctAnswer'.
+    3. PHẦN II (group-tf): Phải bóc tách đủ 4 ý a, b, c, d theo ĐÚNG THỨ TỰ xuất hiện trong đề.
+    4. PHẦN III (short): Lấy giá trị đáp số đưa vào trường 'correctAnswer', không để lại trong 'text'.
+    5. LỜI GIẢI: Mọi giải thích đưa vào trường 'solution'.
     
     Cấu trúc JSON: Array<{type, text, points, options?, correctAnswer?, solution?, subQuestions?}>
     Lưu ý: Giữ nguyên công thức Toán dạng LaTeX trong dấu $.
   `;
 
   try {
-    // Corrected: contents must be { parts: [...] } when sending multiple parts
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: {
           parts: [
               { inlineData: { mimeType: "application/pdf", data: base64Data } },
@@ -35,7 +34,6 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
       config: { responseMimeType: "application/json" }
     });
 
-    // Access the .text property directly (not as a method)
     const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
     return rawData.map((item: any) => ({
         id: uuidv4(),
@@ -49,20 +47,21 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
 };
 
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
-    // Always use {apiKey: process.env.API_KEY} for initializing GoogleGenAI
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `
         Soạn đề thi Toán lớp ${config.grade} - Chủ đề: ${config.topic}.
-        Yêu cầu:
+        Yêu cầu nghiêm ngặt:
+        - Trường 'text' CHỈ chứa nội dung câu hỏi, KHÔNG chứa đáp án hay cụm từ "Đáp án:".
+        - Câu Đúng/Sai (group-tf) PHẢI có đúng 4 ý con sắp xếp theo thứ tự a, b, c, d rõ ràng.
         - ${config.part1Count} câu trắc nghiệm (mcq).
         - ${config.part2Count} câu Đúng/Sai (group-tf).
         - ${config.part3Count} câu trả lời ngắn (short).
-        Tất cả phải có lời giải chi tiết (solution) và dùng LaTeX $.
+        Sử dụng LaTeX $ cho công thức.
     `;
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -95,7 +94,6 @@ export const generateQuizFromPrompt = async (config: any): Promise<Question[]> =
             }
         });
 
-        // Access the .text property directly (not as a method)
         const rawData = JSON.parse(cleanJsonString(response.text || "[]"));
         return rawData.map((item: any) => ({
             id: uuidv4(),
