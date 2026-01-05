@@ -1,6 +1,7 @@
 
 export type Role = 'admin' | 'student';
-export type Grade = '10' | '11' | '12';
+// Fix: Added 'all' to Grade union to support common/general quizzes and resolve TS overlap errors
+export type Grade = '10' | '11' | '12' | 'all';
 export type QuizType = 'practice' | 'test';
 export type QuestionType = 'mcq' | 'group-tf' | 'short';
 
@@ -48,7 +49,7 @@ export interface Quiz {
   grade: Grade;
   category?: string; 
   startTime?: string;
-  endTime?: string; // Thời gian kết thúc hiển thị cho đề luyện tập
+  endTime?: string; // Thời gian đóng đề luyện tập
   durationMinutes: number;
   questions: Question[];
   createdAt: string;
