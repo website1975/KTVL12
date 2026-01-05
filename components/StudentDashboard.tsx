@@ -29,7 +29,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     const now = new Date();
     
     const relevantQuizzes = allQuizzes.filter(q => {
-        // Fix: Quizzes are relevant if they match the student's grade OR are general/common ('all')
         const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
         const isPub = q.isPublished === true;
         
@@ -92,8 +91,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         const partQs = quiz.questions.filter(q => q.type === part.type);
         if (partQs.length > 0) {
             content += `<h3>${part.title}</h3>`;
-            partQs.forEach((q, idx) => {
-                content += `<p><b>Câu ${idx + 1}.</b> ${q.text}</p>`;
+            partQs.forEach((q) => {
+                const globalIdx = quiz.questions.indexOf(q) + 1;
+                content += `<p><b>Câu ${globalIdx}.</b> ${q.text}</p>`;
                 if (q.type === 'mcq' && q.options) {
                     q.options.forEach((opt, oi) => {
                         content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`;
@@ -175,7 +175,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                   <div className="flex justify-between items-start mb-6">
                     <div className="w-12 h-12 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center font-black text-sm group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">{q.questions.length}</div>
                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">
-                      {/* Fix: Label 'all' grade quizzes as 'Chung' */}
                       {q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}
                     </span>
                   </div>
@@ -246,19 +245,22 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         {previewQuiz.questions.some(q => q.type === 'mcq') && (
                             <div className="space-y-6">
                                 <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest border-b-2 border-blue-100 pb-2">PHẦN I. Câu trắc nghiệm nhiều lựa chọn</h4>
-                                {previewQuiz.questions.filter(q => q.type === 'mcq').map((q, i) => (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                            <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                            <LatexText text={q.text}/>
-                                        </div>
-                                        {q.options && (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8"> {/* Tab level 2 */}
-                                                {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                {previewQuiz.questions.filter(q => q.type === 'mcq').map((q) => {
+                                    const globalIdx = previewQuiz.questions.indexOf(q) + 1;
+                                    return (
+                                        <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                            <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
+                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {globalIdx}.</span>
+                                                <LatexText text={q.text}/>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            {q.options && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">
+                                                    {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -266,24 +268,27 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         {previewQuiz.questions.some(q => q.type === 'group-tf') && (
                             <div className="space-y-6">
                                 <h4 className="text-sm font-black text-purple-700 uppercase tracking-widest border-b-2 border-purple-100 pb-2">PHẦN II. Câu trắc nghiệm Đúng/Sai</h4>
-                                {previewQuiz.questions.filter(q => q.type === 'group-tf').map((q, i) => (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                            <span className="text-purple-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                            <LatexText text={q.text}/>
-                                        </div>
-                                        {q.subQuestions && (
-                                            <div className="space-y-4 pl-12"> {/* Tab level 4 */}
-                                                {q.subQuestions.map((sq, si) => (
-                                                    <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
-                                                        <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
-                                                        <LatexText text={sq.text}/>
-                                                    </div>
-                                                ))}
+                                {previewQuiz.questions.filter(q => q.type === 'group-tf').map((q) => {
+                                    const globalIdx = previewQuiz.questions.indexOf(q) + 1;
+                                    return (
+                                        <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                            <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
+                                                <span className="text-purple-600 shrink-0 font-black italic underline">Câu {globalIdx}.</span>
+                                                <LatexText text={q.text}/>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            {q.subQuestions && (
+                                                <div className="space-y-4 pl-12">
+                                                    {q.subQuestions.map((sq, si) => (
+                                                        <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
+                                                            <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
+                                                            <LatexText text={sq.text}/>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -291,14 +296,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         {previewQuiz.questions.some(q => q.type === 'short') && (
                             <div className="space-y-6">
                                 <h4 className="text-sm font-black text-orange-700 uppercase tracking-widest border-b-2 border-orange-100 pb-2">PHẦN III. Câu trắc nghiệm Trả lời ngắn</h4>
-                                {previewQuiz.questions.filter(q => q.type === 'short').map((q, i) => (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold leading-relaxed flex items-start gap-4">
-                                            <span className="text-orange-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                            <LatexText text={q.text}/>
+                                {previewQuiz.questions.filter(q => q.type === 'short').map((q) => {
+                                    const globalIdx = previewQuiz.questions.indexOf(q) + 1;
+                                    return (
+                                        <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                            <div className="text-slate-800 text-[15px] font-bold leading-relaxed flex items-start gap-4">
+                                                <span className="text-orange-600 shrink-0 font-black italic underline">Câu {globalIdx}.</span>
+                                                <LatexText text={q.text}/>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
