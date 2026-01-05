@@ -91,9 +91,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         const partQs = quiz.questions.filter(q => q.type === part.type);
         if (partQs.length > 0) {
             content += `<h3>${part.title}</h3>`;
-            partQs.forEach((q) => {
-                const globalIdx = quiz.questions.indexOf(q) + 1;
-                content += `<p><b>Câu ${globalIdx}.</b> ${q.text}</p>`;
+            partQs.forEach((q, idx) => {
+                content += `<p><b>Câu ${idx + 1}.</b> ${q.text}</p>`;
                 if (q.type === 'mcq' && q.options) {
                     q.options.forEach((opt, oi) => {
                         content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`;
@@ -241,66 +240,42 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                     <div className="max-w-3xl mx-auto space-y-12 pb-12">
-                        {/* Render bằng cách lặp qua toàn bộ mảng và chỉ hiện đúng loại, để giữ Index gốc chuẩn */}
-                        <div className="space-y-6">
-                            <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest border-b-2 border-blue-100 pb-2">PHẦN I. Câu trắc nghiệm nhiều lựa chọn</h4>
-                            {previewQuiz.questions.map((q, i) => {
-                                if (q.type !== 'mcq') return null;
-                                return (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                            <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i + 1}.</span>
-                                            <LatexText text={q.text}/>
-                                        </div>
-                                        {q.options && (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">
-                                                {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                        {['mcq', 'group-tf', 'short'].map((type) => {
+                            const typeQs = previewQuiz.questions.filter(q => q.type === type);
+                            if (typeQs.length === 0) return null;
+                            
+                            return (
+                                <div key={type} className="space-y-8">
+                                    <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">
+                                        {type === 'mcq' ? 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn' : type === 'group-tf' ? 'PHẦN II. Câu trắc nghiệm Đúng/Sai' : 'PHẦN III. Câu trắc nghiệm Trả lời ngắn'}
+                                    </h4>
+                                    {typeQs.map((q, idx) => (
+                                        <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                            <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
+                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {idx + 1}.</span>
+                                                <LatexText text={q.text}/>
                                             </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="space-y-6">
-                            <h4 className="text-sm font-black text-purple-700 uppercase tracking-widest border-b-2 border-purple-100 pb-2">PHẦN II. Câu trắc nghiệm Đúng/Sai</h4>
-                            {previewQuiz.questions.map((q, i) => {
-                                if (q.type !== 'group-tf') return null;
-                                return (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                            <span className="text-purple-600 shrink-0 font-black italic underline">Câu {i + 1}.</span>
-                                            <LatexText text={q.text}/>
+                                            {q.imageUrl && <img src={q.imageUrl} className="max-h-64 rounded-2xl border mb-6 mx-auto object-contain bg-slate-50" alt="Q"/>}
+                                            {q.type === 'mcq' && q.options && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">
+                                                    {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                                </div>
+                                            )}
+                                            {q.type === 'group-tf' && q.subQuestions && (
+                                                <div className="space-y-4 pl-12">
+                                                    {q.subQuestions.map((sq, si) => (
+                                                        <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
+                                                            <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
+                                                            <LatexText text={sq.text}/>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                        {q.subQuestions && (
-                                            <div className="space-y-4 pl-12">
-                                                {q.subQuestions.map((sq, si) => (
-                                                    <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
-                                                        <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
-                                                        <LatexText text={sq.text}/>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="space-y-6">
-                            <h4 className="text-sm font-black text-orange-700 uppercase tracking-widest border-b-2 border-orange-100 pb-2">PHẦN III. Câu trắc nghiệm Trả lời ngắn</h4>
-                            {previewQuiz.questions.map((q, i) => {
-                                if (q.type !== 'short') return null;
-                                return (
-                                    <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                                        <div className="text-slate-800 text-[15px] font-bold leading-relaxed flex items-start gap-4">
-                                            <span className="text-orange-600 shrink-0 font-black italic underline">Câu {i + 1}.</span>
-                                            <LatexText text={q.text}/>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
                 <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10">
