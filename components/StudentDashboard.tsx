@@ -127,14 +127,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="relative z-10">
             <h1 className="text-2xl font-black text-slate-800">Xin chào, {user.fullName} 👋</h1>
-            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Học sinh lớp {user.grade} • Nền tảng luyện thi trực tuyến</p>
+            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Học sinh lớp {user.grade} • Nền tảng học tập trực tuyến</p>
         </div>
         <div className="flex items-center gap-6 relative z-10">
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm">
                 <div className="w-10 h-10 bg-yellow-400 text-white rounded-2xl flex items-center justify-center shadow-lg"><Medal size={24}/></div>
                 <div className="text-right">
                     <p className="text-[9px] font-black text-yellow-600 uppercase leading-none mb-1">Điểm tích lũy</p>
-                    <span className="text-xl font-black text-yellow-700">{currentUserData?.points || 0}</span>
+                    <span className="text-xl font-black text-yellow-700">{currentUserData?.points?.toFixed(2) || '0.00'}</span>
                 </div>
             </div>
             <div className="text-right">
@@ -155,7 +155,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5">
             <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0"><Clock size={28} /></div>
-            <div><p className="text-slate-400 text-[10px] font-black uppercase">Thời gian học</p><h3 className="text-2xl font-black text-slate-800">{formatStudyTime(stats.totalSeconds)}</h3></div>
+            <div><p className="text-slate-400 text-[10px] font-black uppercase">Tổng thời gian học</p><h3 className="text-xl font-black text-slate-800">{formatStudyTime(stats.totalSeconds)}</h3></div>
         </div>
       </div>
 
@@ -188,11 +188,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
                   <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
                       <div className="border-r border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Số lượt làm</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Lượt làm</p>
                           <p className="text-sm font-black text-slate-700">{qStats?.count || 0}</p>
                       </div>
                       <div>
-                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Điểm cao nhất</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Cao nhất</p>
                           <p className="text-sm font-black text-blue-600">{qStats ? qStats.max.toFixed(2) : '-'}</p>
                       </div>
                   </div>
@@ -233,7 +233,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     </div>
                     <div className="flex gap-2">
                         <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl">
-                            <Download size={16}/> Xuất File Word
+                            <Download size={16}/> Xuất Word
                         </button>
                         <button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><XCircle size={24}/></button>
                     </div>
@@ -278,8 +278,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         })}
                     </div>
                 </div>
-                <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10">
-                    <button onClick={() => { setActiveQuiz(previewQuiz); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Bắt đầu làm bài thi luyện tập ngay</button>
+                <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10 shrink-0">
+                    <button onClick={() => { setActiveQuiz(previewQuiz); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Luyện tập ngay</button>
                 </div>
               </div>
           </div>
