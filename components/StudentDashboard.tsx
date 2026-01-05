@@ -29,7 +29,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     const now = new Date();
     
     const relevantQuizzes = allQuizzes.filter(q => {
-        const isCorrectGrade = q.grade === user.grade;
+        // Fix: Quizzes are relevant if they match the student's grade OR are general/common ('all')
+        const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
         const isPub = q.isPublished === true;
         
         let notExpired = true;
@@ -173,7 +174,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                 <div key={q.id} className="bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col hover:shadow-2xl hover:-translate-y-2 transition-all group relative overflow-hidden border-b-8 border-b-slate-50 hover:border-b-blue-600">
                   <div className="flex justify-between items-start mb-6">
                     <div className="w-12 h-12 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center font-black text-sm group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">{q.questions.length}</div>
-                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">Khối {q.grade}</span>
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">
+                      {/* Fix: Label 'all' grade quizzes as 'Chung' */}
+                      {q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}
+                    </span>
                   </div>
 
                   <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 min-h-[44px]">{q.title}</h3>
@@ -224,7 +228,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         <div className="w-14 h-14 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20"><FileText size={28}/></div>
                         <div>
                             <h3 className="text-lg font-black uppercase leading-tight tracking-tight">{previewQuiz.title}</h3>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Khối {previewQuiz.grade} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút</p>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
+                                {previewQuiz.grade === 'all' ? 'CHUNG' : `Khối ${previewQuiz.grade}`} • {previewQuiz.questions.length} câu hỏi • {previewQuiz.durationMinutes} phút
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-2">
