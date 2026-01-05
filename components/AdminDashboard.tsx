@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check, List
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -209,6 +209,9 @@ const AdminDashboard = () => {
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
     
+    // TRẠNG THÁI MODAL XEM CHI TIẾT LẦN THI
+    const [selectedAttemptGroup, setSelectedAttemptGroup] = useState<{ studentName: string, quizTitle: string, history: Result[] } | null>(null);
+
     const [newStudentName, setNewStudentName] = useState('');
     const [newStudentCode, setNewStudentCode] = useState('');
     const [newStudentGrade, setNewStudentGrade] = useState<Grade>('12');
@@ -279,8 +282,9 @@ const AdminDashboard = () => {
             const partQs = quiz.questions.filter(q => q.type === part.type);
             if (partQs.length > 0) {
                 content += `<h3>${part.title}</h3>`;
-                partQs.forEach((q, idx) => {
-                    content += `<p><b>Câu ${idx + 1}.</b> ${q.text}</p>`;
+                partQs.forEach((q) => {
+                    const idx = quiz.questions.indexOf(q) + 1;
+                    content += `<p><b>Câu ${idx}.</b> ${q.text}</p>`;
                     if (q.type === 'mcq' && q.options) q.options.forEach((opt, oi) => content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`);
                     else if (q.type === 'group-tf' && q.subQuestions) q.subQuestions.forEach((sq, si) => content += `<p style="margin-left:20px">${String.fromCharCode(97+si)}) ${sq.text}</p>`);
                 });
@@ -301,8 +305,8 @@ const AdminDashboard = () => {
         return quizzes.filter(q => (qGradeFilter === 'all' || q.grade === qGradeFilter) && (qChapterFilter === 'all' || q.category === qChapterFilter) && q.title.toLowerCase().includes(qSearch.toLowerCase()));
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
 
-    // LOGIC NHÓM KẾT QUẢ ĐỂ HIỂN THỊ TRONG BẢNG TỔNG
-    const latestResults = useMemo(() => {
+    // LOGIC NHÓM KẾT QUẢ: 1 HỌC SINH + 1 ĐỀ = 1 DÒNG
+    const attemptGroups = useMemo(() => {
         const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
             const matchGrade = rGradeFilter === 'all' || (quiz && quiz.grade === rGradeFilter);
@@ -311,20 +315,25 @@ const AdminDashboard = () => {
             return matchGrade && matchChapter && matchQuiz;
         });
 
-        // Nhóm theo StudentId + QuizId
-        const grouped: Record<string, { latest: Result, count: number }> = {};
+        const groups: Record<string, { latest: Result, history: Result[] }> = {};
         filtered.forEach(r => {
             const key = `${r.studentId}_${r.quizId}`;
-            if (!grouped[key]) {
-                grouped[key] = { latest: r, count: 1 };
+            if (!groups[key]) {
+                groups[key] = { latest: r, history: [r] };
             } else {
-                grouped[key].count++;
-                if (isAfter(parseISO(r.submittedAt), parseISO(grouped[key].latest.submittedAt))) {
-                    grouped[key].latest = r;
+                groups[key].history.push(r);
+                if (isAfter(parseISO(r.submittedAt), parseISO(groups[key].latest.submittedAt))) {
+                    groups[key].latest = r;
                 }
             }
         });
-        return Object.values(grouped).sort((a, b) => isAfter(parseISO(b.latest.submittedAt), parseISO(a.latest.submittedAt)) ? 1 : -1);
+        
+        // Sắp xếp lịch sử trong từng nhóm theo thời gian giảm dần
+        Object.values(groups).forEach(g => {
+            g.history.sort((a, b) => isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1);
+        });
+
+        return Object.values(groups).sort((a, b) => isAfter(parseISO(b.latest.submittedAt), parseISO(a.latest.submittedAt)) ? 1 : -1);
     }, [results, quizzes, rGradeFilter, rChapterFilter, rQuizFilter]);
 
     const bankQuestions = useMemo(() => {
@@ -538,21 +547,38 @@ const AdminDashboard = () => {
                             </div>
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
                                 <table className="w-full text-left">
-                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400"><th className="p-6">Học sinh</th><th className="p-6">Đề thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Lượt làm</th><th className="p-6 text-center">Điểm cao nhất</th><th className="p-6 text-center">Ngày nộp gần nhất</th><th className="p-6 text-center">Xóa</th></tr></thead>
+                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400"><th className="p-6">Học sinh</th><th className="p-6">Đề thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Lượt làm</th><th className="p-6 text-center">Điểm cao nhất</th><th className="p-6 text-center">Chi tiết</th><th className="p-6 text-center">Xóa</th></tr></thead>
                                     <tbody className="divide-y">
-                                        {latestResults.map(item => {
-                                            const r = item.latest;
+                                        {attemptGroups.map(group => {
+                                            const r = group.latest;
+                                            const quiz = quizzes.find(q => q.id === r.quizId);
                                             return (
-                                                <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                                                <tr key={`${r.studentId}-${r.quizId}`} className="hover:bg-slate-50 transition-colors">
                                                     <td className="p-6 font-bold text-slate-800">{r.studentName}</td>
-                                                    <td className="p-6 text-sm text-slate-500">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đã xóa'}</td>
-                                                    <td className="p-6 text-center font-black text-slate-400">{quizzes.find(q=>q.id===r.quizId)?.grade || '-'}</td>
-                                                    <td className="p-6 text-center font-black text-slate-600">
-                                                        <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-100">{item.count}</span>
+                                                    <td className="p-6 text-sm text-slate-500">{quiz?.title || 'Đã xóa'}</td>
+                                                    <td className="p-6 text-center font-black text-slate-400">{quiz?.grade || '-'}</td>
+                                                    <td className="p-6 text-center">
+                                                        <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-100 font-black text-xs">{group.history.length}</span>
                                                     </td>
-                                                    <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                                    <td className="p-6 text-center text-slate-400 text-xs">{format(parseISO(r.submittedAt), 'dd/MM HH:mm')}</td>
-                                                    <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa kết quả này?')) { deleteResult(r.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                                    <td className="p-6 text-center font-black text-blue-600">
+                                                        {Math.max(...group.history.map(h => h.score)).toFixed(2)}
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <button 
+                                                            onClick={() => setSelectedAttemptGroup({ studentName: r.studentName, quizTitle: quiz?.title || 'Đề thi', history: group.history })}
+                                                            className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                                        >
+                                                            <List size={16}/>
+                                                        </button>
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <button 
+                                                            onClick={() => { if(confirm('Xóa TẤT CẢ các lượt thi này?')) { group.history.forEach(h => deleteResult(h.id)); refreshData(); } }} 
+                                                            className="text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={16}/>
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             );
                                         })}
@@ -628,7 +654,47 @@ const AdminDashboard = () => {
                     )}
                 </div>
 
-                {/* MODALS */}
+                {/* MODAL XEM CHI TIẾT LỊCH SỬ LẦN THI (ADMIN) */}
+                {selectedAttemptGroup && (
+                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-white rounded-[3rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-blue-600 rounded-2xl"><History size={24}/></div>
+                                    <div>
+                                        <h3 className="text-lg font-black uppercase leading-tight tracking-tight">Lịch sử thi chi tiết</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{selectedAttemptGroup.studentName} • {selectedAttemptGroup.quizTitle}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setSelectedAttemptGroup(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                                <div className="space-y-4">
+                                    {selectedAttemptGroup.history.map((h, idx) => (
+                                        <div key={h.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-blue-200 transition-all">
+                                            <div className="flex items-center gap-5">
+                                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400 text-xs">#{selectedAttemptGroup.history.length - idx}</div>
+                                                <div>
+                                                    <div className="text-sm font-black text-slate-800">{format(parseISO(h.submittedAt), 'HH:mm - dd/MM/yyyy')}</div>
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Thời gian làm: {Math.floor(h.durationSeconds / 60)} phút {h.durationSeconds % 60} giây</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xl font-black text-blue-600">{h.score.toFixed(2)}</div>
+                                                <p className="text-[8px] font-black text-slate-300 uppercase">Điểm số</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="p-6 bg-white border-t text-center shrink-0">
+                                <button onClick={() => setSelectedAttemptGroup(null)} className="px-10 py-3 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">Đóng cửa sổ</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL XEM TRƯỚC ĐỀ THI (ADMIN) */}
                 {previewQuiz && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
@@ -638,58 +704,73 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
                                 <div className="max-w-3xl mx-auto space-y-12">
-                                    {previewQuiz.questions.map((q, i) => (
-                                        <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
-                                            <div className="absolute top-6 right-8 text-[10px] font-black text-slate-200 uppercase tracking-widest">Phần {q.type === 'mcq' ? 'I' : q.type === 'group-tf' ? 'II' : 'III'}</div>
-                                            <p className="font-bold text-slate-800 text-lg flex gap-4 leading-relaxed mb-6">
-                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
-                                                <LatexText text={q.text}/>
-                                            </p>
-                                            
-                                            {/* HIỂN THỊ NỘI DUNG CÂU TRẢ LỜI TRONG PREVIEW */}
-                                            {q.type === 'mcq' && q.options && (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
-                                                    {q.options.map((opt, oi) => (
-                                                        <div key={oi} className={`text-sm font-medium p-3 rounded-xl border flex items-center gap-3 ${q.correctAnswer === opt ? 'bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                                                            <span className="font-black shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border text-[10px] uppercase">{String.fromCharCode(65+oi)}</span>
-                                                            <div className="flex-1"><LatexText text={opt}/></div>
-                                                            {q.correctAnswer === opt && <Check size={14} className="text-emerald-500 shrink-0" strokeWidth={3}/>}
+                                    {/* HIỂN THỊ THEO THỨ TỰ CỐ ĐỊNH: PHẦN I -> PHẦN II -> PHẦN III */}
+                                    {['mcq', 'group-tf', 'short'].map((type) => {
+                                        const partQs = previewQuiz.questions.filter(q => q.type === type);
+                                        if (partQs.length === 0) return null;
+                                        
+                                        return (
+                                            <div key={type} className="space-y-8">
+                                                <h4 className="text-xs font-black uppercase tracking-[0.3em] text-blue-600 border-b-2 border-blue-100 pb-3">
+                                                    {type === 'mcq' ? 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn' : type === 'group-tf' ? 'PHẦN II. Câu trắc nghiệm Đúng/Sai' : 'PHẦN III. Câu trắc nghiệm Trả lời ngắn'}
+                                                </h4>
+                                                {partQs.map((q) => {
+                                                    const globalIdx = previewQuiz.questions.indexOf(q) + 1;
+                                                    return (
+                                                        <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
+                                                            <p className="font-bold text-slate-800 text-lg flex gap-4 leading-relaxed mb-6">
+                                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {globalIdx}.</span>
+                                                                <LatexText text={q.text}/>
+                                                            </p>
+                                                            {q.imageUrl && <img src={q.imageUrl} className="max-h-64 rounded-2xl border mb-6 mx-auto object-contain bg-slate-50" alt="Q"/>}
+                                                            
+                                                            {q.type === 'mcq' && q.options && (
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+                                                                    {q.options.map((opt, oi) => (
+                                                                        <div key={oi} className={`text-sm font-medium p-3 rounded-xl border flex items-center gap-3 ${q.correctAnswer === opt ? 'bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                                                            <span className="font-black shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border text-[10px] uppercase">{String.fromCharCode(65+oi)}</span>
+                                                                            <div className="flex-1"><LatexText text={opt}/></div>
+                                                                            {q.correctAnswer === opt && <Check size={14} className="text-emerald-500 shrink-0" strokeWidth={3}/>}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {q.type === 'group-tf' && q.subQuestions && (
+                                                                <div className="space-y-3 pl-12">
+                                                                    {q.subQuestions.map((sq, si) => (
+                                                                        <div key={si} className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 group/sq hover:bg-blue-50 transition-colors">
+                                                                            <div className="text-sm font-medium flex gap-3"><span className="font-black text-blue-600 shrink-0">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
+                                                                            <div className="flex gap-2">
+                                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'True' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
+                                                                                    {sq.correctAnswer === 'True' && <Check size={10}/>} ĐÚNG
+                                                                                </span>
+                                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'False' ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
+                                                                                    {sq.correctAnswer === 'False' && <Check size={10}/>} SAI
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {q.type === 'short' && (
+                                                                <div className="pl-12">
+                                                                    <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-xl text-sm font-bold text-orange-800 w-fit flex items-center gap-3 shadow-md">
+                                                                        <div className="bg-orange-200 text-orange-800 px-3 py-1 rounded-lg text-[10px] uppercase font-black">Đáp án chuẩn</div>
+                                                                        <LatexText text={q.correctAnswer || ''}/>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            
-                                            {q.type === 'group-tf' && q.subQuestions && (
-                                                <div className="space-y-3 pl-12">
-                                                    {q.subQuestions.map((sq, si) => (
-                                                        <div key={si} className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 group/sq hover:bg-blue-50 transition-colors">
-                                                            <div className="text-sm font-medium flex gap-3"><span className="font-black text-blue-600 shrink-0">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
-                                                            <div className="flex gap-2">
-                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'True' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
-                                                                    {sq.correctAnswer === 'True' && <Check size={10}/>} ĐÚNG
-                                                                </span>
-                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'False' ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
-                                                                    {sq.correctAnswer === 'False' && <Check size={10}/>} SAI
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            
-                                            {q.type === 'short' && (
-                                                <div className="pl-12">
-                                                    <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-xl text-sm font-bold text-orange-800 w-fit flex items-center gap-3 shadow-md">
-                                                        <div className="bg-orange-200 text-orange-800 px-3 py-1 rounded-lg text-[10px] uppercase font-black">Đáp án chuẩn</div>
-                                                        <LatexText text={q.correctAnswer || ''}/>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                            <div className="p-8 bg-white border-t flex justify-center"><button onClick={() => { startEdit(previewQuiz!); setPreviewQuiz(null); }} className="px-12 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Vào chỉnh sửa đề thi</button></div>
+                            <div className="p-8 bg-white border-t flex justify-center shrink-0 shadow-2xl relative z-10"><button onClick={() => { startEdit(previewQuiz!); setPreviewQuiz(null); }} className="px-12 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Vào chỉnh sửa đề thi</button></div>
                         </div>
                     </div>
                 )}
@@ -742,7 +823,7 @@ const AdminDashboard = () => {
                                     </table>
                                 </div>
                             </div>
-                            <div className="p-6 border-t bg-white text-center"><button onClick={() => setSelectedStudent(null)} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">Đóng chi tiết</button></div>
+                            <div className="p-6 border-t bg-white text-center shrink-0"><button onClick={() => setSelectedStudent(null)} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">Đóng chi tiết</button></div>
                         </div>
                     </div>
                 )}
@@ -750,7 +831,7 @@ const AdminDashboard = () => {
                 {bankModal.open && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
-                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center"><div className="flex items-center gap-4"><Database size={24} className="text-blue-500"/><h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type}</h3></div><button onClick={() => setBankModal({ open: false, type: null })} className="p-3 hover:text-red-500 transition-colors"><X size={24}/></button></div>
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0"><div className="flex items-center gap-4"><Database size={24} className="text-blue-500"/><h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type}</h3></div><button onClick={() => setBankModal({ open: false, type: null })} className="p-3 hover:text-red-500 transition-colors"><X size={24}/></button></div>
                             <div className="flex-1 overflow-y-auto p-10 space-y-4 bg-slate-50 custom-scrollbar">
                                 {bankQuestions.length === 0 ? (<p className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest italic">Kho câu hỏi đang trống cho {grade === 'all' ? 'chung' : `khối ${grade}`}</p>) : bankQuestions.map((bq) => (
                                     <div key={bq.id} className="bg-white p-8 rounded-[2rem] border border-slate-100 flex items-start gap-6 hover:border-blue-300 transition-all group shadow-sm"><div className="flex-1 font-bold leading-relaxed text-slate-800"><LatexText text={bq.text}/></div><button onClick={() => { setQuestions([...questions, { ...bq, id: uuidv4() }]); alert("Đã thêm câu hỏi!"); }} className="bg-blue-50 text-blue-600 px-8 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm">Thêm vào đề</button></div>
