@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -429,9 +429,10 @@ const AdminDashboard = () => {
                                             <div className="flex justify-between items-start mb-6">
                                                 <div className="flex flex-col gap-1.5">
                                                     <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${gradeBadge}`}>{q.grade === 'all' ? 'CHUNG' : `KHỐI ${q.grade}`}</span>
-                                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase w-fit ${q.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                        {q.isPublished ? 'Công khai' : 'Bản nháp'}
-                                                    </span>
+                                                    <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1.5 w-fit ${q.isPublished ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
+                                                        {q.isPublished ? <Check size={10}/> : <X size={10}/>}
+                                                        {q.isPublished ? 'Đang công khai' : 'Bản nháp'}
+                                                    </div>
                                                 </div>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                                     <button onClick={() => startEdit(q)} className="p-2.5 bg-white border rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"><Edit size={16}/></button>
@@ -627,9 +628,10 @@ const AdminDashboard = () => {
                                             {q.type === 'mcq' && q.options && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
                                                     {q.options.map((opt, oi) => (
-                                                        <div key={oi} className={`text-sm font-medium p-3 rounded-xl border ${q.correctAnswer === opt ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                                                            <span className="font-black mr-2">{String.fromCharCode(65+oi)}.</span>
-                                                            <LatexText text={opt}/>
+                                                        <div key={oi} className={`text-sm font-medium p-3 rounded-xl border flex items-center gap-3 ${q.correctAnswer === opt ? 'bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                                            <span className="font-black shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border text-[10px] uppercase">{String.fromCharCode(65+oi)}</span>
+                                                            <div className="flex-1"><LatexText text={opt}/></div>
+                                                            {q.correctAnswer === opt && <Check size={14} className="text-emerald-500 shrink-0" strokeWidth={3}/>}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -638,11 +640,16 @@ const AdminDashboard = () => {
                                             {q.type === 'group-tf' && q.subQuestions && (
                                                 <div className="space-y-3 pl-12">
                                                     {q.subQuestions.map((sq, si) => (
-                                                        <div key={si} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                                            <div className="text-sm font-medium"><span className="font-black mr-2 text-blue-600">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
-                                                            <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg ${sq.correctAnswer === 'True' ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'}`}>
-                                                                {sq.correctAnswer === 'True' ? 'Đúng' : 'Sai'}
-                                                            </span>
+                                                        <div key={si} className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 group/sq hover:bg-blue-50 transition-colors">
+                                                            <div className="text-sm font-medium flex gap-3"><span className="font-black text-blue-600 shrink-0">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
+                                                            <div className="flex gap-2">
+                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'True' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
+                                                                    {sq.correctAnswer === 'True' && <Check size={10}/>} ĐÚNG
+                                                                </span>
+                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg flex items-center gap-1 shadow-sm ${sq.correctAnswer === 'False' ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500 opacity-30'}`}>
+                                                                    {sq.correctAnswer === 'False' && <Check size={10}/>} SAI
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -650,8 +657,9 @@ const AdminDashboard = () => {
                                             
                                             {q.type === 'short' && (
                                                 <div className="pl-12">
-                                                    <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-sm font-bold text-orange-700 w-fit">
-                                                        Đáp án: <LatexText text={q.correctAnswer || ''}/>
+                                                    <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-xl text-sm font-bold text-orange-800 w-fit flex items-center gap-3 shadow-md">
+                                                        <div className="bg-orange-200 text-orange-800 px-3 py-1 rounded-lg text-[10px] uppercase font-black">Đáp án chuẩn</div>
+                                                        <LatexText text={q.correctAnswer || ''}/>
                                                     </div>
                                                 </div>
                                             )}
