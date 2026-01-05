@@ -197,6 +197,7 @@ const AdminDashboard = () => {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [category, setCategory] = useState('');
     const [startTime, setStartTime] = useState('');
+    const [endTime, setEndTime] = useState('');
 
     const [aiPrompt, setAiPrompt] = useState('');
     const [aiPart1, setAiPart1] = useState(5);
@@ -217,10 +218,8 @@ const AdminDashboard = () => {
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
     
-    const [newStudentName, setNewStudentName] = useState('');
-    const [newStudentCode, setNewStudentCode] = useState('');
-    const [newStudentGrade, setNewStudentGrade] = useState<Grade>('12');
-    const [newStudentPass, setNewStudentPass] = useState('123456');
+    // Ngân hàng câu hỏi
+    const [bankModal, setBankModal] = useState<{ open: boolean, type: QuestionType | null }>({ open: false, type: null });
 
     const csvInputRef = useRef<HTMLInputElement>(null);
 
@@ -272,10 +271,22 @@ const AdminDashboard = () => {
         return quizzes.filter(q => (qGradeFilter === 'all' || q.grade === qGradeFilter) && (qChapterFilter === 'all' || q.category === qChapterFilter) && q.title.toLowerCase().includes(qSearch.toLowerCase()));
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
 
+    // Lọc ngân hàng câu hỏi
+    const bankQuestions = useMemo(() => {
+        if (!bankModal.type) return [];
+        let allQs: Question[] = [];
+        quizzes.filter(q => q.grade === grade).forEach(q => {
+            allQs = [...allQs, ...q.questions.filter(qu => qu.type === bankModal.type)];
+        });
+        // Lọc trùng theo text
+        return allQs.filter((v, i, a) => a.findIndex(t => t.text === v.text) === i);
+    }, [quizzes, grade, bankModal.type]);
+
     const startEdit = (q: Quiz) => {
         setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type);
         setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions);
-        setCategory(q.category || ''); setStartTime(q.startTime || ''); setActiveMenu('editor');
+        setCategory(q.category || ''); setStartTime(q.startTime || ''); 
+        setEndTime(q.endTime || ''); setActiveMenu('editor');
     };
 
     const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -297,7 +308,13 @@ const AdminDashboard = () => {
 
     const handleSave = async () => {
         if (!title) return alert("Nhập tên đề!");
-        const data: Quiz = { id: editingId || uuidv4(), title, description: '', type: quizType, grade, durationMinutes: duration, questions, isPublished, createdAt: new Date().toISOString(), category, startTime: quizType === 'test' ? startTime : undefined };
+        const data: Quiz = { 
+            id: editingId || uuidv4(), title, description: '', type: quizType, 
+            grade, durationMinutes: duration, questions, isPublished, 
+            createdAt: new Date().toISOString(), category, 
+            startTime: quizType === 'test' ? startTime : undefined,
+            endTime: quizType === 'practice' ? endTime : undefined
+        };
         if (editingId) await updateQuiz(data); else await saveQuiz(data);
         alert("Lưu thành công!"); setActiveMenu('quizzes'); refreshData();
     };
@@ -324,7 +341,7 @@ const AdminDashboard = () => {
                 <nav className="flex-1 p-4 space-y-1">
                     {[
                         { id: 'quizzes', icon: LayoutDashboard, label: '1. QUẢN LÝ ĐỀ THI' },
-                        { id: 'editor', icon: Plus, label: '2. SOẠN / CHỈNH ĐỀ', action: () => { setEditingId(null); setTitle(''); setQuestions([]); setStartTime(''); } },
+                        { id: 'editor', icon: Plus, label: '2. SOẠN / CHỈNH ĐỀ', action: () => { setEditingId(null); setTitle(''); setQuestions([]); setStartTime(''); setEndTime(''); } },
                         { id: 'ai', icon: Sparkles, label: '3. SOẠN ĐỀ BẰNG AI' },
                         { id: 'results', icon: BarChart3, label: '4. BẢNG ĐIỂM TỔNG' },
                         { id: 'students', icon: Users, label: '5. QUẢN LÝ HỌC SINH' },
@@ -343,7 +360,7 @@ const AdminDashboard = () => {
                         <div className="space-y-8 animate-fade-in">
                             <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-6 rounded-[2rem] border shadow-sm">
                                 <div className="flex-1 w-full flex items-center gap-3 px-4 py-2 bg-slate-50 border rounded-2xl"><Search className="text-slate-300" size={18}/><input type="text" className="bg-transparent outline-none text-xs font-bold w-full" placeholder="Tìm tên đề..." value={qSearch} onChange={e => setQSearch(e.target.value)} /></div>
-                                <select className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase" value={qGradeFilter} onChange={e => setQGradeFilter(e.target.value as any)}><option value="all">KHỐI LỚP</option><option value="12">KHỐI 12</option><option value="11">KHỐI 11</option><option value="10">KHỐI 10</option></select>
+                                <select className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase" value={qGradeFilter} onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}><option value="all">KHỐI LỚP</option><option value="12">KHỐI 12</option><option value="11">KHỐI 11</option><option value="10">KHỐI 10</option></select>
                                 <select className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase" value={qChapterFilter} onChange={e => setQChapterFilter(e.target.value)}><option value="all">CHƯƠNG HỌC</option>{chapters.filter(c => qGradeFilter === 'all' || c.grade === qGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -385,13 +402,71 @@ const AdminDashboard = () => {
                                     <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase px-1">Trạng thái</label><button onClick={() => setIsPublished(!isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{isPublished ? 'CÔNG KHAI' : 'NHÁP'}</button></div>
                                     <div className="space-y-1"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Thời gian</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={duration} onChange={e => setDuration(parseInt(e.target.value))} /></div>
                                 </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-300 uppercase px-1">Chương học (Theo khối {grade})</label>
+                                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={category} onChange={e => setCategory(e.target.value)}>
+                                            <option value="">Chọn chương</option>
+                                            {chapters.filter(c => c.grade === grade).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                    {quizType === 'test' ? (
+                                        <div className="space-y-1 animate-fade-in"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Lịch bắt đầu (Test)</label><input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
+                                    ) : (
+                                        <div className="space-y-1 animate-fade-in"><label className="text-[9px] font-black text-slate-300 uppercase px-1">Hạn đóng đề (Practice)</label><input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50 outline-none" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
+                                    )}
+                                </div>
                                 <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> {editingId ? 'CẬP NHẬT ĐỀ' : 'LƯU ĐỀ MỚI'}</button>
                             </div>
 
-                            {/* Khôi phục 3 phần soạn đề */}
-                            <QuestionSection title="PHẦN I. Câu trắc nghiệm nhiều lựa chọn" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={() => {}} />
-                            <QuestionSection title="PHẦN II. Câu trắc nghiệm Đúng/Sai" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={() => {}} />
-                            <QuestionSection title="PHẦN III. Câu trắc nghiệm Trả lời ngắn" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={() => {}} />
+                            <QuestionSection title="PHẦN I. Câu trắc nghiệm nhiều lựa chọn" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
+                            <QuestionSection title="PHẦN II. Câu trắc nghiệm Đúng/Sai" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
+                            <QuestionSection title="PHẦN III. Câu trắc nghiệm Trả lời ngắn" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(t) => setBankModal({ open: true, type: t })} />
+                        </div>
+                    )}
+
+                    {/* Modal Ngân hàng câu hỏi */}
+                    {bankModal.open && (
+                        <div className="fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                            <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl border-8 border-white overflow-hidden animate-fade-in-up">
+                                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-blue-600 rounded-2xl"><Database size={24}/></div>
+                                        <div>
+                                            <h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type === 'mcq' ? 'Trắc nghiệm' : bankModal.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn'}</h3>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Hệ thống lọc các câu hỏi từ Khối {grade}</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setBankModal({ open: false, type: null })} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50">
+                                    {bankQuestions.length === 0 ? (
+                                        <div className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest">Không có câu hỏi nào trong ngân hàng Khối {grade}</div>
+                                    ) : (
+                                        bankQuestions.map((bq) => (
+                                            <div key={bq.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-start gap-4 hover:border-blue-400 transition-all group">
+                                                <div className="flex-1">
+                                                    <div className="text-slate-800 font-bold mb-2 leading-relaxed"><LatexText text={bq.text}/></div>
+                                                    <div className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Loại: {bq.type}</div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => {
+                                                        const newQ = { ...bq, id: uuidv4() };
+                                                        setQuestions([...questions, newQ]);
+                                                        alert("Đã thêm câu hỏi vào đề!");
+                                                    }}
+                                                    className="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                                >
+                                                    Thêm vào đề
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="p-6 border-t bg-white text-center">
+                                    <button onClick={() => setBankModal({ open: false, type: null })} className="px-12 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200">Đóng ngân hàng</button>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -427,7 +502,6 @@ const AdminDashboard = () => {
                                         <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><th className="p-6">Thí sinh</th><th className="p-6">Bài thi</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Thời gian</th><th className="p-6 text-center">Ngày nộp</th><th className="p-6 text-center">Xóa</th></tr>
                                     </thead>
                                     <tbody className="divide-y">
-                                        {/* Fix: use number difference instead of boolean for sort comparison, and clone array to avoid state mutation */}
                                         {[...results].sort((a, b) => parseISO(b.submittedAt).getTime() - parseISO(a.submittedAt).getTime()).map(r => (
                                             <tr key={r.id} className="hover:bg-slate-50/50">
                                                 <td className="p-6 font-bold text-slate-800">{r.studentName}</td>
@@ -446,7 +520,6 @@ const AdminDashboard = () => {
 
                     {activeMenu === 'students' && (
                         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-                            {/* Thanh công cụ: MAHS -> KHỐI -> SỐ LƯỢNG */}
                             <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-5 rounded-[2.5rem] border shadow-sm gap-5">
                                 <div className="flex flex-1 flex-col sm:flex-row gap-4 items-center w-full">
                                     <div className="flex items-center gap-3 px-5 py-3 bg-slate-50 border rounded-2xl flex-1 w-full sm:max-w-xs">
