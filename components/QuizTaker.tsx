@@ -133,22 +133,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       const durationMins = safeParseScore(quiz.durationMinutes) || 30;
       const spent = Math.max(0, (durationMins * 60) - timeLeft);
       
-      // LOGIC TÍNH ĐIỂM TÍCH LŨY (REWARD POINTS)
       let earned = 0;
       if (quiz.type === 'test') {
-          if (score >= 8.0) {
-              earned = 1;
-          }
-      } else if (quiz.type === 'practice' && spent >= 2700) { // >= 45 phút (2700s)
-          // Kiểm tra xem đây có phải lần làm đầu tiên của đề này không
+          if (score >= 8.0) earned = 1;
+      } else if (quiz.type === 'practice' && spent >= 2700) {
           const allResults = await getResults();
           const previousAttempts = allResults.filter(r => r.studentId === student.id && r.quizId === quiz.id);
-          
-          if (previousAttempts.length === 0) {
-              earned = 1; // Lần đầu tiên: cộng 1 điểm
-          } else {
-              earned = 0.5; // Lần sau: cộng 0.5 điểm
-          }
+          earned = previousAttempts.length === 0 ? 1 : 0.5;
       }
 
       setFinalScore(score);
@@ -168,9 +159,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       };
 
       await saveResult(result);
-      if (earned > 0) {
-          await addPointsToUser(student.id, earned);
-      }
+      if (earned > 0) await addPointsToUser(student.id, earned);
 
       setCurrentView('result');
       setIsSidebarOpen(false);
@@ -200,33 +189,15 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               <div className="w-full max-w-lg text-center animate-fade-in-up">
                   <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg relative">
                       <Check size={48} strokeWidth={4} />
-                      {pointsEarned > 0 && (
-                          <div className="absolute -top-2 -right-2 bg-yellow-400 text-white p-2 rounded-full animate-bounce shadow-lg">
-                              <Trophy size={20}/>
-                          </div>
-                      )}
+                      {pointsEarned > 0 && <div className="absolute -top-2 -right-2 bg-yellow-400 text-white p-2 rounded-full animate-bounce shadow-lg"><Trophy size={20}/></div>}
                   </div>
-                  
                   <h2 className="text-3xl font-bold text-gray-800 mb-2">Đã Nộp Bài Thành Công!</h2>
                   <p className="text-gray-500 mb-8 text-lg">{quiz.title}</p>
-                  
                   <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100 shadow-sm mb-8 space-y-6">
-                      <div className="flex justify-between items-center pb-6 border-b border-gray-200">
-                          <span className="text-gray-500 font-medium text-lg">Điểm Số</span>
-                          <span className="text-4xl font-extrabold text-blue-600">{finalScore.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-6 border-b border-gray-200">
-                          <span className="text-gray-500 font-medium text-lg">Thời Gian</span>
-                          <span className="text-2xl font-bold text-gray-800">{formatTime(totalTimeSpent)}</span>
-                      </div>
-                      {pointsEarned > 0 && (
-                          <div className="flex items-center justify-center gap-3 py-4 bg-yellow-400/10 rounded-2xl border border-yellow-200 animate-pulse">
-                              <Sparkles className="text-yellow-500" size={24}/>
-                              <span className="text-yellow-700 font-black uppercase text-[10px] tracking-widest">Bạn đã nhận được +{pointsEarned} điểm tích lũy!</span>
-                          </div>
-                      )}
+                      <div className="flex justify-between items-center pb-6 border-b border-gray-200"><span className="text-gray-500 font-medium text-lg">Điểm Số</span><span className="text-4xl font-extrabold text-blue-600">{finalScore.toFixed(2)}</span></div>
+                      <div className="flex justify-between items-center pb-6 border-b border-gray-200"><span className="text-gray-500 font-medium text-lg">Thời Gian</span><span className="text-2xl font-bold text-gray-800">{formatTime(totalTimeSpent)}</span></div>
+                      {pointsEarned > 0 && <div className="flex items-center justify-center gap-3 py-4 bg-yellow-400/10 rounded-2xl border border-yellow-200 animate-pulse"><Sparkles className="text-yellow-500" size={24}/><span className="text-yellow-700 font-black uppercase text-[10px] tracking-widest">Bạn đã nhận được +{pointsEarned} điểm tích lũy!</span></div>}
                   </div>
-
                   <div className="space-y-4">
                       <button onClick={() => setCurrentView('review')} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold text-lg shadow-blue-200 shadow-lg transition transform hover:-translate-y-1">Xem Chi Tiết Đáp Án</button>
                       <button onClick={onExit} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-2xl font-bold text-lg transition">Về Trang Chủ</button>
@@ -247,7 +218,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>{isSidebarOpen ? <X/> : <Menu/>}</button>
           </div>
       </div>
-
       <aside className={`absolute md:relative z-20 w-64 bg-slate-800 text-white flex flex-col h-full transition-transform duration-300 shadow-xl ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-14 md:pt-0`}>
           <div className="p-4 bg-slate-900/50 border-b border-slate-700 text-center shrink-0">
               <div className="text-slate-400 text-xs uppercase font-bold mb-1">{isReview ? 'Điểm số của bạn' : 'Thời gian còn lại'}</div>
@@ -275,7 +245,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               </div>
           </div>
       </aside>
-
       <main id="main-content" className="flex-1 h-full overflow-y-auto bg-gray-100 pt-16 md:pt-0 relative">
           <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
               <div className="mb-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
@@ -288,10 +257,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     const points = safeParseScore(q.points);
                     return (
                         <div id={`q-${idx}`} key={q.id || idx} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
-                            <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-                                <span className="font-bold text-blue-800 text-lg">Câu {idx + 1}.</span>
-                                <span className="text-xs font-bold bg-white border px-2 py-1 rounded-xl text-gray-500 shadow-sm">{points} điểm</span>
-                            </div>
+                            <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center"><span className="font-bold text-blue-800 text-lg">Câu {idx + 1}.</span><span className="text-xs font-bold bg-white border px-2 py-1 rounded-xl text-gray-500 shadow-sm">{points} điểm</span></div>
                             <div className="p-6">
                                 <div className="mb-6 text-gray-900 text-lg leading-relaxed font-medium"><LatexText text={q.text || ''} /></div>
                                 {q.imageUrl && <div className="mb-6"><img src={q.imageUrl} className="max-h-80 rounded-2xl border mx-auto object-contain bg-gray-50" alt="Q" /></div>}
@@ -308,13 +274,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                 else containerClass += "bg-white border-gray-100 text-gray-300 opacity-30 grayscale";
                                             } else if (isSelected) containerClass += "bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-200";
                                             else containerClass += "border-gray-200 hover:border-blue-300 hover:bg-gray-50 hover:shadow-sm";
-                                            return (
-                                                <div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}>
-                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>{(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}</div>
-                                                    <div className="font-medium"><LatexText text={opt}/></div>
-                                                    {isReview && isCorrect && <Check className="absolute right-4 text-green-600" strokeWidth={3} />}
-                                                </div>
-                                            );
+                                            return (<div key={optIdx} onClick={() => handleAnswer(q.id, opt)} className={containerClass}><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected || (isReview && isCorrect) ? 'border-current' : 'border-gray-300'}`}>{(isSelected || (isReview && isCorrect)) && <div className="w-3 h-3 rounded-full bg-current" />}</div><div className="font-medium"><LatexText text={opt}/></div>{isReview && isCorrect && <Check className="absolute right-4 text-green-600" strokeWidth={3} />}</div>);
                                         })}
                                     </div>
                                 )}
@@ -354,9 +314,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                 value={answers[q.id] || ''} 
                                                 onChange={e => handleAnswer(q.id, e.target.value)} 
                                                 disabled={isReview} 
-                                                autoComplete="off" 
+                                                autoComplete="new-password" 
                                                 autoCorrect="off"
                                                 spellCheck={false}
+                                                id={`short-ans-${q.id}`}
                                                 placeholder="Nhập kết quả..." 
                                                 className={`w-full px-4 py-2 border rounded-xl font-black outline-none transition-all ${isReview ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') : 'focus:border-blue-500 focus:ring-4 focus:ring-blue-100 border-gray-300 shadow-inner bg-slate-50/50 focus:bg-white'}`} 
                                             />
