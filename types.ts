@@ -12,7 +12,7 @@ export interface User {
   fullName: string;
   studentCode?: string; 
   grade?: Grade;
-  points?: number; // Điểm tích lũy từ rèn luyện
+  points?: number;
 }
 
 export interface Chapter {
@@ -48,6 +48,7 @@ export interface Quiz {
   grade: Grade;
   category?: string; 
   startTime?: string;
+  endTime?: string; // Thời gian kết thúc hiển thị cho đề luyện tập
   durationMinutes: number;
   questions: Question[];
   createdAt: string;
@@ -64,7 +65,7 @@ export interface Result {
   submittedAt: string;
   durationSeconds: number;
   detailScores?: number[];
-  pointsAwarded?: number; // Ghi nhận số điểm thưởng được cộng trong lần thi này
+  pointsAwarded?: number;
 }
 
 export interface AuthState {
