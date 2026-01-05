@@ -32,10 +32,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             setError('Mật khẩu không chính xác!');
         }
       } else {
-        setError('Mã số học sinh không tồn tại trong hệ thống!');
+        setError('Mã số học sinh không tồn tại!');
       }
     } catch (err) {
-      console.error(err);
       setError('Lỗi kết nối máy chủ.');
     } finally {
       setIsLoading(false);
@@ -48,8 +47,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       let user = await findUser(username.trim());
-      
-      // Tạo tài khoản admin mặc định nếu lần đầu sử dụng
       if (!user && username === 'admin' && password === '123') {
           user = {
               id: uuidv4(),
@@ -60,14 +57,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           };
           await saveUser(user);
       }
-
       if (user && user.role === 'admin' && user.password === password) {
         onLogin(user);
       } else {
-        setError('Tài khoản hoặc mật khẩu Admin không đúng.');
+        setError('Sai tài khoản hoặc mật khẩu Admin.');
       }
     } catch (err) {
-      console.error(err);
       setError('Lỗi kết nối.');
     } finally {
       setIsLoading(false);
@@ -75,109 +70,99 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f4f8] p-4 font-sans">
-      <div className="bg-white rounded-[3rem] shadow-2xl p-10 md:p-14 w-full max-w-md border border-white relative overflow-hidden">
-        {/* Trang trí nền */}
-        <div className="absolute -top-20 -right-20 w-48 h-48 bg-blue-50 rounded-full blur-3xl opacity-60"></div>
-        <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-indigo-50 rounded-full blur-3xl opacity-60"></div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-200 p-4 font-sans antialiased">
+      <div className="bg-white border-2 border-gray-800 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 w-full max-w-sm rounded-none">
         
-        <div className="flex justify-center mb-10 relative z-10">
-          <div className="w-24 h-24 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-blue-200 rotate-6 hover:rotate-0 transition-transform duration-500">
-            <BookOpen className="w-12 h-12 text-white" />
+        <div className="flex items-center gap-3 mb-6 border-b-2 border-gray-800 pb-4">
+          <div className="bg-gray-800 p-2 rounded-none">
+            <BookOpen className="w-6 h-6 text-white" />
           </div>
-        </div>
-        
-        <div className="text-center mb-10 relative z-10">
-            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight leading-none">
-              {isAdminMode ? 'Hệ thống Quản trị' : 'Phòng thi Online'}
+          <div>
+            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight leading-none">
+              {isAdminMode ? 'ADMIN LOGIN' : 'STUDENT LOGIN'}
             </h2>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.25em] mt-4 block">
-              {isAdminMode ? 'Dành cho giáo viên & quản trị' : 'Đăng nhập để bắt đầu làm bài'}
+            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">
+              {isAdminMode ? 'Hệ thống quản trị' : 'Phòng thi trực tuyến'}
             </p>
+          </div>
         </div>
 
         {error && (
-          <div className="mb-8 p-5 bg-red-50 text-red-600 rounded-2xl text-[11px] font-black border border-red-100 flex items-center gap-4 animate-shake">
-            <AlertCircle size={20} className="shrink-0" /> {error}
+          <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-200 text-xs font-bold flex items-center gap-2 rounded-none">
+            <AlertCircle size={16} className="shrink-0" /> {error}
           </div>
         )}
 
-        <div className="relative z-10">
+        <div className="space-y-4">
           {!isAdminMode ? (
-            <form onSubmit={handleStudentLogin} className="space-y-6">
-              <div className="relative group">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-2 tracking-widest">Mã số học sinh (MSHS)</label>
-                <div className="relative">
-                    <Hash className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20}/>
-                    <input 
-                      type="text" 
-                      required 
-                      autoFocus
-                      placeholder="VD: HS12-001"
-                      className="w-full pl-14 pr-6 py-5 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all font-black text-slate-700 placeholder:text-slate-200 text-lg uppercase tracking-wider" 
-                      value={studentCode} 
-                      onChange={(e) => setStudentCode(e.target.value.toUpperCase())} 
-                    />
-                </div>
-              </div>
-
-              <div className="relative group">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-2 tracking-widest">Mật khẩu</label>
-                <div className="relative">
-                    <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20}/>
-                    <input 
-                      type="password" 
-                      required 
-                      placeholder="••••••"
-                      className="w-full pl-14 pr-6 py-5 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all font-black text-slate-700 placeholder:text-slate-200 text-lg" 
-                      value={studentPassword} 
-                      onChange={(e) => setStudentPassword(e.target.value)} 
-                    />
-                </div>
-              </div>
-
-              <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-6 rounded-[2rem] hover:bg-blue-700 transition-all shadow-2xl shadow-blue-100 uppercase text-xs tracking-[0.3em] flex items-center justify-center gap-3 active:scale-95 mt-4">
-                {isLoading ? <Loader2 className="animate-spin" size={20}/> : <ShieldCheck size={20}/>}
-                {isLoading ? 'Đang xác thực...' : 'Đăng nhập thi'}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleAdminLogin} className="space-y-6">
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-2">Tên đăng nhập Admin</label>
+            <form onSubmit={handleStudentLogin} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1 tracking-wider">Mã số học sinh (MAHS)</label>
                 <input 
                   type="text" 
                   required 
-                  className="w-full px-6 py-5 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-700" 
+                  autoFocus
+                  placeholder="VD: HS12-001"
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-blue-50 transition-all font-black text-gray-800 placeholder:text-gray-300 text-sm uppercase" 
+                  value={studentCode} 
+                  onChange={(e) => setStudentCode(e.target.value.toUpperCase())} 
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1 tracking-wider">Mật khẩu</label>
+                <input 
+                  type="password" 
+                  required 
+                  placeholder="••••••"
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-blue-50 transition-all font-black text-gray-800 placeholder:text-gray-300 text-sm" 
+                  value={studentPassword} 
+                  onChange={(e) => setStudentPassword(e.target.value)} 
+                />
+              </div>
+
+              <button type="submit" disabled={isLoading} className="w-full bg-gray-800 text-white font-black py-4 rounded-none hover:bg-black transition-all uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 mt-2 shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] active:shadow-none active:translate-x-1 active:translate-y-1">
+                {isLoading ? <Loader2 className="animate-spin" size={16}/> : <ShieldCheck size={16}/>}
+                {isLoading ? 'XÁC THỰC...' : 'ĐĂNG NHẬP THI'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1">Username Admin</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-gray-50 transition-all font-bold text-gray-800 text-sm" 
                   value={username} 
                   onChange={(e) => setUsername(e.target.value)} 
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-2">Mật khẩu</label>
+              <div>
+                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1">Password</label>
                 <input 
                   type="password" 
                   required 
-                  className="w-full px-6 py-5 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-700" 
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-gray-50 transition-all font-bold text-gray-800 text-sm" 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                 />
               </div>
-              <button type="submit" disabled={isLoading} className="w-full bg-slate-900 text-white font-black py-6 rounded-2xl hover:bg-black transition-all shadow-xl uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-3 active:scale-95">
-                {isLoading ? <Loader2 className="animate-spin" size={20}/> : null}
-                {isLoading ? 'Đang xử lý...' : 'Đăng nhập Quản trị'}
+              <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-none hover:bg-blue-700 transition-all uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 mt-2 shadow-[4px_4px_0px_0px_rgba(31,41,55,1)] active:shadow-none active:translate-x-1 active:translate-y-1">
+                {isLoading ? <Loader2 className="animate-spin" size={16}/> : null}
+                {isLoading ? 'ĐANG XỬ LÝ...' : 'VÀO QUẢN TRỊ'}
               </button>
             </form>
           )}
         </div>
         
-        <div className="mt-12 text-center pt-8 border-t border-slate-50 relative z-10">
+        <div className="mt-6 text-center border-t border-gray-100 pt-4">
           <button 
             onClick={() => { setIsAdminMode(!isAdminMode); setError(''); }} 
-            className="text-slate-400 hover:text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] transition-colors flex items-center justify-center gap-3 mx-auto py-2 px-4 rounded-full hover:bg-blue-50"
+            className="text-gray-400 hover:text-blue-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto"
           >
-            {isAdminMode ? <UserCircle size={18}/> : <ShieldCheck size={18}/>}
-            {isAdminMode ? 'Quay lại chế độ Học sinh' : 'Dành cho Giáo viên'}
+            {isAdminMode ? <UserCircle size={14}/> : <Lock size={14}/>}
+            {isAdminMode ? 'HỌC SINH ĐĂNG NHẬP' : 'DÀNH CHO GIÁO VIÊN'}
           </button>
         </div>
       </div>
