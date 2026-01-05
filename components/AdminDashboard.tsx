@@ -72,7 +72,7 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
-                        <Database size={14}/> Ngân hàng đề
+                        <Database size={14}/> Ngân hàng
                     </button>
                     <button onClick={addManual} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">
                         <Plus size={14}/> Thêm mới
@@ -208,17 +208,14 @@ const AdminDashboard = () => {
     const [qSearch, setQSearch] = useState('');
     const [qGradeFilter, setQGradeFilter] = useState<Grade | 'all'>('all');
     const [qChapterFilter, setQChapterFilter] = useState<string>('all');
-    const [rGradeFilter, setRGradeFilter] = useState<Grade | 'all'>('all');
-    const [rChapterFilter, setRChapterFilter] = useState<string>('all');
-    const [rQuizFilter, setRQuizFilter] = useState<string>('all');
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
     const [sSearch, setSSearch] = useState('');
 
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-    
-    // Ngân hàng câu hỏi
+
+    // Modal ngân hàng
     const [bankModal, setBankModal] = useState<{ open: boolean, type: QuestionType | null }>({ open: false, type: null });
 
     const csvInputRef = useRef<HTMLInputElement>(null);
@@ -271,14 +268,14 @@ const AdminDashboard = () => {
         return quizzes.filter(q => (qGradeFilter === 'all' || q.grade === qGradeFilter) && (qChapterFilter === 'all' || q.category === qChapterFilter) && q.title.toLowerCase().includes(qSearch.toLowerCase()));
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
 
-    // Lọc ngân hàng câu hỏi
+    // Ngân hàng câu hỏi lọc theo khối đang soạn và loại câu đang mở
     const bankQuestions = useMemo(() => {
         if (!bankModal.type) return [];
         let allQs: Question[] = [];
         quizzes.filter(q => q.grade === grade).forEach(q => {
             allQs = [...allQs, ...q.questions.filter(qu => qu.type === bankModal.type)];
         });
-        // Lọc trùng theo text
+        // Lọc trùng theo nội dung
         return allQs.filter((v, i, a) => a.findIndex(t => t.text === v.text) === i);
     }, [quizzes, grade, bankModal.type]);
 
@@ -289,29 +286,20 @@ const AdminDashboard = () => {
         setEndTime(q.endTime || ''); setActiveMenu('editor');
     };
 
-    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setIsAiLoading(true);
-        try {
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                const base64 = (event.target?.result as string).split(',')[1];
-                const newQs = await parseQuestionsFromPDF(base64);
-                setQuestions(prev => [...prev, ...newQs]);
-                alert("Đã bóc tách thành công!");
-            };
-            reader.readAsDataURL(file);
-        } catch (error) { alert("Lỗi trích xuất"); }
-        finally { setIsAiLoading(false); }
-    };
-
     const handleSave = async () => {
         if (!title) return alert("Nhập tên đề!");
+        // Khởi tạo đối tượng với đầy đủ thuộc tính để tránh lỗi TS
         const data: Quiz = { 
-            id: editingId || uuidv4(), title, description: '', type: quizType, 
-            grade, durationMinutes: duration, questions, isPublished, 
-            createdAt: new Date().toISOString(), category, 
+            id: editingId || uuidv4(), 
+            title, 
+            description: '', 
+            type: quizType, 
+            grade, 
+            durationMinutes: duration, 
+            questions, 
+            isPublished, 
+            createdAt: new Date().toISOString(), 
+            category, 
             startTime: quizType === 'test' ? startTime : undefined,
             endTime: quizType === 'practice' ? endTime : undefined
         };
@@ -328,6 +316,23 @@ const AdminDashboard = () => {
             setTitle(`Đề thi AI: ${aiPrompt}`);
             setActiveMenu('editor');
         } catch (error) { alert("Lỗi AI"); }
+        finally { setIsAiLoading(false); }
+    };
+
+    const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsAiLoading(true);
+        try {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = (event.target?.result as string).split(',')[1];
+                const newQs = await parseQuestionsFromPDF(base64);
+                setQuestions(prev => [...prev, ...newQs]);
+                alert("Đã bóc tách thành công!");
+            };
+            reader.readAsDataURL(file);
+        } catch (error) { alert("Lỗi trích xuất"); }
         finally { setIsAiLoading(false); }
     };
 
@@ -425,7 +430,6 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
-                    {/* Modal Ngân hàng câu hỏi */}
                     {bankModal.open && (
                         <div className="fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                             <div className="bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl border-8 border-white overflow-hidden animate-fade-in-up">
@@ -434,14 +438,14 @@ const AdminDashboard = () => {
                                         <div className="p-3 bg-blue-600 rounded-2xl"><Database size={24}/></div>
                                         <div>
                                             <h3 className="text-xl font-black uppercase tracking-tight">Ngân hàng câu hỏi {bankModal.type === 'mcq' ? 'Trắc nghiệm' : bankModal.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn'}</h3>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Hệ thống lọc các câu hỏi từ Khối {grade}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lọc từ khối {grade}</p>
                                         </div>
                                     </div>
                                     <button onClick={() => setBankModal({ open: false, type: null })} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50">
                                     {bankQuestions.length === 0 ? (
-                                        <div className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest">Không có câu hỏi nào trong ngân hàng Khối {grade}</div>
+                                        <div className="text-center py-20 text-slate-300 font-bold uppercase tracking-widest">Không tìm thấy câu hỏi phù hợp</div>
                                     ) : (
                                         bankQuestions.map((bq) => (
                                             <div key={bq.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-start gap-4 hover:border-blue-400 transition-all group">
@@ -453,7 +457,7 @@ const AdminDashboard = () => {
                                                     onClick={() => {
                                                         const newQ = { ...bq, id: uuidv4() };
                                                         setQuestions([...questions, newQ]);
-                                                        alert("Đã thêm câu hỏi vào đề!");
+                                                        alert("Đã thêm vào đề!");
                                                     }}
                                                     className="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                                                 >
