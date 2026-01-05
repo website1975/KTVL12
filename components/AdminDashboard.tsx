@@ -109,7 +109,7 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                                             applyPointsToAll(q.points);
                                         }
                                     }}
-                                    className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5 shadow-md"
+                                    className="ml-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1.5 shadow-md active:scale-90"
                                 >
                                     <CopyCheck size={12} />
                                     <span className="text-[8px] font-black uppercase">Set hết</span>
@@ -427,9 +427,12 @@ const AdminDashboard = () => {
                                     return (
                                         <div key={q.id} className={`rounded-[2.5rem] p-8 border transition-all group flex flex-col shadow-sm ${themeClass}`}>
                                             <div className="flex justify-between items-start mb-6">
-                                                <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${gradeBadge}`}>
-                                                    {q.grade === 'all' ? 'CHUNG' : `KHỐI ${q.grade}`}
-                                                </span>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${gradeBadge}`}>{q.grade === 'all' ? 'CHUNG' : `KHỐI ${q.grade}`}</span>
+                                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase w-fit ${q.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                        {q.isPublished ? 'Công khai' : 'Bản nháp'}
+                                                    </span>
+                                                </div>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                                     <button onClick={() => startEdit(q)} className="p-2.5 bg-white border rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"><Edit size={16}/></button>
                                                     <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
@@ -610,7 +613,52 @@ const AdminDashboard = () => {
                                 <div className="flex items-center gap-5"><div className="p-3 bg-blue-600 rounded-2xl"><FileText size={28}/></div><div><h3 className="text-lg font-black uppercase leading-tight tracking-tight">{previewQuiz.title}</h3><p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{previewQuiz.grade === 'all' ? 'CHUNG' : `Khối ${previewQuiz.grade}`} • {previewQuiz.questions.length} câu hỏi</p></div></div>
                                 <div className="flex gap-2"><button onClick={() => exportToDoc(previewQuiz)} className="bg-emerald-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-xl"><Download size={16}/> Xuất Word</button><button onClick={() => setPreviewQuiz(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button></div>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar"><div className="max-w-3xl mx-auto space-y-12">{previewQuiz.questions.map((q, i) => (<div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative"><div className="absolute top-6 right-8 text-[10px] font-black text-slate-200 uppercase tracking-widest">Phần {q.type === 'mcq' ? 'I' : q.type === 'group-tf' ? 'II' : 'III'}</div><p className="font-bold text-slate-800 text-lg flex gap-4 leading-relaxed"><span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span><LatexText text={q.text}/></p></div>))}</div></div>
+                            <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                                <div className="max-w-3xl mx-auto space-y-12">
+                                    {previewQuiz.questions.map((q, i) => (
+                                        <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
+                                            <div className="absolute top-6 right-8 text-[10px] font-black text-slate-200 uppercase tracking-widest">Phần {q.type === 'mcq' ? 'I' : q.type === 'group-tf' ? 'II' : 'III'}</div>
+                                            <p className="font-bold text-slate-800 text-lg flex gap-4 leading-relaxed mb-6">
+                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {i+1}.</span>
+                                                <LatexText text={q.text}/>
+                                            </p>
+                                            
+                                            {/* HIỂN THỊ NỘI DUNG CÂU TRẢ LỜI TRONG PREVIEW */}
+                                            {q.type === 'mcq' && q.options && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+                                                    {q.options.map((opt, oi) => (
+                                                        <div key={oi} className={`text-sm font-medium p-3 rounded-xl border ${q.correctAnswer === opt ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                                            <span className="font-black mr-2">{String.fromCharCode(65+oi)}.</span>
+                                                            <LatexText text={opt}/>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            
+                                            {q.type === 'group-tf' && q.subQuestions && (
+                                                <div className="space-y-3 pl-12">
+                                                    {q.subQuestions.map((sq, si) => (
+                                                        <div key={si} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                                            <div className="text-sm font-medium"><span className="font-black mr-2 text-blue-600">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
+                                                            <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg ${sq.correctAnswer === 'True' ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'}`}>
+                                                                {sq.correctAnswer === 'True' ? 'Đúng' : 'Sai'}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            
+                                            {q.type === 'short' && (
+                                                <div className="pl-12">
+                                                    <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-sm font-bold text-orange-700 w-fit">
+                                                        Đáp án: <LatexText text={q.correctAnswer || ''}/>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                             <div className="p-8 bg-white border-t flex justify-center"><button onClick={() => { startEdit(previewQuiz!); setPreviewQuiz(null); }} className="px-12 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Vào chỉnh sửa đề thi</button></div>
                         </div>
                     </div>
