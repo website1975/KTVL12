@@ -301,14 +301,30 @@ const AdminDashboard = () => {
         return quizzes.filter(q => (qGradeFilter === 'all' || q.grade === qGradeFilter) && (qChapterFilter === 'all' || q.category === qChapterFilter) && q.title.toLowerCase().includes(qSearch.toLowerCase()));
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
 
-    const filteredResults = useMemo(() => {
-        return results.filter(r => {
+    // LOGIC NHÓM KẾT QUẢ ĐỂ HIỂN THỊ TRONG BẢNG TỔNG
+    const latestResults = useMemo(() => {
+        const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
             const matchGrade = rGradeFilter === 'all' || (quiz && quiz.grade === rGradeFilter);
             const matchChapter = rChapterFilter === 'all' || (quiz && quiz.category === rChapterFilter);
             const matchQuiz = rQuizFilter === 'all' || r.quizId === rQuizFilter;
             return matchGrade && matchChapter && matchQuiz;
         });
+
+        // Nhóm theo StudentId + QuizId
+        const grouped: Record<string, { latest: Result, count: number }> = {};
+        filtered.forEach(r => {
+            const key = `${r.studentId}_${r.quizId}`;
+            if (!grouped[key]) {
+                grouped[key] = { latest: r, count: 1 };
+            } else {
+                grouped[key].count++;
+                if (isAfter(parseISO(r.submittedAt), parseISO(grouped[key].latest.submittedAt))) {
+                    grouped[key].latest = r;
+                }
+            }
+        });
+        return Object.values(grouped).sort((a, b) => isAfter(parseISO(b.latest.submittedAt), parseISO(a.latest.submittedAt)) ? 1 : -1);
     }, [results, quizzes, rGradeFilter, rChapterFilter, rQuizFilter]);
 
     const bankQuestions = useMemo(() => {
@@ -522,18 +538,24 @@ const AdminDashboard = () => {
                             </div>
                             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
                                 <table className="w-full text-left">
-                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400"><th className="p-6">Học sinh</th><th className="p-6">Đề thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th><th className="p-6 text-center">Xóa</th></tr></thead>
+                                    <thead><tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400"><th className="p-6">Học sinh</th><th className="p-6">Đề thi</th><th className="p-6 text-center">Khối</th><th className="p-6 text-center">Lượt làm</th><th className="p-6 text-center">Điểm cao nhất</th><th className="p-6 text-center">Ngày nộp gần nhất</th><th className="p-6 text-center">Xóa</th></tr></thead>
                                     <tbody className="divide-y">
-                                        {filteredResults.map(r => (
-                                            <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="p-6 font-bold text-slate-800">{r.studentName}</td>
-                                                <td className="p-6 text-sm text-slate-500">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đã xóa'}</td>
-                                                <td className="p-6 text-center font-black text-slate-400">{quizzes.find(q=>q.id===r.quizId)?.grade || '-'}</td>
-                                                <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                                <td className="p-6 text-center text-slate-400 text-xs">{format(parseISO(r.submittedAt), 'dd/MM HH:mm')}</td>
-                                                <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa kết quả này?')) { deleteResult(r.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
-                                            </tr>
-                                        ))}
+                                        {latestResults.map(item => {
+                                            const r = item.latest;
+                                            return (
+                                                <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-6 font-bold text-slate-800">{r.studentName}</td>
+                                                    <td className="p-6 text-sm text-slate-500">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đã xóa'}</td>
+                                                    <td className="p-6 text-center font-black text-slate-400">{quizzes.find(q=>q.id===r.quizId)?.grade || '-'}</td>
+                                                    <td className="p-6 text-center font-black text-slate-600">
+                                                        <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-100">{item.count}</span>
+                                                    </td>
+                                                    <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
+                                                    <td className="p-6 text-center text-slate-400 text-xs">{format(parseISO(r.submittedAt), 'dd/MM HH:mm')}</td>
+                                                    <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa kết quả này?')) { deleteResult(r.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
