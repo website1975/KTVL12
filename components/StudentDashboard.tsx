@@ -127,7 +127,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="relative z-10">
             <h1 className="text-2xl font-black text-slate-800">Xin chào, {user.fullName} 👋</h1>
-            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Học sinh lớp {user.grade} • EduQuiz Nền tảng học tập online</p>
+            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Lớp {user.grade} • Nền tảng học trực tuyến EduQuiz</p>
         </div>
         <div className="flex items-center gap-6 relative z-10">
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm">
@@ -161,9 +161,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
       <section>
         <div className="flex items-center justify-between mb-8">
-            <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><CheckCircle className="text-green-500" size={18} /> Kho đề luyện tập công khai</h2>
+            <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><CheckCircle className="text-green-500" size={18} /> Kho đề luyện tập miễn phí</h2>
             <div className="h-px flex-1 mx-6 bg-slate-100 hidden md:block"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-100 px-5 py-2 rounded-full tracking-widest">{practiceQuizzes.length} đề thi sẵn có</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-100 px-5 py-2 rounded-full tracking-widest">{practiceQuizzes.length} đề thi</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -188,11 +188,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
                   <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
                       <div className="border-r border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Lượt làm</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Số lượt làm</p>
                           <p className="text-sm font-black text-slate-700">{qStats?.count || 0}</p>
                       </div>
                       <div>
-                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Cao nhất</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Điểm cao nhất</p>
                           <p className="text-sm font-black text-blue-600">{qStats ? qStats.max.toFixed(2) : '-'}</p>
                       </div>
                   </div>
@@ -208,7 +208,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         onClick={() => setActiveQuiz(q)}
                         className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all"
                     >
-                        Làm bài
+                        Vào làm
                     </button>
                   </div>
                 </div>
@@ -217,7 +217,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </section>
 
-      {/* MODAL XEM TRƯỚC ĐỀ */}
+      {/* MODAL XEM TRƯỚC ĐỀ - FIX LỖI THIẾU ẢNH */}
       {previewQuiz && (
           <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
               <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border-8 border-white">
@@ -233,7 +233,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     </div>
                     <div className="flex gap-2">
                         <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl">
-                            <Download size={16}/> Xuất File Word
+                            <Download size={16}/> Tải Word
                         </button>
                         <button onClick={() => setPreviewQuiz(null)} className="p-3 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><XCircle size={24}/></button>
                     </div>
@@ -255,7 +255,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                                 <span className="text-blue-600 shrink-0 font-black italic underline">Câu {idx + 1}.</span>
                                                 <LatexText text={q.text}/>
                                             </div>
-                                            {q.imageUrl && <img src={q.imageUrl} className="max-h-64 rounded-2xl border mb-6 mx-auto object-contain bg-slate-50" alt="Q"/>}
+                                            
+                                            {/* HIỂN THỊ ẢNH TRONG XEM TRƯỚC */}
+                                            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-[350px] rounded-xl border border-slate-100 shadow-inner" alt="HÌNH ẢNH CÂU HỎI" /></div>}
+                                            
                                             {q.type === 'mcq' && q.options && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 pl-8">
                                                     {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium text-slate-600"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
@@ -273,7 +276,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                             )}
                                             {q.type === 'short' && (
                                                 <div className="pl-12">
-                                                    <div className="bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl text-orange-700 font-black text-xs uppercase w-fit">Đáp số chuẩn sẽ hiện sau khi nộp bài</div>
+                                                    <div className="bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl text-orange-700 font-black text-xs uppercase w-fit">Đáp số đúng sẽ hiện sau khi hoàn thành bài thi</div>
                                                 </div>
                                             )}
                                         </div>
@@ -284,7 +287,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     </div>
                 </div>
                 <div className="p-8 bg-white border-t flex justify-center shadow-2xl relative z-10 shrink-0">
-                    <button onClick={() => { setActiveQuiz(previewQuiz); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Vào làm đề thi luyện tập này ngay</button>
+                    <button onClick={() => { setActiveQuiz(previewQuiz); setPreviewQuiz(null); }} className="px-16 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all">Bắt đầu làm đề thi luyện tập này ngay</button>
                 </div>
               </div>
           </div>
