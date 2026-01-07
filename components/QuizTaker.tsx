@@ -51,11 +51,11 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Trạng thái chống gian lận
+  // Anti-cheat states
   const [cheatWarning, setCheatWarning] = useState(false);
   const tabSwitchCount = useRef(0);
 
-  // Theo dõi chuyển Tab (Page Visibility API)
+  // Monitor tab switching
   useEffect(() => {
     if (currentView !== 'taking') return;
 
@@ -66,12 +66,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           if (tabSwitchCount.current === 1) {
             setCheatWarning(true);
           } else if (tabSwitchCount.current >= 2) {
-            alert("BẠN ĐÃ VI PHẠM QUY CHẾ THI NHIỀU LẦN (RỜI TAB). HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI NGAY LẬP TỨC!");
+            alert("BẠN ĐÃ RỜI KHỎI TAB THI LẦN THỨ 2. HỆ THỐNG TỰ ĐỘNG NỘP BÀI!");
             handleSubmit(true);
           }
-        } else {
-          // Với đề luyện tập, chỉ thông báo nhẹ nhàng trong Console hoặc UI nhỏ
-          console.log("Học sinh chuyển tab trong khi luyện tập.");
         }
       }
     };
@@ -152,7 +149,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       if (isSubmitting) return;
       if (!auto) {
           const unanswered = (quiz.questions?.length || 0) - Object.keys(answers).length;
-          let msg = "Bạn có chắc chắn muốn nộp bài thi không?";
+          let msg = "Bạn có chắc chắn muốn nộp bài?";
           if (unanswered > 0) msg += `\n⚠️ Còn ${unanswered} câu chưa trả lời.`;
           if (!window.confirm(msg)) return;
       }
@@ -164,10 +161,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       
       let earned = 0;
       if (quiz.type === 'test') {
-          // Kiểm tra >= 8 điểm thưởng 1 điểm
           if (score >= 8.0) earned = 1;
       } else if (quiz.type === 'practice') {
-          // Luyện tập: Điểm = tổng thời gian (s) / (45 * 60)
+          // Công thức: diem = tong tgian (s) / (45*60)
           earned = spent / (45 * 60);
       }
 
@@ -220,23 +216,23 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                       <Check size={48} strokeWidth={4} />
                       {pointsEarned > 0 && <div className="absolute -top-2 -right-2 bg-yellow-400 text-white p-2 rounded-full animate-bounce shadow-lg"><Trophy size={20}/></div>}
                   </div>
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">Đã hoàn thành!</h2>
+                  <h2 className="text-3xl font-black text-slate-800 mb-2">Đã nộp bài thành công!</h2>
                   <p className="text-gray-500 mb-8 text-lg">{quiz.title}</p>
                   <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100 shadow-sm mb-8 space-y-6">
                       <div className="flex justify-between items-center pb-6 border-b border-gray-200"><span className="text-gray-500 font-medium text-lg">Điểm Số</span><span className="text-4xl font-extrabold text-blue-600">{finalScore.toFixed(2)}</span></div>
-                      <div className="flex justify-between items-center pb-6 border-b border-gray-200"><span className="text-gray-500 font-medium text-lg">Thời Gian</span><span className="text-2xl font-bold text-gray-800">{formatTime(totalTimeSpent)}</span></div>
+                      <div className="flex justify-between items-center pb-6 border-b border-gray-200"><span className="text-gray-500 font-medium text-lg">Thời Gian Làm</span><span className="text-2xl font-bold text-gray-800">{formatTime(totalTimeSpent)}</span></div>
                       {pointsEarned > 0 && (
                         <div className="flex items-center justify-center gap-3 py-4 bg-yellow-400/10 rounded-2xl border border-yellow-200 animate-pulse">
                             <Sparkles className="text-yellow-500" size={24}/>
                             <span className="text-yellow-700 font-black uppercase text-[10px] tracking-widest">
-                                Bạn đã tích lũy thêm +{pointsEarned.toFixed(4)} điểm!
+                                Bạn đã nhận +{pointsEarned.toFixed(4)} điểm tích lũy!
                             </span>
                         </div>
                       )}
                   </div>
                   <div className="space-y-4">
                       <button onClick={() => setCurrentView('review')} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold text-lg shadow-blue-200 shadow-lg transition transform hover:-translate-y-1">Xem chi tiết đáp án</button>
-                      <button onClick={onExit} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-2xl font-bold text-lg transition">Về trang chủ</button>
+                      <button onClick={onExit} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-2xl font-bold text-lg transition">Quay về trang chủ</button>
                   </div>
               </div>
           </div>
@@ -247,13 +243,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden relative">
-      {/* MODAL CẢNH BÁO GIAN LẬN */}
+      {/* CHEAT WARNING MODAL */}
       {cheatWarning && (
         <div className="fixed inset-0 bg-red-600/95 z-[1000] flex items-center justify-center p-6 backdrop-blur-xl">
            <div className="bg-white p-10 rounded-[3rem] max-w-md w-full text-center shadow-2xl border-8 border-red-100 animate-bounce-slow">
               <ShieldAlert size={80} className="mx-auto text-red-600 mb-6" />
-              <h2 className="text-2xl font-black text-red-600 uppercase mb-4">Cảnh báo gian lận!</h2>
-              <p className="text-slate-600 font-bold mb-8 leading-relaxed">Bạn không được phép rời khỏi tab bài thi khi đang làm bài kiểm tra. Nếu bạn chuyển tab một lần nữa, hệ thống sẽ <b>TỰ ĐỘNG NỘP BÀI</b> ngay lập tức!</p>
+              <h2 className="text-2xl font-black text-red-600 uppercase mb-4">CẢNH BÁO VI PHẠM!</h2>
+              <p className="text-slate-600 font-bold mb-8 leading-relaxed">Hệ thống phát hiện bạn vừa rời khỏi Tab làm bài. Nếu tái phạm lần nữa, hệ thống sẽ <b>TỰ ĐỘNG NỘP BÀI</b> ngay lập tức!</p>
               <button onClick={() => setCheatWarning(false)} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-red-700 transition-all active:scale-95">Tôi đã hiểu và cam kết</button>
            </div>
         </div>
@@ -272,7 +268,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               <div className={`font-mono font-bold text-3xl ${timeLeft < 300 && !isReview ? 'text-red-500 animate-pulse' : 'text-white'}`}>{isReview ? `${finalScore.toFixed(2)}` : formatTime(timeLeft)}</div>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
-              <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b border-slate-700 pb-1">Câu hỏi</div>
+              <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b border-slate-700 pb-1">Câu hỏi bài thi</div>
               <div className="grid grid-cols-5 gap-1.5 mb-4">
                   {quiz.questions?.map((q, idx) => {
                       let btnClass = "h-8 w-full rounded font-bold text-xs transition-all border flex items-center justify-center ";
@@ -289,7 +285,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                           <button onClick={() => handleSubmit(false)} disabled={isSubmitting} className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <Send size={14} />} NỘP BÀI</button>
                           <button onClick={handleReset} disabled={isSubmitting} className="w-full py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded shadow-sm transition flex items-center justify-center gap-1 text-xs"><RotateCcw size={14} /> LÀM LẠI</button>
                       </div>
-                  ) : (<button onClick={onExit} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-xs"><Home size={14}/> TRANG CHỦ</button>)}
+                  ) : (<button onClick={onExit} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded transition flex items-center justify-center gap-2 text-xs"><Home size={14}/> VỀ TRANG CHỦ</button>)}
               </div>
           </div>
       </aside>
@@ -298,19 +294,19 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
               <div className="mb-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-200 flex justify-between items-center">
                   <div>
                     <h1 className="text-xl md:text-2xl font-black text-slate-800 mb-1">{quiz.title}</h1>
-                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">{quiz.type === 'test' ? 'Hệ thống đang giám sát chuyển tab' : 'Chế độ luyện tập tự do'}</p>
+                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">{quiz.type === 'test' ? 'Cơ chế giám sát thi đang bật' : 'Chế độ luyện tập tự do'}</p>
                   </div>
-                  {quiz.type === 'test' && <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-2xl border border-emerald-100 flex items-center gap-2 font-black text-[10px] uppercase"><ShieldAlert size={16}/> Đang bảo vệ</div>}
+                  {quiz.type === 'test' && <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-2xl border border-emerald-100 flex items-center gap-2 font-black text-[10px] uppercase shadow-sm"><ShieldAlert size={16}/> Anti-Cheat Active</div>}
               </div>
               <div className="space-y-6">
                 {quiz.questions?.map((q, idx) => {
                     if (!q) return null;
                     return (
                         <div id={`q-${idx}`} key={q.id || idx} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
-                            <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center"><span className="font-bold text-blue-800 text-lg">Câu {idx + 1}.</span><span className="text-[10px] font-bold bg-white border px-3 py-1 rounded-xl text-gray-400 shadow-sm uppercase">{q.points} ĐIỂM</span></div>
+                            <div className="bg-blue-50/50 px-5 py-3 border-b border-gray-100 flex justify-between items-center"><span className="font-black text-blue-800 text-lg">Câu {idx + 1}.</span><span className="text-[10px] font-black bg-white border px-3 py-1 rounded-xl text-gray-400 shadow-sm uppercase italic">{q.points} điểm</span></div>
                             <div className="p-6">
                                 <div className="mb-6 text-gray-900 text-lg leading-relaxed font-medium"><LatexText text={q.text || ''} /></div>
-                                {q.imageUrl && <div className="mb-6"><img src={q.imageUrl} className="max-h-80 rounded-2xl border mx-auto object-contain bg-gray-50" alt="Q" /></div>}
+                                {q.imageUrl && <div className="mb-8"><img src={q.imageUrl} className="max-h-[500px] rounded-2xl border-2 border-slate-100 mx-auto object-contain bg-slate-50 shadow-inner" alt="Hình ảnh câu hỏi" /></div>}
                                 {q.type === 'mcq' && (
                                     <div className="grid grid-cols-1 gap-3">
                                         {q.options?.map((opt, optIdx) => {
@@ -335,7 +331,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                             const userVal = answers[key];
                                             return (
                                                 <div key={sqIdx} className="p-4 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                    <div className="flex-1"><span className="font-bold mr-2 text-blue-600">{String.fromCharCode(97+sqIdx)})</span><LatexText text={sq.text}/></div>
+                                                    <div className="flex-1 font-medium"><span className="font-black mr-2 text-blue-600">{String.fromCharCode(97+sqIdx)})</span><LatexText text={sq.text}/></div>
                                                     <div className="flex gap-2 shrink-0">
                                                         {['True', 'False'].map(opt => {
                                                             const isBtnSelected = userVal === opt;
@@ -357,7 +353,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                 )}
                                 {q.type === 'short' && (
                                     <div className="mt-2 flex items-center gap-3">
-                                        <span className="font-bold text-gray-700 whitespace-nowrap uppercase text-[10px] tracking-widest">Đáp số:</span>
+                                        <span className="font-black text-slate-700 whitespace-nowrap uppercase text-[10px] tracking-widest">Đáp số:</span>
                                         <div className="relative w-full max-w-xs">
                                             <input 
                                                 type="text" 
@@ -367,13 +363,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                                 autoComplete="new-password" 
                                                 id={`short-ans-${q.id}`}
                                                 placeholder="Kết quả..." 
-                                                className={`w-full px-4 py-2 border rounded-xl font-black outline-none transition-all ${isReview ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') : 'focus:border-blue-500 focus:ring-4 focus:ring-blue-100 border-gray-300 shadow-inner bg-slate-50/50'}`} 
+                                                className={`w-full px-4 py-2.5 border rounded-xl font-black outline-none transition-all ${isReview ? (checkShortAnswer(answers[q.id], q.correctAnswer) ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-300 text-red-500 opacity-60') : 'focus:border-blue-500 focus:ring-4 focus:ring-blue-100 border-gray-300 shadow-inner bg-slate-50/50'}`} 
                                             />
                                             {isReview && <div className="mt-2 text-[10px] font-black text-emerald-600 flex items-center gap-1 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-lg w-fit border border-emerald-100"><Check size={12}/> Đáp án chuẩn: {q.correctAnswer}</div>}
                                         </div>
                                     </div>
                                 )}
-                                {isReview && q.solution && <div className="mt-6 animate-fade-in"><div className="bg-yellow-50/50 border border-yellow-100 p-6 rounded-2xl"><h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-3 uppercase text-[10px] tracking-[0.2em]"><Lightbulb size={16} className="text-yellow-600"/> Hướng dẫn giải</h4><div className="text-gray-700 leading-relaxed text-sm"><LatexText text={q.solution} /></div></div></div>}
+                                {isReview && q.solution && <div className="mt-6 animate-fade-in"><div className="bg-yellow-50/50 border border-yellow-100 p-6 rounded-2xl"><h4 className="flex items-center gap-2 text-yellow-800 font-bold mb-3 uppercase text-[10px] tracking-[0.2em]"><Lightbulb size={16} className="text-yellow-600"/> Hướng dẫn giải chi tiết</h4><div className="text-gray-700 leading-relaxed text-sm"><LatexText text={q.solution} /></div></div></div>}
                             </div>
                         </div>
                     );
