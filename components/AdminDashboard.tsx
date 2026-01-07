@@ -209,7 +209,6 @@ const AdminDashboard = () => {
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
     
-    // MODAL LỊCH SỬ CHI TIẾT
     const [attemptDetail, setAttemptDetail] = useState<{ studentName: string, quizTitle: string, history: Result[] } | null>(null);
 
     const [newStudentName, setNewStudentName] = useState('');
@@ -284,15 +283,30 @@ const AdminDashboard = () => {
         let content = `<html><head><meta charset="utf-8"></head><body>`;
         content += `<h1 style="text-align:center">${quiz.title}</h1>`;
         content += `<p style="text-align:center">Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</p><hr/>`;
-        const parts = [{ title: 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn', type: 'mcq' }, { title: 'PHẦN II. Câu trắc nghiệm Đúng/Sai', type: 'group-tf' }, { title: 'PHẦN III. Câu trắc nghiệm Trả lời ngắn', type: 'short' }];
+        
+        const parts = [
+            { title: 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn', type: 'mcq' }, 
+            { title: 'PHẦN II. Câu trắc nghiệm Đúng/Sai', type: 'group-tf' }, 
+            { title: 'PHẦN III. Câu trắc nghiệm Trả lời ngắn', type: 'short' }
+        ];
+
         parts.forEach(part => {
             const partQs = quiz.questions.filter(q => q.type === part.type);
             if (partQs.length > 0) {
                 content += `<h3>${part.title}</h3>`;
                 partQs.forEach((q, idx) => {
                     content += `<p><b>Câu ${idx + 1}.</b> ${q.text}</p>`;
-                    if (q.type === 'mcq' && q.options) q.options.forEach((opt, oi) => content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`);
-                    else if (q.type === 'group-tf' && q.subQuestions) q.subQuestions.forEach((sq, si) => content += `<p style="margin-left:20px">${String.fromCharCode(97+si)}) ${sq.text}</p>`);
+                    
+                    // XUẤT HÌNH ẢNH NẾU CÓ
+                    if (q.imageUrl) {
+                        content += `<p style="text-align:center"><img src="${q.imageUrl}" style="max-width:500px; height:auto; border:1px solid #ddd; margin:10px auto;" /></p>`;
+                    }
+
+                    if (q.type === 'mcq' && q.options) {
+                        q.options.forEach((opt, oi) => content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`);
+                    } else if (q.type === 'group-tf' && q.subQuestions) {
+                        q.subQuestions.forEach((sq, si) => content += `<p style="margin-left:20px">${String.fromCharCode(97+si)}) ${sq.text}</p>`);
+                    }
                 });
             }
         });
@@ -311,7 +325,6 @@ const AdminDashboard = () => {
         return quizzes.filter(q => (qGradeFilter === 'all' || q.grade === qGradeFilter) && (qChapterFilter === 'all' || q.category === qChapterFilter) && q.title.toLowerCase().includes(qSearch.toLowerCase()));
     }, [quizzes, qSearch, qGradeFilter, qChapterFilter]);
 
-    // NHÓM KẾT QUẢ THEO (STUDENT + QUIZ)
     const groupedResults = useMemo(() => {
         const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
@@ -435,20 +448,11 @@ const AdminDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {filteredQuizzesList.map(q => {
                                     const attempts = results.filter(r => r.quizId === q.id).length;
-                                    
-                                    // MÀU CARD THEO KHỐI
                                     let themeClass = "bg-white border-slate-200 hover:border-slate-400";
                                     let gradeBadge = "bg-slate-100 text-slate-500";
-                                    if (q.grade === '12') {
-                                        themeClass = "bg-blue-50/20 border-blue-100 hover:border-blue-400 shadow-blue-500/5";
-                                        gradeBadge = "bg-blue-600 text-white";
-                                    } else if (q.grade === '11') {
-                                        themeClass = "bg-purple-50/20 border-purple-100 hover:border-purple-400 shadow-purple-500/5";
-                                        gradeBadge = "bg-purple-600 text-white";
-                                    } else if (q.grade === '10') {
-                                        themeClass = "bg-orange-50/20 border-orange-100 hover:border-orange-400 shadow-orange-500/5";
-                                        gradeBadge = "bg-orange-600 text-white";
-                                    }
+                                    if (q.grade === '12') { themeClass = "bg-blue-50/20 border-blue-100 hover:border-blue-400 shadow-blue-500/5"; gradeBadge = "bg-blue-600 text-white"; }
+                                    else if (q.grade === '11') { themeClass = "bg-purple-50/20 border-purple-100 hover:border-purple-400 shadow-purple-500/5"; gradeBadge = "bg-purple-600 text-white"; }
+                                    else if (q.grade === '10') { themeClass = "bg-orange-50/20 border-orange-100 hover:border-orange-400 shadow-orange-500/5"; gradeBadge = "bg-orange-600 text-white"; }
 
                                     return (
                                         <div key={q.id} className={`rounded-[2.5rem] p-8 border transition-all group flex flex-col shadow-sm ${themeClass}`}>
@@ -506,33 +510,6 @@ const AdminDashboard = () => {
                             <QuestionSection title="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
                             <QuestionSection title="PHẦN II. ĐÚNG/SAI" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
                             <QuestionSection title="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
-                        </div>
-                    )}
-
-                    {activeMenu === 'ai' && (
-                        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
-                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm text-center space-y-10">
-                                <Sparkles size={64} className="mx-auto text-blue-600 drop-shadow-lg"/>
-                                <div>
-                                  <h3 className="text-2xl font-black uppercase text-slate-800">Soạn đề bằng AI</h3>
-                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Cung cấp bởi Gemini 3 Flash</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                                    <div className="space-y-1"><label className="text-[10px] font-black uppercase ml-2 text-slate-400">Khối lớp mục tiêu</label><select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-black outline-none focus:bg-white focus:border-blue-400" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option><option value="all">Chung</option></select></div>
-                                    <div className="flex gap-4 items-end">
-                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.I</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart1} onChange={e => setAiPart1(parseInt(e.target.value))} /></div>
-                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.II</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart2} onChange={e => setAiPart2(parseInt(e.target.value))} /></div>
-                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.III</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart3} onChange={e => setAiPart3(parseInt(e.target.value))} /></div>
-                                    </div>
-                                </div>
-                                <div className="text-left space-y-2">
-                                    <div className="flex justify-between items-center px-2"><label className="text-[10px] font-black uppercase text-slate-400">Mô tả nội dung / chủ đề</label><button onClick={() => { setAiPrompt(''); setAiPart1(5); setAiPart2(2); setAiPart3(2); }} className="text-[9px] font-black text-blue-600 uppercase flex items-center gap-1 hover:underline"><RotateCcw size={12}/> Reset</button></div>
-                                    <textarea className="w-full bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 font-bold min-h-[220px] text-sm outline-none focus:bg-white focus:border-blue-400 shadow-inner" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Ví dụ: Đạo hàm và các bài toán cực trị, dùng LaTeX $...$ để AI hiểu công thức..." />
-                                </div>
-                                <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black shadow-2xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50">
-                                    {isAiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} {isAiLoading ? 'AI ĐANG SOẠN ĐỀ...' : 'BẮT ĐẦU SOẠN ĐỀ THÔNG MINH'}
-                                </button>
-                            </div>
                         </div>
                     )}
 
@@ -642,7 +619,6 @@ const AdminDashboard = () => {
                     )}
                 </div>
 
-                {/* MODAL LỊCH SỬ CHI TIẾT */}
                 {attemptDetail && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
@@ -680,7 +656,6 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
-                {/* MODAL XEM TRƯỚC ĐỀ - FIX LỖI ẢNH */}
                 {previewQuiz && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
@@ -693,7 +668,6 @@ const AdminDashboard = () => {
                                     {['mcq', 'group-tf', 'short'].map((type) => {
                                         const typeQs = previewQuiz.questions.filter(q => q.type === type);
                                         if (typeQs.length === 0) return null;
-                                        
                                         return (
                                             <div key={type} className="space-y-8">
                                                 <h4 className="text-xs font-black uppercase tracking-[0.3em] text-blue-600 border-b-2 border-blue-100 pb-3">
@@ -705,10 +679,7 @@ const AdminDashboard = () => {
                                                             <span className="text-blue-600 shrink-0 font-black italic underline">Câu {idx + 1}.</span>
                                                             <LatexText text={q.text}/>
                                                         </p>
-                                                        
-                                                        {/* HIỂN THỊ HÌNH ẢNH CÂU HỎI */}
                                                         {q.imageUrl && <div className="mb-8 flex justify-center"><img src={q.imageUrl} className="max-h-[400px] rounded-2xl border-2 border-slate-50 shadow-sm object-contain" alt="HÌNH ẢNH CÂU HỎI" /></div>}
-                                                        
                                                         {q.type === 'mcq' && q.options && (
                                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
                                                                 {q.options.map((opt, oi) => (
@@ -720,7 +691,6 @@ const AdminDashboard = () => {
                                                                 ))}
                                                             </div>
                                                         )}
-                                                        
                                                         {q.type === 'group-tf' && q.subQuestions && (
                                                             <div className="space-y-3 pl-12">
                                                                 {q.subQuestions.map((sq, si) => (
@@ -738,7 +708,6 @@ const AdminDashboard = () => {
                                                                 ))}
                                                             </div>
                                                         )}
-                                                        
                                                         {q.type === 'short' && (
                                                             <div className="pl-12">
                                                                 <div className="bg-orange-50 border-2 border-orange-200 p-4 rounded-xl text-sm font-bold text-orange-800 w-fit flex items-center gap-3 shadow-md">
@@ -758,7 +727,6 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 )}
-
                 {isAddStudentOpen && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <form onSubmit={handleAddStudentManual} className="bg-white rounded-[3.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up border-8 border-white">
@@ -773,8 +741,6 @@ const AdminDashboard = () => {
                         </form>
                     </div>
                 )}
-
-                {/* CHI TIẾT HỌC SINH (CỘNG DỒN THỜI GIAN) */}
                 {selectedStudent && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
@@ -830,7 +796,6 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 )}
-
                 {bankModal.open && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
