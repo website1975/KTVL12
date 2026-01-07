@@ -280,9 +280,17 @@ const AdminDashboard = () => {
     };
 
     const exportToDoc = (quiz: Quiz) => {
-        let content = `<html><head><meta charset="utf-8"></head><body>`;
-        content += `<h1 style="text-align:center">${quiz.title}</h1>`;
-        content += `<p style="text-align:center">Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</p><hr/>`;
+        let content = `<html><head><meta charset="utf-8"><style>
+          img { display: block; margin: 15px auto; max-width: 500px; height: auto; border: 1px solid #ddd; }
+          body { font-family: 'Times New Roman', serif; line-height: 1.6; }
+          .title { text-align: center; font-size: 18pt; font-weight: bold; margin-bottom: 5px; }
+          .info { text-align: center; font-size: 12pt; margin-bottom: 20px; }
+          .section-title { font-weight: bold; margin-top: 25px; border-bottom: 1px solid black; }
+          .question { margin-top: 15px; font-weight: bold; }
+          .options { margin-left: 25px; margin-top: 5px; }
+        </style></head><body>`;
+        content += `<div class="title">${quiz.title}</div>`;
+        content += `<div class="info">Khối: ${quiz.grade} | Thời gian làm bài: ${quiz.durationMinutes} phút</div><hr/>`;
         
         const parts = [
             { title: 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn', type: 'mcq' }, 
@@ -293,19 +301,27 @@ const AdminDashboard = () => {
         parts.forEach(part => {
             const partQs = quiz.questions.filter(q => q.type === part.type);
             if (partQs.length > 0) {
-                content += `<h3>${part.title}</h3>`;
+                content += `<div class="section-title">${part.title}</div>`;
                 partQs.forEach((q, idx) => {
-                    content += `<p><b>Câu ${idx + 1}.</b> ${q.text}</p>`;
+                    content += `<div class="question">Câu ${idx + 1}. ${q.text}</div>`;
                     
-                    // XUẤT HÌNH ẢNH NẾU CÓ
+                    // CHÈN ẢNH VỚI THẺ IMG VÀ STYLE CƠ BẢN
                     if (q.imageUrl) {
-                        content += `<p style="text-align:center"><img src="${q.imageUrl}" style="max-width:500px; height:auto; border:1px solid #ddd; margin:10px auto;" /></p>`;
+                        content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
                     }
 
                     if (q.type === 'mcq' && q.options) {
-                        q.options.forEach((opt, oi) => content += `<p style="margin-left:20px">${String.fromCharCode(65+oi)}. ${opt}</p>`);
+                        content += `<div class="options">`;
+                        q.options.forEach((opt, oi) => {
+                            content += `<p>${String.fromCharCode(65+oi)}. ${opt}</p>`;
+                        });
+                        content += `</div>`;
                     } else if (q.type === 'group-tf' && q.subQuestions) {
-                        q.subQuestions.forEach((sq, si) => content += `<p style="margin-left:20px">${String.fromCharCode(97+si)}) ${sq.text}</p>`);
+                        content += `<div class="options">`;
+                        q.subQuestions.forEach((sq, si) => {
+                            content += `<p>${String.fromCharCode(97+si)}) ${sq.text}</p>`;
+                        });
+                        content += `</div>`;
                     }
                 });
             }
@@ -513,6 +529,33 @@ const AdminDashboard = () => {
                         </div>
                     )}
 
+                    {activeMenu === 'ai' && (
+                        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
+                            <div className="bg-white p-10 rounded-[3rem] border shadow-sm text-center space-y-10">
+                                <Sparkles size={64} className="mx-auto text-blue-600 drop-shadow-lg"/>
+                                <div>
+                                  <h3 className="text-2xl font-black uppercase text-slate-800">Soạn đề bằng AI</h3>
+                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Cung cấp bởi Gemini 3 Flash</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+                                    <div className="space-y-1"><label className="text-[10px] font-black uppercase ml-2 text-slate-400">Khối lớp mục tiêu</label><select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-black outline-none focus:bg-white focus:border-blue-400" value={grade} onChange={e => setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option><option value="all">Chung</option></select></div>
+                                    <div className="flex gap-4 items-end">
+                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.I</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart1} onChange={e => setAiPart1(parseInt(e.target.value))} /></div>
+                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.II</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart2} onChange={e => setAiPart2(parseInt(e.target.value))} /></div>
+                                      <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.III</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={aiPart3} onChange={e => setAiPart3(parseInt(e.target.value))} /></div>
+                                    </div>
+                                </div>
+                                <div className="text-left space-y-2">
+                                    <div className="flex justify-between items-center px-2"><label className="text-[10px] font-black uppercase text-slate-400">Mô tả nội dung / chủ đề</label><button onClick={() => { setAiPrompt(''); setAiPart1(5); setAiPart2(2); setAiPart3(2); }} className="text-[9px] font-black text-blue-600 uppercase flex items-center gap-1 hover:underline"><RotateCcw size={12}/> Reset</button></div>
+                                    <textarea className="w-full bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 font-bold min-h-[220px] text-sm outline-none focus:bg-white focus:border-blue-400 shadow-inner" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Ví dụ: Đạo hàm và các bài toán cực trị, dùng LaTeX $...$ để AI hiểu công thức..." />
+                                </div>
+                                <button onClick={handleAiGenerate} disabled={isAiLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black shadow-2xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50">
+                                    {isAiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} {isAiLoading ? 'AI ĐANG SOẠN ĐỀ...' : 'BẮT ĐẦU SOẠN ĐỀ THÔNG MINH'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {activeMenu === 'results' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
@@ -610,7 +653,7 @@ const AdminDashboard = () => {
                                                     <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
                                                 </div>
                                             ))}
-                                            {chapters.filter(c => c.grade === g).length === 0 && <p className="text-center py-8 text-xs text-slate-300 italic bg-white/50 border border-dashed rounded-[2rem]">Chưa có dữ liệu chương học khối {g}</p>}
+                                            {chapters.filter(c => g === 'all' || c.grade === g).length === 0 && <p className="text-center py-8 text-xs text-slate-300 italic bg-white/50 border border-dashed rounded-[2rem]">Chưa có dữ liệu chương học khối {g}</p>}
                                         </div>
                                     </div>
                                 ))}
