@@ -1,6 +1,5 @@
 
 export type Role = 'admin' | 'student';
-// Fix: Added 'all' to Grade union to support common/general quizzes and resolve TS overlap errors
 export type Grade = '10' | '11' | '12' | 'all';
 export type QuizType = 'practice' | 'test';
 export type QuestionType = 'mcq' | 'group-tf' | 'short';
@@ -49,7 +48,7 @@ export interface Quiz {
   grade: Grade;
   category?: string; 
   startTime?: string;
-  endTime?: string; // Thời gian đóng đề luyện tập
+  endTime?: string; 
   durationMinutes: number;
   questions: Question[];
   createdAt: string;
@@ -67,6 +66,7 @@ export interface Result {
   durationSeconds: number;
   detailScores?: number[];
   pointsAwarded?: number;
+  userAnswers?: Record<string, any>; // Lưu chi tiết đáp án học sinh đã chọn
 }
 
 export interface AuthState {
