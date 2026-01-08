@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check, List
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check, List, ListChecks
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -210,6 +210,7 @@ const AdminDashboard = () => {
     const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
     
     const [attemptDetail, setAttemptDetail] = useState<{ studentName: string, quizTitle: string, history: Result[] } | null>(null);
+    const [selectedResultForReview, setSelectedResultForReview] = useState<Result | null>(null);
 
     const [newStudentName, setNewStudentName] = useState('');
     const [newStudentCode, setNewStudentCode] = useState('');
@@ -413,7 +414,6 @@ const AdminDashboard = () => {
         const file = e.target.files?.[0]; if (!file) return;
         setIsAiLoading(true);
         try {
-            // Sử dụng Promise để đợi file PDF được đọc xong
             const base64 = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve((reader.result as string).split(',')[1]);
@@ -424,10 +424,8 @@ const AdminDashboard = () => {
             const newQs = await parseQuestionsFromPDF(base64);
             
             if (newQs && newQs.length > 0) {
-                // Cập nhật state bằng hàm callback để đảm bảo không bị mất dữ liệu
                 setQuestions(prev => {
                     const combined = [...prev, ...newQs];
-                    console.log("Updated questions count:", combined.length);
                     return combined;
                 });
                 alert(`Đã bóc tách thành công ${newQs.length} câu hỏi từ PDF! Hãy kiểm tra các phần bên dưới.`);
@@ -441,6 +439,19 @@ const AdminDashboard = () => {
             setIsAiLoading(false); 
             if (e.target) e.target.value = '';
         }
+    };
+
+    const checkShortAnswer = (userAns: string | undefined, correctAns: string | undefined): boolean => {
+        if (!userAns || !correctAns) return false;
+        const u = userAns.trim().toLowerCase();
+        const c = correctAns.trim().toLowerCase();
+        if (u === c) return true;
+        const uNum = parseFloat(u.replace(',', '.'));
+        const cNum = parseFloat(c.replace(',', '.'));
+        if (!isNaN(uNum) && !isNaN(cNum)) {
+            return Math.abs(uNum - cNum) < 0.000001; 
+        }
+        return false;
     };
 
     return (
@@ -702,18 +713,108 @@ const AdminDashboard = () => {
                                             <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400 text-xs">#{attemptDetail.history.length - idx}</div>
                                             <div>
                                                 <div className="text-sm font-black text-slate-800">{format(parseISO(h.submittedAt), 'HH:mm - dd/MM/yyyy')}</div>
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Thời gian làm: {Math.floor(h.durationSeconds / 60)} phút {h.durationSeconds % 60} giây</div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Thời gian: {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s | Điểm: {h.score.toFixed(2)}</div>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-xl font-black text-blue-600">{h.score.toFixed(2)}</div>
-                                            <p className="text-[8px] font-black text-slate-300 uppercase">Điểm số</p>
-                                        </div>
+                                        <button 
+                                            onClick={() => setSelectedResultForReview(h)}
+                                            className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                        >
+                                            <Eye size={14}/> Chi tiết bài làm
+                                        </button>
                                     </div>
                                 ))}
                             </div>
                             <div className="p-6 border-t bg-white text-center">
                                 <button onClick={() => setAttemptDetail(null)} className="px-10 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200">Đóng</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {selectedResultForReview && (
+                    <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-4 backdrop-blur-lg animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl animate-fade-in-up">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="p-3 bg-blue-600 rounded-2xl"><ListChecks size={28}/></div>
+                                    <div>
+                                        <h3 className="text-lg font-black uppercase tracking-tight">Chi tiết bài làm: {selectedResultForReview.studentName}</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">
+                                            Đề: {quizzes.find(q => q.id === selectedResultForReview.quizId)?.title} | Điểm: {selectedResultForReview.score.toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setSelectedResultForReview(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                                <div className="max-w-4xl mx-auto space-y-12 pb-10">
+                                    {quizzes.find(q => q.id === selectedResultForReview.quizId)?.questions.map((q, idx) => {
+                                        const userAns = selectedResultForReview.userAnswers?.[q.id];
+                                        return (
+                                            <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <span className="font-black text-blue-600 underline">Câu {idx + 1}.</span>
+                                                    <span className="text-[10px] font-black text-slate-300 uppercase italic">{q.points} điểm</span>
+                                                </div>
+                                                <div className="mb-8 text-slate-800 text-lg leading-relaxed font-bold"><LatexText text={q.text}/></div>
+                                                {q.imageUrl && <div className="mb-8 flex justify-center"><img src={q.imageUrl} className="max-h-[400px] rounded-2xl border" alt="img" /></div>}
+                                                
+                                                {q.type === 'mcq' && q.options && (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {q.options.map((opt, oi) => {
+                                                            const isSelected = userAns === opt;
+                                                            const isCorrect = q.correctAnswer === opt;
+                                                            return (
+                                                                <div key={oi} className={`p-4 rounded-2xl border flex items-center gap-3 ${isCorrect ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-bold' : isSelected ? 'bg-red-50 border-red-300 text-red-500 line-through' : 'bg-slate-50 opacity-40'}`}>
+                                                                    <span className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-white border font-black text-[10px]">{String.fromCharCode(65+oi)}</span>
+                                                                    <LatexText text={opt}/>
+                                                                    {isCorrect && <Check size={16} className="ml-auto text-emerald-600" strokeWidth={4}/>}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {q.type === 'group-tf' && q.subQuestions && (
+                                                    <div className="space-y-3">
+                                                        {q.subQuestions.map((sq, si) => {
+                                                            const key = `${q.id}_${sq.id}`;
+                                                            const val = selectedResultForReview.userAnswers?.[key];
+                                                            const isCorrect = val === sq.correctAnswer;
+                                                            return (
+                                                                <div key={si} className={`flex justify-between items-center p-4 rounded-2xl border ${isCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-red-50/50 border-red-200'}`}>
+                                                                    <div className="text-sm font-bold flex gap-3"><span className="text-blue-600">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
+                                                                    <div className="flex gap-2">
+                                                                        <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase ${val === 'True' ? (sq.correctAnswer === 'True' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white') : (sq.correctAnswer === 'True' ? 'bg-slate-200 text-slate-400 opacity-30' : 'bg-slate-200 text-slate-400 opacity-30')}`}>H/S CHỌN: {val === 'True' ? 'ĐÚNG' : (val === 'False' ? 'SAI' : 'CHƯA CHỌN')}</span>
+                                                                        <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase bg-emerald-100 text-emerald-800`}>ĐÁP ÁN: {sq.correctAnswer === 'True' ? 'ĐÚNG' : 'SAI'}</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {q.type === 'short' && (
+                                                    <div className="space-y-4">
+                                                        <div className={`p-4 rounded-2xl border font-black ${checkShortAnswer(userAns, q.correctAnswer) ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-300 text-red-500'}`}>Học sinh trả lời: {userAns || '(Trống)'}</div>
+                                                        <div className="p-4 bg-emerald-500 text-white rounded-2xl font-black text-sm">Đáp số đúng: {q.correctAnswer}</div>
+                                                    </div>
+                                                )}
+
+                                                {q.solution && (
+                                                    <div className="mt-8 pt-8 border-t border-slate-100">
+                                                        <h5 className="text-[10px] font-black text-yellow-600 uppercase flex items-center gap-2 mb-4"><Lightbulb size={16}/> Hướng dẫn giải chi tiết</h5>
+                                                        <div className="p-6 bg-yellow-50/30 rounded-3xl border border-yellow-100 text-slate-600 text-sm italic"><LatexText text={q.solution}/></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="p-8 border-t bg-white flex justify-center shrink-0">
+                                <button onClick={() => setSelectedResultForReview(null)} className="px-16 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl">Đóng chi tiết bài làm</button>
                             </div>
                         </div>
                     </div>
