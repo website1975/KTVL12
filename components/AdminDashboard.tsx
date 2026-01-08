@@ -413,16 +413,34 @@ const AdminDashboard = () => {
         const file = e.target.files?.[0]; if (!file) return;
         setIsAiLoading(true);
         try {
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                const base64 = (event.target?.result as string).split(',')[1];
-                const newQs = await parseQuestionsFromPDF(base64);
-                setQuestions(prev => [...prev, ...newQs]);
-                alert("Đã bóc tách thành công!");
-            };
-            reader.readAsDataURL(file);
-        } catch (error) { alert("Lỗi PDF!"); }
-        finally { setIsAiLoading(false); }
+            // Sử dụng Promise để đợi file PDF được đọc xong
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(file);
+            });
+
+            const newQs = await parseQuestionsFromPDF(base64);
+            
+            if (newQs && newQs.length > 0) {
+                // Cập nhật state bằng hàm callback để đảm bảo không bị mất dữ liệu
+                setQuestions(prev => {
+                    const combined = [...prev, ...newQs];
+                    console.log("Updated questions count:", combined.length);
+                    return combined;
+                });
+                alert(`Đã bóc tách thành công ${newQs.length} câu hỏi từ PDF! Hãy kiểm tra các phần bên dưới.`);
+            } else {
+                alert("Không tìm thấy câu hỏi nào hoặc PDF không đúng định dạng.");
+            }
+        } catch (error) { 
+            console.error("Lỗi xử lý PDF:", error);
+            alert("Đã xảy ra lỗi trong quá trình bóc tách PDF."); 
+        } finally { 
+            setIsAiLoading(false); 
+            if (e.target) e.target.value = '';
+        }
     };
 
     return (
@@ -503,8 +521,10 @@ const AdminDashboard = () => {
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
                                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b pb-8">
                                     <input type="text" className="text-3xl font-black outline-none bg-transparent w-full" placeholder="Tên đề thi..." value={title} onChange={e => setTitle(e.target.value)} />
-                                    <label className="flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:scale-105 transition-all shadow-xl">
-                                        {isAiLoading ? <Loader2 className="animate-spin" size={16}/> : <FileUp size={16}/>} NHẬP TỪ PDF <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfExtract}/>
+                                    <label className={`flex items-center gap-2 px-6 py-4 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer transition-all shadow-xl ${isAiLoading ? 'bg-blue-400' : 'bg-slate-900 hover:scale-105'}`}>
+                                        {isAiLoading ? <Loader2 className="animate-spin" size={16}/> : <FileUp size={16}/>} 
+                                        {isAiLoading ? 'ĐANG BÓC TÁCH PDF...' : 'NHẬP TỪ PDF'}
+                                        <input type="file" accept="application/pdf" className="hidden" disabled={isAiLoading} onChange={handlePdfExtract}/>
                                     </label>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
