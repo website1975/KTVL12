@@ -151,14 +151,28 @@ const QuestionSection: React.FC<SectionProps> = ({ title, type, questions, setQu
                             <div className="mb-8 flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border"><span className="text-[10px] font-black text-orange-600 uppercase">Đáp án đúng:</span><input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={q.correctAnswer} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = e.target.value; setQuestions(nl); }} placeholder="Nhập kết quả..." /></div>
                         )}
 
-                        <div className="pt-8 border-t border-slate-100 space-y-4">
-                            <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2"><Lightbulb size={16} className="text-yellow-500"/> Hướng dẫn giải (LaTeX: $...$)</label>
-                            <textarea 
-                                className="w-full p-6 bg-yellow-50/20 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[100px] focus:bg-yellow-50/50 transition-all font-medium" 
-                                value={q.solution} 
-                                onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
-                                placeholder="Nhập hướng dẫn giải..." 
-                            />
+                        <div className="pt-8 border-t border-slate-100">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 px-1">
+                                        <Lightbulb size={16} className="text-yellow-500"/> Hướng dẫn giải (LaTeX: $...$)
+                                    </label>
+                                    <textarea 
+                                        className="w-full p-6 bg-yellow-50/20 border border-yellow-100 rounded-3xl text-sm outline-none min-h-[120px] focus:bg-yellow-50/50 transition-all font-medium" 
+                                        value={q.solution} 
+                                        onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} 
+                                        placeholder="Nhập hướng dẫn giải..." 
+                                    />
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black text-yellow-600 uppercase flex items-center gap-2 px-1">
+                                        <Eye size={16} className="text-yellow-500"/> Xem trước lời giải
+                                    </label>
+                                    <div className="w-full p-6 bg-yellow-50/10 rounded-3xl border border-yellow-100/50 min-h-[120px] text-sm overflow-auto text-slate-600 italic">
+                                        <LatexText text={q.solution || '*Chưa có lời giải chi tiết*'} />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -713,7 +727,7 @@ const AdminDashboard = () => {
                                             <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400 text-xs">#{attemptDetail.history.length - idx}</div>
                                             <div>
                                                 <div className="text-sm font-black text-slate-800">{format(parseISO(h.submittedAt), 'HH:mm - dd/MM/yyyy')}</div>
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Thời gian: {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s | Điểm: {h.score.toFixed(2)}</div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Thời gian: {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s | Điểm: {h.score.toFixed(2)}</div>
                                             </div>
                                         </div>
                                         <button 
