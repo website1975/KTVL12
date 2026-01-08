@@ -163,7 +163,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
       if (quiz.type === 'test') {
           if (score >= 8.0) earned = 1;
       } else if (quiz.type === 'practice') {
-          // Công thức: diem = tong tgian (s) / (45*60)
           earned = spent / (45 * 60);
       }
 
@@ -180,7 +179,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           totalQuestions: quiz.questions?.length || 0,
           submittedAt: new Date().toISOString(),
           durationSeconds: spent,
-          pointsAwarded: earned
+          pointsAwarded: earned,
+          userAnswers: answersRef.current // LƯU CHI TIẾT BÀI LÀM
       };
 
       await saveResult(result);
