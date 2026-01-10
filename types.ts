@@ -60,13 +60,14 @@ export interface Result {
   quizId: string;
   studentId: string;
   studentName: string;
+  studentCode?: string; // Thêm mã học sinh để đối soát chính xác
   score: number;
   totalQuestions: number;
   submittedAt: string;
   durationSeconds: number;
   detailScores?: number[];
   pointsAwarded?: number;
-  userAnswers?: Record<string, any>; // Lưu chi tiết đáp án học sinh đã chọn
+  userAnswers?: Record<string, any>; 
 }
 
 export interface AuthState {
