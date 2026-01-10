@@ -175,12 +175,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           quizId: quiz.id,
           studentId: student.id,
           studentName: student.fullName,
+          studentCode: student.studentCode, // LƯU THÊM MÃ HỌC SINH ĐỂ ĐỐI SOÁT
           score: score,
           totalQuestions: quiz.questions?.length || 0,
           submittedAt: new Date().toISOString(),
           durationSeconds: spent,
           pointsAwarded: earned,
-          userAnswers: answersRef.current // LƯU CHI TIẾT BÀI LÀM
+          userAnswers: answersRef.current 
       };
 
       await saveResult(result);
@@ -293,7 +294,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
           <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
               <div className="mb-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-200 flex justify-between items-center">
                   <div>
-                    <h1 className="text-xl md:text-2xl font-black text-slate-800 mb-1">{quiz.title}</h1>
+                    <h1 className="text-xl md:text-2xl font-black text-slate-800 mb-1 uppercase tracking-tight">{quiz.title}</h1>
                     <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">{quiz.type === 'test' ? 'Cơ chế giám sát thi đang bật' : 'Chế độ luyện tập tự do'}</p>
                   </div>
                   {quiz.type === 'test' && <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-2xl border border-emerald-100 flex items-center gap-2 font-black text-[10px] uppercase shadow-sm"><ShieldAlert size={16}/> Anti-Cheat Active</div>}
@@ -315,7 +316,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                             let containerClass = "p-4 border rounded-2xl cursor-pointer flex items-center gap-4 transition-all relative ";
                                             if (isReview) {
                                                 containerClass += "cursor-default ";
-                                                if (isCorrect) containerClass += "bg-green-100 border-green-600 text-green-900 ring-2 ring-green-200 font-bold z-10 shadow-sm";
+                                                if (isCorrect) containerClass += "bg-green-100 border-green-600 text-green-900 font-bold z-10 shadow-sm";
                                                 else if (isSelected) containerClass += "bg-red-50 border-red-300 text-red-500 opacity-60 line-through decoration-red-400";
                                                 else containerClass += "bg-white border-gray-100 text-gray-300 opacity-30 grayscale";
                                             } else if (isSelected) containerClass += "bg-blue-50 border-blue-500 shadow-md ring-1 ring-blue-200";
