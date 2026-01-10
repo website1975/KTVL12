@@ -71,21 +71,27 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 export const saveUser = async (user: User): Promise<void> => {
-  // Save to Local first for safety
+  const normalizedUser = {
+    ...user,
+    username: (user.studentCode || user.username).toLowerCase(),
+    studentCode: user.studentCode ? user.studentCode.toUpperCase() : undefined,
+    fullName: user.fullName.trim()
+  };
+
   const local = getLocalUsers();
-  const existingIdx = local.findIndex(u => u.id === user.id || (u.studentCode && u.studentCode === user.studentCode));
+  const existingIdx = local.findIndex(u => u.id === normalizedUser.id || (normalizedUser.studentCode && u.studentCode === normalizedUser.studentCode));
   if (existingIdx >= 0) {
-    local[existingIdx] = user;
+    local[existingIdx] = normalizedUser;
   } else {
-    local.push(user);
+    local.push(normalizedUser);
   }
   saveLocalUsers(local);
 
   if (!supabase) return;
   const { error } = await supabase.from('users').upsert({ 
-    id: user.id, 
-    username: user.studentCode || user.username, 
-    data: user 
+    id: normalizedUser.id, 
+    username: normalizedUser.username, 
+    data: normalizedUser 
   });
   if (error) throw error;
 };
@@ -127,26 +133,29 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number): Prom
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
+  const searchUsername = username.trim().toLowerCase();
   const local = getLocalUsers();
-  const localFound = local.find(u => u.username === username);
+  const localFound = local.find(u => u.username === searchUsername);
   if (localFound) return localFound;
 
   if (!supabase) return undefined;
-  const { data, error } = await supabase.from('users').select('data').eq('username', username).single();
+  const { data, error } = await supabase.from('users').select('data').eq('username', searchUsername).single();
   if (error || !data) return undefined;
   return data.data as User;
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
+  const searchCode = code.trim().toUpperCase();
   const local = getLocalUsers();
-  const localFound = local.find(u => u.studentCode === code.toUpperCase());
+  const localFound = local.find(u => u.studentCode === searchCode);
   if (localFound) return localFound;
 
   if (!supabase) return undefined;
+  
   const { data, error } = await supabase
     .from('users')
     .select('data')
-    .filter('data->>studentCode', 'eq', code.toUpperCase())
+    .filter('data->>studentCode', 'eq', searchCode)
     .maybeSingle();
   
   if (error || !data) return undefined;
@@ -154,11 +163,31 @@ export const findUserByStudentCode = async (code: string): Promise<User | undefi
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  const local = getLocalUsers().filter(u => u.id !== id);
-  saveLocalUsers(local);
+  // 1. Lấy thông tin học sinh trước khi xóa để biết studentCode
+  const localUsers = getLocalUsers();
+  const userToDelete = localUsers.find(u => u.id === id);
+  
+  // 2. Cập nhật local storage (User)
+  const newLocalUsers = localUsers.filter(u => u.id !== id);
+  saveLocalUsers(newLocalUsers);
 
   if (!supabase) return;
-  await supabase.from('users').delete().eq('id', id);
+
+  try {
+    // 3. Xóa tất cả kết quả liên quan trong bảng results (theo student_id)
+    await supabase.from('results').delete().eq('student_id', id);
+
+    // 4. Xóa thêm theo studentCode trong JSON (phòng trường hợp student_id bị lệch)
+    if (userToDelete?.studentCode) {
+      await supabase.from('results').delete().filter('data->>studentCode', 'eq', userToDelete.studentCode.toUpperCase());
+    }
+
+    // 5. Cuối cùng mới xóa User
+    await supabase.from('users').delete().eq('id', id);
+  } catch (error) {
+    console.error("Lỗi khi xóa học sinh và các kết quả liên quan:", error);
+    throw error;
+  }
 };
 
 export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
@@ -212,8 +241,18 @@ export const getResults = async (): Promise<Result[]> => {
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
+  const normalizedResult = {
+    ...result,
+    studentCode: result.studentCode ? result.studentCode.toUpperCase() : undefined
+  };
+
   if (!supabase) return;
-  const { error } = await supabase.from('results').insert({ id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result });
+  const { error } = await supabase.from('results').insert({ 
+    id: normalizedResult.id, 
+    quiz_id: normalizedResult.quizId, 
+    student_id: normalizedResult.studentId, 
+    data: normalizedResult 
+  });
   if (error) throw error;
 };
 
