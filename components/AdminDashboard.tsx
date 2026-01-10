@@ -256,7 +256,7 @@ const AdminDashboard = () => {
         alert("Thêm học sinh thành công!");
         setIsAddStudentOpen(false);
         setNewStudentName(''); setNewStudentCode('');
-        refreshData();
+        await refreshData();
     };
 
     const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,7 +281,7 @@ const AdminDashboard = () => {
             if (newUsers.length > 0) {
               for (const u of newUsers) await saveUser(u);
               alert(`Đã nhập ${newUsers.length} học sinh thành công!`);
-              refreshData();
+              await refreshData();
             }
         };
         reader.readAsText(file);
@@ -412,7 +412,7 @@ const AdminDashboard = () => {
           endTime: quizType === 'practice' ? endTime : undefined 
         };
         if (editingId) await updateQuiz(data); else await saveQuiz(data);
-        alert("Lưu thành công!"); setActiveMenu('quizzes'); refreshData();
+        alert("Lưu thành công!"); setActiveMenu('quizzes'); await refreshData();
     };
 
     const handleAiGenerate = async () => {
@@ -526,7 +526,7 @@ const AdminDashboard = () => {
                                                 </div>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                                     <button onClick={() => startEdit(q)} className="p-2.5 bg-white border rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"><Edit size={16}/></button>
-                                                    <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
+                                                    <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); await refreshData(); } }} className="p-2.5 bg-red-50 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
                                                 </div>
                                             </div>
                                             <h3 className="font-black text-slate-800 text-lg mb-4 line-clamp-2 min-h-[56px] leading-tight uppercase tracking-tight">{q.title}</h3>
@@ -571,7 +571,7 @@ const AdminDashboard = () => {
                             </div>
                             <QuestionSection title="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
                             <QuestionSection title="PHẦN II. ĐÚNG/SAI" type="group-tf" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
-                            <QuestionSection title="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
+                            <QuestionSection title="PHẦn III. TRẢ LỜI NGẮN" type="short" questions={questions} setQuestions={setQuestions} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q)); setUploadingId(null); }} uploadingId={uploadingId} onOpenBank={(type) => setBankModal({ open: true, type })} />
                         </div>
                     )}
 
@@ -632,7 +632,7 @@ const AdminDashboard = () => {
                                                     <td className="p-6 text-center">
                                                         <button onClick={() => setAttemptDetail({ studentName: latest.studentName, quizTitle: q?.title || 'Đề thi', history: group.history })} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><List size={16}/></button>
                                                     </td>
-                                                    <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa TOÀN BỘ lượt làm của đề này?')) { group.history.forEach(h => deleteResult(h.id)); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                                    <td className="p-6 text-center"><button onClick={async () => { if(confirm('Xóa TOÀN BỘ lượt làm của đề này?')) { await Promise.all(group.history.map(h => deleteResult(h.id))); await refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
                                                 </tr>
                                             );
                                         })}
@@ -669,8 +669,8 @@ const AdminDashboard = () => {
                                                 <td className="p-6 font-black uppercase text-slate-400">{u.studentCode}</td>
                                                 <td className="p-6 text-center font-bold text-slate-500">{u.grade}</td>
                                                 <td className="p-6 text-center text-blue-600 font-bold">{u.points?.toFixed(2) || '0.00'}</td>
-                                                <td className="p-6 text-center"><div className="flex justify-center gap-2"><button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button><button onClick={() => { if(confirm('Reset mật khẩu về 123?')) changePassword(u.id, '123'); refreshData(); }} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all"><RefreshCw size={14}/></button></div></td>
-                                                <td className="p-6 text-center"><button onClick={() => { if(confirm('Xóa học sinh này?')) { deleteUser(u.id); refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                                <td className="p-6 text-center"><div className="flex justify-center gap-2"><button onClick={() => setSelectedStudent(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button><button onClick={async () => { if(confirm('Reset mật khẩu về 123?')) { await changePassword(u.id, '123'); await refreshData(); } }} className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all"><RefreshCw size={14}/></button></div></td>
+                                                <td className="p-6 text-center"><button onClick={async () => { if(confirm(`Xóa học sinh ${u.fullName}?\n\nCẢNH BÁO: Tất cả lịch sử điểm số của học sinh này cũng sẽ bị xóa vĩnh viễn khỏi hệ thống!`)) { await deleteUser(u.id); await refreshData(); } }} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -685,7 +685,7 @@ const AdminDashboard = () => {
                                 <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2"><FolderTree size={16} className="text-blue-600"/> Tạo chương học</h4>
                                 <div className="flex flex-col gap-4">
                                     <select className="p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option><option value="all">Chung</option></select>
-                                    <div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:border-blue-400 uppercase" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value=''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 transition-all active:scale-95">Lưu Chương</button></div>
+                                    <div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:border-blue-400 uppercase" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value=''; await refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 transition-all active:scale-95">Lưu Chương</button></div>
                                 </div>
                             </div>
                             <div className="space-y-10">
@@ -696,7 +696,7 @@ const AdminDashboard = () => {
                                             {chapters.filter(c => c.grade === g).map(c => (
                                                 <div key={c.id} className="bg-white p-6 px-10 rounded-[2rem] border border-slate-100 flex justify-between items-center group shadow-sm hover:border-blue-200 hover:shadow-md transition-all">
                                                     <span className="font-black text-sm text-slate-700 uppercase tracking-tight">{c.name}</span>
-                                                    <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
+                                                    <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); await refreshData(); } }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
                                                 </div>
                                             ))}
                                             {chapters.filter(c => g === 'all' || c.grade === g).length === 0 && <p className="text-center py-8 text-xs text-slate-300 italic bg-white/50 border border-dashed rounded-[2rem]">Chưa có dữ liệu chương học khối {g}</p>}
