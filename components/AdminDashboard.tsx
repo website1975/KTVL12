@@ -367,7 +367,8 @@ const AdminDashboard = () => {
 
         const groups: Record<string, { latest: Result, history: Result[] }> = {};
         filtered.forEach(r => {
-            const key = `${r.studentId}_${r.quizId}`;
+            // Sử dụng studentCode làm key chính để group nếu có, nếu không thì dùng studentId
+            const key = r.studentCode ? `${r.studentCode}_${r.quizId}` : `${r.studentId}_${r.quizId}`;
             if (!groups[key]) {
                 groups[key] = { latest: r, history: [r] };
             } else {
@@ -528,7 +529,7 @@ const AdminDashboard = () => {
                                                     <button onClick={async () => { if(confirm('Xóa đề?')) { await deleteQuiz(q.id); refreshData(); } }} className="p-2.5 bg-red-50 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
                                                 </div>
                                             </div>
-                                            <h3 className="font-black text-slate-800 text-lg mb-4 line-clamp-2 min-h-[56px] leading-tight">{q.title}</h3>
+                                            <h3 className="font-black text-slate-800 text-lg mb-4 line-clamp-2 min-h-[56px] leading-tight uppercase tracking-tight">{q.title}</h3>
                                             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 grid grid-cols-2 gap-4 mb-6 text-center border shadow-inner">
                                                 <div className="border-r border-slate-200/50"><p className="text-[8px] font-black text-slate-400 uppercase">Loại đề</p><p className="text-xs font-black uppercase">{q.type === 'test' ? 'Kiểm tra' : 'Luyện tập'}</p></div>
                                                 <div><p className="text-[8px] font-black text-slate-400 uppercase">Lượt làm</p><p className="text-xs font-black text-blue-600">{attempts}</p></div>
@@ -545,7 +546,7 @@ const AdminDashboard = () => {
                         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
                             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8">
                                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b pb-8">
-                                    <input type="text" className="text-3xl font-black outline-none bg-transparent w-full" placeholder="Tên đề thi..." value={title} onChange={e => setTitle(e.target.value)} />
+                                    <input type="text" className="text-3xl font-black outline-none bg-transparent w-full uppercase" placeholder="Tên đề thi..." value={title} onChange={e => setTitle(e.target.value)} />
                                     <label className={`flex items-center gap-2 px-6 py-4 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer transition-all shadow-xl ${isAiLoading ? 'bg-blue-400' : 'bg-slate-900 hover:scale-105'}`}>
                                         {isAiLoading ? <Loader2 className="animate-spin" size={16}/> : <FileUp size={16}/>} 
                                         {isAiLoading ? 'ĐANG BÓC TÁCH PDF...' : 'NHẬP TỪ PDF'}
@@ -621,8 +622,8 @@ const AdminDashboard = () => {
                                             const maxScore = Math.max(...group.history.map(h => h.score));
                                             return (
                                                 <tr key={gIdx} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="p-6 font-bold text-slate-800">{latest.studentName}</td>
-                                                    <td className="p-6 text-sm text-slate-500">{q?.title || 'Đề đã xóa'}</td>
+                                                    <td className="p-6 font-bold text-slate-800 uppercase">{latest.studentName}</td>
+                                                    <td className="p-6 text-sm text-slate-500 uppercase">{q?.title || 'Đề đã xóa'}</td>
                                                     <td className="p-6 text-center font-black text-blue-600">
                                                         <span className="bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{group.history.length}</span>
                                                     </td>
@@ -664,7 +665,7 @@ const AdminDashboard = () => {
                                     <tbody className="divide-y">
                                         {filteredStudents.map(u => (
                                             <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="p-6 font-bold text-slate-800">{u.fullName}</td>
+                                                <td className="p-6 font-bold text-slate-800 uppercase">{u.fullName}</td>
                                                 <td className="p-6 font-black uppercase text-slate-400">{u.studentCode}</td>
                                                 <td className="p-6 text-center font-bold text-slate-500">{u.grade}</td>
                                                 <td className="p-6 text-center text-blue-600 font-bold">{u.points?.toFixed(2) || '0.00'}</td>
@@ -684,7 +685,7 @@ const AdminDashboard = () => {
                                 <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2"><FolderTree size={16} className="text-blue-600"/> Tạo chương học</h4>
                                 <div className="flex flex-col gap-4">
                                     <select className="p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" id="ch-grade"><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option><option value="all">Chung</option></select>
-                                    <div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:border-blue-400" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value=''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 transition-all active:scale-95">Lưu Chương</button></div>
+                                    <div className="flex gap-3"><input type="text" className="flex-1 p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:border-blue-400 uppercase" placeholder="Tên chương..." id="ch-name" /><button onClick={async () => { const n = document.getElementById('ch-name') as HTMLInputElement; const g = document.getElementById('ch-grade') as HTMLSelectElement; if(!n.value) return; await saveChapter({ id: uuidv4(), name: n.value, grade: g.value as Grade, order: chapters.length }); n.value=''; refreshData(); }} className="bg-blue-600 text-white px-10 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 transition-all active:scale-95">Lưu Chương</button></div>
                                 </div>
                             </div>
                             <div className="space-y-10">
@@ -694,7 +695,7 @@ const AdminDashboard = () => {
                                         <div className="grid grid-cols-1 gap-3">
                                             {chapters.filter(c => c.grade === g).map(c => (
                                                 <div key={c.id} className="bg-white p-6 px-10 rounded-[2rem] border border-slate-100 flex justify-between items-center group shadow-sm hover:border-blue-200 hover:shadow-md transition-all">
-                                                    <span className="font-black text-sm text-slate-700">{c.name}</span>
+                                                    <span className="font-black text-sm text-slate-700 uppercase tracking-tight">{c.name}</span>
                                                     <button onClick={async () => { if(confirm('Xóa chương này?')) { await deleteChapter(c.id); refreshData(); } }} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
                                                 </div>
                                             ))}
@@ -726,7 +727,7 @@ const AdminDashboard = () => {
                                         <div className="flex items-center gap-4">
                                             <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400 text-xs">#{attemptDetail.history.length - idx}</div>
                                             <div>
-                                                <div className="text-sm font-black text-slate-800">{format(parseISO(h.submittedAt), 'HH:mm - dd/MM/yyyy')}</div>
+                                                <div className="text-sm font-black text-slate-800 uppercase">{format(parseISO(h.submittedAt), 'HH:mm - dd/MM/yyyy')}</div>
                                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Thời gian: {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s | Điểm: {h.score.toFixed(2)}</div>
                                             </div>
                                         </div>
@@ -768,7 +769,7 @@ const AdminDashboard = () => {
                                         return (
                                             <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
                                                 <div className="flex justify-between items-start mb-6">
-                                                    <span className="font-black text-blue-600 underline">Câu {idx + 1}.</span>
+                                                    <span className="font-black text-blue-600 underline uppercase">Câu {idx + 1}.</span>
                                                     <span className="text-[10px] font-black text-slate-300 uppercase italic">{q.points} điểm</span>
                                                 </div>
                                                 <div className="mb-8 text-slate-800 text-lg leading-relaxed font-bold"><LatexText text={q.text}/></div>
@@ -812,7 +813,7 @@ const AdminDashboard = () => {
                                                 {q.type === 'short' && (
                                                     <div className="space-y-4">
                                                         <div className={`p-4 rounded-2xl border font-black ${checkShortAnswer(userAns, q.correctAnswer) ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-300 text-red-500'}`}>Học sinh trả lời: {userAns || '(Trống)'}</div>
-                                                        <div className="p-4 bg-emerald-500 text-white rounded-2xl font-black text-sm">Đáp số đúng: {q.correctAnswer}</div>
+                                                        <div className="p-4 bg-emerald-500 text-white rounded-2xl font-black text-sm uppercase">Đáp số đúng: {q.correctAnswer}</div>
                                                     </div>
                                                 )}
 
@@ -854,7 +855,7 @@ const AdminDashboard = () => {
                                                 {typeQs.map((q, idx) => (
                                                     <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
                                                         <p className="font-bold text-slate-800 text-lg flex gap-4 leading-relaxed mb-6">
-                                                            <span className="text-blue-600 shrink-0 font-black italic underline">Câu {idx + 1}.</span>
+                                                            <span className="text-blue-600 shrink-0 font-black italic underline uppercase">Câu {idx + 1}.</span>
                                                             <LatexText text={q.text}/>
                                                         </p>
                                                         {q.imageUrl && <div className="mb-8 flex justify-center"><img src={q.imageUrl} className="max-h-[400px] rounded-2xl border-2 border-slate-50 shadow-sm object-contain" alt="HÌNH ẢNH CÂU HỎI" /></div>}
@@ -910,10 +911,10 @@ const AdminDashboard = () => {
                         <form onSubmit={handleAddStudentManual} className="bg-white rounded-[3.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up border-8 border-white">
                             <div className="p-8 bg-slate-900 text-white flex justify-between items-center"><div className="flex items-center gap-4"><UserPlus size={24} className="text-blue-500"/><h3 className="text-xl font-black uppercase tracking-tight">Thêm học sinh</h3></div><button type="button" onClick={() => setIsAddStudentOpen(false)} className="p-2 hover:text-red-500 transition-colors"><X/></button></div>
                             <div className="p-10 space-y-6">
-                                <div className="space-y-1"><label className="text-[9px] font-black uppercase ml-2 text-slate-400">Họ và tên</label><input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold outline-none focus:bg-white focus:border-blue-400 transition-all" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Tên học sinh..." required /></div>
+                                <div className="space-y-1"><label className="text-[9px] font-black uppercase ml-2 text-slate-400">Họ và tên</label><input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold outline-none focus:bg-white focus:border-blue-400 transition-all uppercase" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Tên học sinh..." required /></div>
                                 <div className="space-y-1"><label className="text-[9px] font-black uppercase ml-2 text-slate-400">Mã học sinh (MAHS)</label><input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold uppercase outline-none focus:bg-white focus:border-blue-400 transition-all" value={newStudentCode} onChange={e => setNewStudentCode(e.target.value)} placeholder="HS001..." required /></div>
                                 <div className="space-y-1"><label className="text-[9px] font-black uppercase ml-2 text-slate-400">Khối</label><select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-black outline-none" value={newStudentGrade} onChange={e => setNewStudentGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
-                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-[9px] text-blue-600 italic">* Mật khẩu: <span className="font-black">123</span></div>
+                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-[9px] text-blue-600 italic">* Mật khẩu mặc định: <span className="font-black">123</span></div>
                                 <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-blue-700 active:scale-95 transition-all mt-4">Xác nhận thêm</button>
                             </div>
                         </form>
@@ -937,7 +938,7 @@ const AdminDashboard = () => {
                                     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-2">
                                       <span className="text-[8px] font-black text-slate-300 uppercase text-center">Tổng thời gian luyện tập</span>
                                       <span className="text-xl font-black text-orange-600 text-center">
-                                          {formatStudyTime(results.filter(r => r.studentId === selectedStudent.id).reduce((acc, r) => acc + (r.durationSeconds || 0), 0))}
+                                          {formatStudyTime(results.filter(r => (r.studentId === selectedStudent.id) || (r.studentCode && r.studentCode === selectedStudent.studentCode)).reduce((acc, r) => acc + (r.durationSeconds || 0), 0))}
                                       </span>
                                     </div>
                                     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-2">
@@ -954,11 +955,11 @@ const AdminDashboard = () => {
                                     <table className="w-full text-left">
                                         <thead><tr className="bg-white border-b text-[8px] font-black uppercase text-slate-300 tracking-[0.2em]"><th className="p-6">Tên đề thi</th><th className="p-6 text-center">Thời gian làm</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th></tr></thead>
                                         <tbody className="divide-y">
-                                          {results.filter(r => r.studentId === selectedStudent.id).length === 0 ? (
-                                            <tr><td colSpan={4} className="p-10 text-center text-xs text-slate-300 italic">Học sinh này chưa làm bài nào</td></tr>
-                                          ) : results.filter(r => r.studentId === selectedStudent.id).sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt))?1:-1).map(r => (
+                                          {results.filter(r => (r.studentId === selectedStudent.id) || (r.studentCode && r.studentCode === selectedStudent.studentCode)).length === 0 ? (
+                                            <tr><td colSpan={4} className="p-10 text-center text-xs text-slate-300 italic">Học sinh này chưa có lịch sử làm bài được ghi nhận</td></tr>
+                                          ) : results.filter(r => (r.studentId === selectedStudent.id) || (r.studentCode && r.studentCode === selectedStudent.studentCode)).sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt))?1:-1).map(r => (
                                               <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                                                  <td className="p-6 font-bold text-sm text-slate-700">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
+                                                  <td className="p-6 font-bold text-sm text-slate-700 uppercase">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
                                                   <td className="p-6 text-center font-black text-slate-400 text-xs">{Math.floor(r.durationSeconds/60)}p {r.durationSeconds%60}s</td>
                                                   <td className="p-6 text-center font-black text-blue-600 text-sm">{r.score.toFixed(2)}</td>
                                                   <td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'HH:mm dd/MM/yy')}</td>
