@@ -7,7 +7,8 @@ import {
 } from '../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download, Medal, CheckCircle2, UserPlus, Save, ShieldAlert, Key } from 'lucide-react';
+// Fix: Added Lightbulb to the lucide-react import list
+import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download, Medal, CheckCircle2, UserPlus, Save, ShieldAlert, Key, Eye, Trophy, BookOpen, Check, Lightbulb } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 
 // Import sub-components
@@ -49,6 +50,7 @@ const AdminDashboard = () => {
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
     const [historyModal, setHistoryModal] = useState<{ studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
+    const [viewingResult, setViewingResult] = useState<Result | null>(null);
 
     // Filters
     const [qSearch, setQSearch] = useState('');
@@ -135,8 +137,6 @@ const AdminDashboard = () => {
         reader.onload = async (event) => {
             const text = event.target?.result as string;
             const rows = text.split('\n').map(r => r.split(','));
-            // Giả định định dạng CSV: Họ tên, Mã học sinh, Khối, Mật khẩu
-            // Bỏ qua dòng header nếu có
             let count = 0;
             for (let i = 0; i < rows.length; i++) {
                 const [name, code, gradeVal, pass] = rows[i];
@@ -159,6 +159,24 @@ const AdminDashboard = () => {
             refreshData();
         };
         reader.readAsText(file);
+    };
+
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m ${seconds % 60}s`;
+    };
+
+    const checkShortAnswer = (userAns: string | undefined, correctAns: string | undefined): boolean => {
+        if (!userAns || !correctAns) return false;
+        const u = userAns.trim().toLowerCase();
+        const c = correctAns.trim().toLowerCase();
+        if (u === c) return true;
+        const uNum = parseFloat(u.replace(',', '.'));
+        const cNum = parseFloat(c.replace(',', '.'));
+        if (!isNaN(uNum) && !isNaN(cNum)) return Math.abs(uNum - cNum) < 0.000001; 
+        return false;
     };
 
     const exportToDoc = (quiz: Quiz) => {
@@ -184,22 +202,14 @@ const AdminDashboard = () => {
                 content += `<h2>${part.title}</h2>`;
                 partQs.forEach((q, idx) => {
                     content += `<div class="question">Câu ${idx + 1}. ${q.text}</div>`;
-                    
-                    if (q.imageUrl) {
-                        content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
-                    }
-
+                    if (q.imageUrl) content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
                     if (q.type === 'mcq' && q.options) {
                         content += `<div class="options">`;
-                        q.options.forEach((opt, oi) => {
-                            content += `<p>${String.fromCharCode(65+oi)}. ${opt}</p>`;
-                        });
+                        q.options.forEach((opt, oi) => { content += `<p>${String.fromCharCode(65+oi)}. ${opt}</p>`; });
                         content += `</div>`;
                     } else if (q.type === 'group-tf' && q.subQuestions) {
                         content += `<div class="options">`;
-                        q.subQuestions.forEach((sq, si) => {
-                            content += `<p>${String.fromCharCode(97+si)}) ${sq.text}</p>`;
-                        });
+                        q.subQuestions.forEach((sq, si) => { content += `<p>${String.fromCharCode(97+si)}) ${sq.text}</p>`; });
                         content += `</div>`;
                     }
                 });
@@ -299,6 +309,179 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
+                {/* MODAL CHI TIẾT HỌC SINH (STUDENT DETAIL) */}
+                {selectedStudent && (
+                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><UserCog size={32}/></div>
+                                    <div>
+                                        <h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">MAHS: {selectedStudent.studentCode}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setSelectedStudent(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-8 custom-scrollbar">
+                                {/* Tóm tắt thống kê học sinh */}
+                                {(() => {
+                                    const sResults = results.filter(r => r.studentCode === selectedStudent.studentCode);
+                                    const totalQuizzes = sResults.length;
+                                    const avgScore = totalQuizzes > 0 ? (sResults.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
+                                    const totalTime = sResults.reduce((acc, r) => acc + r.durationSeconds, 0);
+
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0"><BookOpen size={24}/></div>
+                                                <div><p className="text-slate-400 text-[9px] font-black uppercase">Bài hoàn thành</p><h4 className="text-xl font-black">{totalQuizzes} bài</h4></div>
+                                            </div>
+                                            <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0"><Trophy size={24}/></div>
+                                                <div><p className="text-slate-400 text-[9px] font-black uppercase">Điểm trung bình</p><h4 className="text-xl font-black text-emerald-600">{avgScore.toFixed(2)}</h4></div>
+                                            </div>
+                                            <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center shrink-0"><Clock size={24}/></div>
+                                                <div><p className="text-slate-400 text-[9px] font-black uppercase">Tổng TG luyện</p><h4 className="text-xl font-black text-orange-600">{formatTime(totalTime)}</h4></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                                    <div className="p-6 bg-slate-50 border-b flex items-center gap-3"><Clock size={18} className="text-slate-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Lịch sử làm bài chi tiết</span></div>
+                                    <table className="w-full text-left">
+                                        <thead><tr className="bg-white border-b text-[8px] font-black uppercase text-slate-300 tracking-[0.2em]"><th className="p-6">Đề thi</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th><th className="p-6 text-center">Hành động</th></tr></thead>
+                                        <tbody className="divide-y">
+                                          {results.filter(r => r.studentCode === selectedStudent.studentCode).sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt))?1:-1).map(r => (
+                                              <tr key={r.id} className="hover:bg-slate-50">
+                                                  <td className="p-6 font-bold text-sm text-slate-700 uppercase">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
+                                                  <td className="p-6 text-center font-black text-blue-600 text-sm">{r.score.toFixed(2)}</td>
+                                                  <td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'HH:mm dd/MM/yy')}</td>
+                                                  <td className="p-6 text-center">
+                                                      <button 
+                                                        onClick={() => setViewingResult(r)}
+                                                        className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                                        title="Xem chi tiết bài làm"
+                                                      >
+                                                        <Eye size={16}/>
+                                                      </button>
+                                                  </td>
+                                              </tr>
+                                          ))}
+                                          {results.filter(r => r.studentCode === selectedStudent.studentCode).length === 0 && (
+                                              <tr><td colSpan={4} className="p-10 text-center text-xs text-slate-300 italic">Chưa có dữ liệu thi cử</td></tr>
+                                          )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL XEM CHI TIẾT BÀI LÀM (RESULT REVIEW) */}
+                {viewingResult && (
+                    <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="p-4 bg-emerald-600 rounded-[1.5rem]"><ListChecks size={28}/></div>
+                                    <div>
+                                        <h3 className="text-lg font-black uppercase tracking-tight leading-tight">Review: {quizzes.find(q=>q.id===viewingResult.quizId)?.title || 'Đề đã xóa'}</h3>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">HỌC SINH: {viewingResult.studentName} ({viewingResult.studentCode}) • ĐIỂM: {viewingResult.score.toFixed(2)}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setViewingResult(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                                <div className="max-w-4xl mx-auto space-y-12 pb-12">
+                                    {(() => {
+                                        const quiz = quizzes.find(q => q.id === viewingResult.quizId);
+                                        if (!quiz) return <div className="text-center p-20 font-black text-slate-300 uppercase">Dữ liệu đề thi không còn tồn tại</div>;
+
+                                        return quiz.questions.map((q, idx) => {
+                                            const uAns = viewingResult.userAnswers?.[q.id];
+                                            const isCorrect = q.type === 'mcq' ? (uAns === q.correctAnswer) : (q.type === 'short' ? checkShortAnswer(uAns, q.correctAnswer) : false);
+
+                                            return (
+                                                <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm relative">
+                                                    <div className={`absolute top-0 right-10 px-6 py-2 rounded-b-2xl font-black text-[10px] uppercase shadow-md ${isCorrect || q.type === 'group-tf' ? 'bg-emerald-600' : 'bg-red-500'} text-white`}>
+                                                        Câu {idx + 1}
+                                                    </div>
+                                                    <div className="text-slate-800 text-lg font-bold mb-6 flex gap-4 leading-relaxed">
+                                                        <LatexText text={q.text}/>
+                                                    </div>
+                                                    {q.imageUrl && <div className="mb-6"><img src={q.imageUrl} className="max-h-[350px] mx-auto rounded-xl border" alt="question"/></div>}
+                                                    
+                                                    {q.type === 'mcq' && q.options && (
+                                                        <div className="space-y-3 pl-10">
+                                                            {q.options.map((opt, oi) => {
+                                                                const isSelected = uAns === opt;
+                                                                const isCorrectOpt = q.correctAnswer === opt;
+                                                                return (
+                                                                    <div key={oi} className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${isCorrectOpt ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold' : isSelected ? 'bg-red-50 border-red-300 text-red-500 line-through opacity-60' : 'bg-white text-slate-300 opacity-40'}`}>
+                                                                        <span className="font-black">{String.fromCharCode(65+oi)}.</span>
+                                                                        <LatexText text={opt}/>
+                                                                        {isCorrectOpt && <Check size={16} className="ml-auto text-emerald-600"/>}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {q.type === 'group-tf' && q.subQuestions && (
+                                                        <div className="space-y-3 pl-10">
+                                                            {q.subQuestions.map((sq, si) => {
+                                                                const sqKey = `${q.id}_${sq.id}`;
+                                                                const sqUserAns = viewingResult.userAnswers?.[sqKey];
+                                                                const sqCorrect = sqUserAns === sq.correctAnswer;
+                                                                return (
+                                                                    <div key={si} className={`p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${sqCorrect ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                                                                        <div className="flex-1 font-bold text-sm"><span className="text-blue-600 mr-2">{String.fromCharCode(97+si)})</span><LatexText text={sq.text}/></div>
+                                                                        <div className="flex gap-2">
+                                                                            {['True', 'False'].map(v => (
+                                                                                <div key={v} className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase border ${sq.correctAnswer === v ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : (sqUserAns === v ? 'bg-red-500 text-white border-red-500' : 'bg-white text-slate-300 border-slate-100 opacity-40')}`}>
+                                                                                    {v === 'True' ? 'ĐÚNG' : 'SAI'}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {q.type === 'short' && (
+                                                        <div className="pl-10 space-y-4">
+                                                            <div className={`p-4 rounded-2xl border font-black text-sm ${isCorrect ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-500 text-red-700'}`}>
+                                                                <span className="text-slate-400 mr-2 uppercase text-[10px]">HS Trả lời:</span> {uAns || '(Trống)'}
+                                                            </div>
+                                                            <div className="p-4 rounded-2xl border border-blue-500 bg-blue-50 font-black text-sm text-blue-700">
+                                                                <span className="text-slate-400 mr-2 uppercase text-[10px]">Đáp án chuẩn:</span> {q.correctAnswer}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {q.solution && (
+                                                        <div className="mt-8 pt-6 border-t border-slate-100">
+                                                            <div className="bg-yellow-50/50 p-6 rounded-2xl border border-yellow-100">
+                                                                <h4 className="text-[10px] font-black text-yellow-700 uppercase flex items-center gap-2 mb-3"><Lightbulb size={16}/> Hướng dẫn giải chi tiết</h4>
+                                                                <div className="text-sm text-slate-600 italic"><LatexText text={q.solution}/></div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* MODAL CHI TIẾT BẢNG ĐIỂM (HISTORY MODAL) */}
                 {historyModal && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
@@ -354,41 +537,6 @@ const AdminDashboard = () => {
                             </div>
                             <div className="p-8 bg-white border-t flex justify-center shrink-0">
                                 <button onClick={() => setHistoryModal(null)} className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-black transition-all shadow-xl">ĐÓNG CHI TIẾT</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* MODAL CHI TIẾT HỌC SINH (STUDENT DETAIL) */}
-                {selectedStudent && (
-                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-                        <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
-                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                                <div className="flex items-center gap-5">
-                                    <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><UserCog size={32}/></div>
-                                    <div><h3 className="text-xl font-black uppercase tracking-tight">{selectedStudent.fullName}</h3><p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">MAHS: {selectedStudent.studentCode}</p></div>
-                                </div>
-                                <button onClick={() => setSelectedStudent(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-8">
-                                <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-                                    <div className="p-6 bg-slate-50 border-b flex items-center gap-3"><Clock size={18} className="text-slate-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Lịch sử thi cử</span></div>
-                                    <table className="w-full text-left">
-                                        <thead><tr className="bg-white border-b text-[8px] font-black uppercase text-slate-300 tracking-[0.2em]"><th className="p-6">Đề thi</th><th className="p-6 text-center">Điểm số</th><th className="p-6 text-center">Ngày nộp</th></tr></thead>
-                                        <tbody className="divide-y">
-                                          {results.filter(r => r.studentCode === selectedStudent.studentCode).sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt))?1:-1).map(r => (
-                                              <tr key={r.id} className="hover:bg-slate-50">
-                                                  <td className="p-6 font-bold text-sm text-slate-700 uppercase">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
-                                                  <td className="p-6 text-center font-black text-blue-600 text-sm">{r.score.toFixed(2)}</td>
-                                                  <td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'HH:mm dd/MM/yy')}</td>
-                                              </tr>
-                                          ))}
-                                          {results.filter(r => r.studentCode === selectedStudent.studentCode).length === 0 && (
-                                              <tr><td colSpan={3} className="p-10 text-center text-xs text-slate-300 italic">Chưa có dữ liệu thi cử</td></tr>
-                                          )}
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
                         </div>
                     </div>
