@@ -7,7 +7,7 @@ import {
 } from '../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download } from 'lucide-react';
+import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download, Medal, CheckCircle2 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 
 // Import sub-components
@@ -44,7 +44,7 @@ const AdminDashboard = () => {
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
-    const [historyModal, setHistoryModal] = useState<{ studentName: string, quizTitle: string, history: Result[] } | null>(null);
+    const [historyModal, setHistoryModal] = useState<{ studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
 
     // Filters
     const [qSearch, setQSearch] = useState('');
@@ -180,11 +180,72 @@ const AdminDashboard = () => {
                     {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => {setQuestions([...questions, {...q, id: uuidv4()}]); setActiveMenu('editor'); alert('Đã chép!');}} />}
                     {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSave} onOpenBank={type => { setActiveMenu('bank'); setBTypeFilter(type); }} onPdfExtract={async (e) => { const file = e.target.files?.[0]; if(!file) return; setIsAiLoading(true); const reader = new FileReader(); reader.onload = async () => { const newQs = await parseQuestionsFromPDF((reader.result as string).split(',')[1]); setQuestions([...questions, ...newQs]); setIsAiLoading(false); }; reader.readAsDataURL(file); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                     {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={() => {}} onViewDetail={setSelectedStudent} onDelete={(id, name) => {if(confirm(`Xóa ${name}?`)) deleteUser(id).then(refreshData)}} />}
-                    {activeMenu === 'results' && <ResultsBoard results={results} quizzes={quizzes} chapters={chapters} rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter} rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter} rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter} onClearCache={() => { if(confirm('Dọn dẹp cache?')) { clearLocalCache(); refreshData(); } }} onViewHistory={(s, q, h) => setHistoryModal({studentName: s, quizTitle: q, history: h})} onDeleteResult={async (h) => {if(confirm('Xóa?')) { await Promise.all(h.map(x => deleteResult(x.id))); refreshData(); }}} />}
+                    {activeMenu === 'results' && <ResultsBoard results={results} quizzes={quizzes} chapters={chapters} rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter} rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter} rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter} onClearCache={() => { if(confirm('Dọn dẹp cache?')) { clearLocalCache(); refreshData(); } }} onViewHistory={(sName, sCode, qTitle, history) => setHistoryModal({studentName: sName, studentCode: sCode, quizTitle: qTitle, history: history})} onDeleteResult={async (h) => {if(confirm('Xóa?')) { await Promise.all(h.map(x => deleteResult(x.id))); refreshData(); }}} />}
                     {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={async (p, p1, p2, p3) => { setIsAiLoading(true); try { const qs = await generateQuizFromPrompt({grade, topic: p, part1Count: p1, part2Count: p2, part3Count: p3}); setQuestions(qs); setTitle(`Đề AI: ${p}`); setActiveMenu('editor'); } catch(e) { alert('Lỗi AI!'); } finally { setIsAiLoading(false); } }} />}
                     {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={async ch => { await saveChapter(ch); refreshData(); }} onDelete={async id => { if(confirm('Xóa?')) { await deleteChapter(id); refreshData(); } }} />}
                 </div>
 
+                {/* MODAL CHI TIẾT BẢNG ĐIỂM (HISTORY MODAL) */}
+                {historyModal && (
+                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><History size={32}/></div>
+                                    <div>
+                                        <h3 className="text-xl font-black uppercase tracking-tight">{historyModal.studentName}</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">MAHS: {historyModal.studentCode} • Đề: {historyModal.quizTitle}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setHistoryModal(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-8">
+                                <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b text-[9px] font-black uppercase text-slate-400 tracking-[0.2em]">
+                                                <th className="p-6">STT</th>
+                                                <th className="p-6">Thời gian nộp</th>
+                                                <th className="p-6 text-center">Điểm số</th>
+                                                <th className="p-6 text-center">Thời gian làm</th>
+                                                <th className="p-6 text-center">Tích lũy</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {historyModal.history.sort((a,b) => isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((h, idx) => (
+                                                <tr key={h.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-6 text-slate-400 font-black">#{(historyModal.history.length - idx).toString().padStart(2, '0')}</td>
+                                                    <td className="p-6">
+                                                        <div className="flex items-center gap-2 text-slate-600 font-bold text-sm">
+                                                            <Clock size={14} className="text-slate-300"/>
+                                                            {format(parseISO(h.submittedAt), 'HH:mm dd/MM/yyyy')}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <span className={`text-lg font-black ${h.score >= 8 ? 'text-emerald-600' : 'text-blue-600'}`}>{h.score.toFixed(2)}</span>
+                                                    </td>
+                                                    <td className="p-6 text-center font-bold text-slate-500 text-xs">
+                                                        {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <div className="flex items-center justify-center gap-1 text-yellow-600 font-black text-[10px]">
+                                                            <Medal size={14}/> +{(h.pointsAwarded || 0).toFixed(4)}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="p-8 bg-white border-t flex justify-center shrink-0">
+                                <button onClick={() => setHistoryModal(null)} className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-black transition-all shadow-xl">ĐÓNG CHI TIẾT</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL CHI TIẾT HỌC SINH (STUDENT DETAIL) */}
                 {selectedStudent && (
                     <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
                         <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
