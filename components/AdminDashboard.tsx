@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, Question, Grade, QuestionType, Result, User, Chapter, QuizType } from '../types';
 import { 
     saveQuiz, updateQuiz, getQuizzes, deleteQuiz, getResults, 
-    getUsers, getChapters, saveChapter, deleteChapter, uploadQuizImage, deleteResult, deleteUser, saveUser, changePassword
+    getUsers, getChapters, saveChapter, deleteChapter, uploadQuizImage, deleteResult, deleteUser, saveUser, changePassword, clearLocalCache
 } from '../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, FolderTree, Clock, 
     Search, X, CheckCircle2, 
     HelpCircle, AlignLeft, Eye, Target, FileText, ImageIcon, Loader2, Database,
-    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check, List, ListChecks
+    Sparkles, FileUp, CheckCircle, AlertCircle, Filter, ChevronRight, Info, Calendar, History, TrendingUp, Trophy, UserPlus, Lightbulb, Medal, Target as TargetIcon, CopyCheck, RefreshCw, UserCog, FileSpreadsheet, Download, XCircle, RotateCcw, Check, List, ListChecks, Eraser
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import LatexText from './LatexText';
@@ -239,6 +239,14 @@ const AdminDashboard = () => {
         setQuizzes(qs); setResults(rs); setUsers(us); setChapters(chs);
     };
 
+    const handleClearLocal = async () => {
+        if (confirm("Hành động này sẽ dọn dẹp bộ nhớ đệm (Local Cache) trên máy tính của bạn.\nDữ liệu trên Cloud (Supabase) sẽ không bị ảnh hưởng.\nBạn có chắc muốn thực hiện để loại bỏ các 'dữ liệu ma' không?")) {
+            clearLocalCache();
+            alert("Đã dọn dẹp bộ nhớ đệm! Trang sẽ tải lại dữ liệu mới nhất từ Cloud.");
+            await refreshData();
+        }
+    };
+
     const handleAddStudentManual = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newStudentName || !newStudentCode) return alert("Nhập đủ thông tin!");
@@ -320,7 +328,6 @@ const AdminDashboard = () => {
                 partQs.forEach((q, idx) => {
                     content += `<div class="question">Câu ${idx + 1}. ${q.text}</div>`;
                     
-                    // CHÈN ẢNH VỚI THẺ IMG VÀ STYLE CƠ BẢN
                     if (q.imageUrl) {
                         content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
                     }
@@ -367,7 +374,6 @@ const AdminDashboard = () => {
 
         const groups: Record<string, { latest: Result, history: Result[] }> = {};
         filtered.forEach(r => {
-            // Sử dụng studentCode làm key chính để group nếu có, nếu không thì dùng studentId
             const key = r.studentCode ? `${r.studentCode}_${r.quizId}` : `${r.studentId}_${r.quizId}`;
             if (!groups[key]) {
                 groups[key] = { latest: r, history: [r] };
@@ -605,7 +611,16 @@ const AdminDashboard = () => {
                     {activeMenu === 'results' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
-                                <h3 className="text-xl font-black uppercase flex items-center gap-3"><BarChart3 className="text-blue-600"/> Bảng điểm tổng quát</h3>
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xl font-black uppercase flex items-center gap-3"><BarChart3 className="text-blue-600"/> Bảng điểm tổng quát</h3>
+                                    <button 
+                                        onClick={handleClearLocal}
+                                        className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                        title="Dọn dẹp các kết quả cũ không còn tồn tại trên Cloud"
+                                    >
+                                        <Eraser size={14}/> Dọn dẹp bộ nhớ đệm
+                                    </button>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}><option value="all">Tất cả Khối</option><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select>
                                     <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}><option value="all">Tất cả Chương</option>{chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
@@ -636,6 +651,7 @@ const AdminDashboard = () => {
                                                 </tr>
                                             );
                                         })}
+                                        {groupedResults.length === 0 && <tr><td colSpan={7} className="p-20 text-center text-slate-300 font-bold uppercase tracking-widest italic">Chưa có kết quả làm bài nào được tìm thấy</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
