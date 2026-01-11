@@ -34,11 +34,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     });
     setQuizzes(relevantQuizzes);
 
-    const statsData = await getStudentStats(user.id);
+    // TRUYỀN THÊM studentCode ĐỂ KHÔNG BỊ MẤT ĐIỂM KHI RE-IMPORT
+    const statsData = await getStudentStats(user.id, user.studentCode);
     setStats(statsData);
 
     const allResults = await getResults();
-    const userResults = allResults.filter(r => r.studentId === user.id);
+    // Lọc lịch sử dựa trên cả ID và Mã học sinh để tránh mất dữ liệu khi re-import
+    const userResults = allResults.filter(r => 
+        r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
+    );
     setResults(userResults);
 
     const allUsers = await getUsers();
@@ -71,8 +75,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   const exportToDoc = (quiz: Quiz) => {
     let content = `<html><head><meta charset="utf-8"><style>
-      img { display: block; margin: 15px auto; max-width: 100%; height: auto; border: 1px solid #eee; }
-      body { font-family: 'Times New Roman', serif; line-height: 1.5; }
+      img { display: block; margin: 15px auto; max-width: 500px; height: auto; border: 1px solid #ddd; }
+      body { font-family: 'Times New Roman', serif; line-height: 1.6; }
       h1, h2, h3 { text-align: center; }
       .question { margin-top: 20px; font-weight: bold; }
       .options { margin-left: 30px; }
@@ -94,7 +98,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                 content += `<div class="question">Câu ${idx + 1}. ${q.text}</div>`;
                 
                 if (q.imageUrl) {
-                    content += `<img src="${q.imageUrl}" />`;
+                    content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
                 }
 
                 if (q.type === 'mcq' && q.options) {
@@ -136,8 +140,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="relative z-10">
-            <h1 className="text-2xl font-black text-slate-800">Chào bạn, {user.fullName} 👋</h1>
-            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Lớp {user.grade} • Hệ thống học tập trực tuyến</p>
+            <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic">Chào mừng, {user.fullName} 👋</h1>
+            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Khối {user.grade} • Mã số: {user.studentCode}</p>
         </div>
         <div className="flex items-center gap-6 relative z-10">
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm">
@@ -173,7 +177,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       {testQuizzes.length > 0 && (
           <section className="animate-fade-in">
               <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><ShieldAlert className="text-red-500" size={18} /> Danh sách bài kiểm tra</h2>
+                  <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><ShieldAlert className="text-red-500" size={18} /> Bài kiểm tra định kỳ</h2>
                   <div className="h-px flex-1 mx-6 bg-red-100 hidden md:block"></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -189,17 +193,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                   </div>
                                   <span className="text-[10px] font-black text-slate-300 uppercase italic">Test • {q.durationMinutes}p</span>
                               </div>
-                              <h3 className="font-black text-slate-800 text-[16px] leading-tight mb-4 min-h-[44px]">{q.title}</h3>
-                              {q.startTime && !alreadyDone && (
-                                  <div className="mb-6 flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase">
-                                      <Calendar size={14}/> {format(parseISO(q.startTime), 'HH:mm - dd/MM/yyyy')}
-                                  </div>
-                              )}
+                              <h3 className="font-black text-slate-800 text-[16px] leading-tight mb-4 min-h-[44px] uppercase">{q.title}</h3>
                               
                               {alreadyDone ? (
                                   <div className="mt-auto space-y-4">
                                       <div className="bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 text-center text-[10px] font-black uppercase">
-                                          Bạn đã nộp bài. Không thể làm lại!
+                                          Bạn đã nộp bài. Không được phép làm lại.
                                       </div>
                                       <button onClick={() => setPreviewQuiz(q)} className="w-full py-4 rounded-2xl border-2 border-slate-100 text-slate-400 font-black uppercase text-[10px] hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
                                           <Eye size={14}/> Xem lại cấu trúc đề
@@ -210,7 +209,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                       onClick={() => isStarted ? setActiveQuiz(q) : alert("Bài kiểm tra chưa đến giờ bắt đầu!")}
                                       className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] transition-all ${isStarted ? 'bg-slate-900 text-white shadow-2xl hover:bg-black active:scale-95' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                                   >
-                                      {isStarted ? 'Vào làm bài kiểm tra' : 'Đang chờ giờ thi...'}
+                                      {isStarted ? 'Vào làm bài thi ngay' : 'Đang chờ đến giờ thi'}
                                   </button>
                               )}
                           </div>
@@ -223,7 +222,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       {/* SECTION: LUYỆN TẬP (PRACTICE) */}
       <section>
         <div className="flex items-center justify-between mb-8">
-            <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><CheckCircle className="text-green-500" size={18} /> Kho đề luyện tập miễn phí</h2>
+            <h2 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2 tracking-tight"><CheckCircle className="text-green-500" size={18} /> Kho đề luyện tập</h2>
             <div className="h-px flex-1 mx-6 bg-slate-100 hidden md:block"></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -237,7 +236,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                       {q.grade === 'all' ? 'Chung' : `Lớp ${q.grade}`}
                     </span>
                   </div>
-                  <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 min-h-[44px]">{q.title}</h3>
+                  <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 min-h-[44px] uppercase">{q.title}</h3>
                   {q.endTime && (
                       <div className="mb-4 text-[9px] font-black text-red-500 flex items-center gap-2 uppercase tracking-widest bg-red-50 px-3 py-1 rounded-full w-fit">
                           <Clock size={12}/> Hạn chót: {format(parseISO(q.endTime), 'HH:mm dd/MM')}
@@ -249,7 +248,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                           <p className="text-sm font-black text-slate-700">{qStats?.count || 0} lần</p>
                       </div>
                       <div>
-                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Cao nhất</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p>
                           <p className="text-sm font-black text-blue-600">{qStats ? qStats.max.toFixed(2) : '-'}</p>
                       </div>
                   </div>
@@ -297,7 +296,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                     {typeQs.map((q, idx) => (
                                         <div key={q.id} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
                                             <div className="text-slate-800 text-[15px] font-bold mb-6 leading-relaxed flex items-start gap-4">
-                                                <span className="text-blue-600 shrink-0 font-black italic underline">Câu {idx + 1}.</span>
+                                                <span className="text-blue-600 shrink-0 font-black italic underline uppercase">Câu {idx + 1}.</span>
                                                 <LatexText text={q.text}/>
                                             </div>
                                             {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-[350px] rounded-xl border border-slate-100 shadow-inner" alt="HÌNH ẢNH CÂU HỎI" /></div>}
@@ -334,7 +333,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         onClick={() => { setActiveQuiz(previewQuiz); setPreviewQuiz(null); }} 
                         className={`px-16 py-5 rounded-2xl font-black uppercase text-xs shadow-2xl transition-all ${hasSubmitted(previewQuiz.id) && previewQuiz.type === 'test' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:scale-105 active:scale-95'}`}
                     >
-                        {hasSubmitted(previewQuiz.id) && previewQuiz.type === 'test' ? 'Đã hoàn thành bài kiểm tra' : 'Bắt đầu làm bài ngay'}
+                        {hasSubmitted(previewQuiz.id) && previewQuiz.type === 'test' ? 'Đã hoàn thành bài kiểm tra' : 'Bắt đầu vào làm bài ngay'}
                     </button>
                 </div>
               </div>
