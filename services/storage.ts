@@ -163,26 +163,18 @@ export const findUserByStudentCode = async (code: string): Promise<User | undefi
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  // 1. Lấy thông tin học sinh trước khi xóa để biết studentCode
   const localUsers = getLocalUsers();
   const userToDelete = localUsers.find(u => u.id === id);
-  
-  // 2. Cập nhật local storage (User)
   const newLocalUsers = localUsers.filter(u => u.id !== id);
   saveLocalUsers(newLocalUsers);
 
   if (!supabase) return;
 
   try {
-    // 3. Xóa tất cả kết quả liên quan trong bảng results (theo student_id)
     await supabase.from('results').delete().eq('student_id', id);
-
-    // 4. Xóa thêm theo studentCode trong JSON (phòng trường hợp student_id bị lệch)
     if (userToDelete?.studentCode) {
       await supabase.from('results').delete().filter('data->>studentCode', 'eq', userToDelete.studentCode.toUpperCase());
     }
-
-    // 5. Cuối cùng mới xóa User
     await supabase.from('users').delete().eq('id', id);
   } catch (error) {
     console.error("Lỗi khi xóa học sinh và các kết quả liên quan:", error);
@@ -261,15 +253,23 @@ export const deleteResult = async (id: string): Promise<void> => {
   await supabase.from('results').delete().eq('id', id);
 };
 
-export const getStudentStats = async (studentId: string) => {
-  if (!supabase) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
-  const { data } = await supabase.from('results').select('data').eq('student_id', studentId);
-  if (!data) return { totalQuizzes: 0, avgScore: 0, totalSeconds: 0 };
-  const resultsList = data.map((row: any) => row.data as Result);
-  const totalQuizzes = resultsList.length;
-  const totalScore = resultsList.reduce((acc: number, curr: Result) => acc + (curr.score || 0), 0);
-  const totalSeconds = resultsList.reduce((acc: number, curr: Result) => acc + (curr.durationSeconds || 0), 0);
-  return { totalQuizzes, avgScore: totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0, totalSeconds };
+export const getStudentStats = async (studentId: string, studentCode?: string) => {
+  const allResults = await getResults();
+  
+  // Lọc thông minh: Tìm theo ID HOẶC Mã học sinh
+  const userResults = allResults.filter(r => 
+    r.studentId === studentId || (studentCode && r.studentCode === studentCode.toUpperCase())
+  );
+
+  const totalQuizzes = userResults.length;
+  const totalScore = userResults.reduce((acc, curr) => acc + (curr.score || 0), 0);
+  const totalSeconds = userResults.reduce((acc, curr) => acc + (curr.durationSeconds || 0), 0);
+  
+  return { 
+    totalQuizzes, 
+    avgScore: totalQuizzes > 0 ? (totalScore / totalQuizzes) : 0, 
+    totalSeconds 
+  };
 };
 
 // --- Chapters ---
