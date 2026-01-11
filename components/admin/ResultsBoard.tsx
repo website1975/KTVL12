@@ -1,12 +1,13 @@
 
 import React from 'react';
-import { Result, Quiz, Grade, Chapter } from '../../types';
+import { Result, Quiz, Grade, Chapter, User as UserType } from '../../types';
 import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 
 interface ResultsBoardProps {
     results: Result[];
     quizzes: Quiz[];
+    users: UserType[]; // Thêm danh sách users để đối soát
     chapters: Chapter[];
     rGradeFilter: Grade | 'all';
     setRGradeFilter: (val: Grade | 'all') => void;
@@ -20,11 +21,18 @@ interface ResultsBoardProps {
 }
 
 const ResultsBoard: React.FC<ResultsBoardProps> = ({ 
-    results, quizzes, chapters, rGradeFilter, setRGradeFilter, 
+    results, quizzes, users, chapters, rGradeFilter, setRGradeFilter, 
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
     onClearCache, onViewHistory, onDeleteResult
 }) => {
-    // Logic gộp kết quả: Mỗi học sinh + Mỗi đề = 1 dòng (hiển thị điểm cao nhất và số lần làm)
+    // Hàm lấy MAHS chuẩn nhất: Ưu tiên mã trong Result, nếu N/A thì tìm trong danh sách Users
+    const getEffectiveStudentCode = (res: Result) => {
+        if (res.studentCode && res.studentCode !== 'N/A') return res.studentCode;
+        const user = users.find(u => u.id === res.studentId);
+        return user?.studentCode || 'N/A';
+    };
+
+    // Logic gộp kết quả
     const groupedResults = React.useMemo(() => {
         const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
@@ -34,11 +42,13 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
             return matchGrade && matchChapter && matchQuiz;
         });
 
-        const groups: Record<string, { latest: Result, history: Result[] }> = {};
+        const groups: Record<string, { latest: Result, history: Result[], effectiveCode: string }> = {};
         filtered.forEach(r => {
-            const key = r.studentCode ? `${r.studentCode}_${r.quizId}` : `${r.studentId}_${r.quizId}`;
+            const code = getEffectiveStudentCode(r);
+            const key = `${code}_${r.quizId}`;
+            
             if (!groups[key]) {
-                groups[key] = { latest: r, history: [r] };
+                groups[key] = { latest: r, history: [r], effectiveCode: code };
             } else {
                 groups[key].history.push(r);
                 if (isAfter(parseISO(r.submittedAt), parseISO(groups[key].latest.submittedAt))) {
@@ -47,7 +57,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
             }
         });
         return Object.values(groups).sort((a, b) => isAfter(parseISO(b.latest.submittedAt), parseISO(a.latest.submittedAt)) ? 1 : -1);
-    }, [results, quizzes, rGradeFilter, rChapterFilter, rQuizFilter]);
+    }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
 
     const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter);
     const relevantQuizzes = quizzes.filter(q => 
@@ -122,7 +132,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                                             <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-all"><User size={18}/></div>
                                             <div>
                                                 <p className="font-black text-slate-800 uppercase text-sm leading-tight">{group.latest.studentName}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">MAHS: {group.latest.studentCode || 'N/A'}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">MAHS: {group.effectiveCode}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -143,7 +153,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                                     <td className="p-6 text-center">
                                         <div className="flex items-center justify-center gap-2">
                                             <button 
-                                                onClick={() => onViewHistory(group.latest.studentName, group.latest.studentCode || 'N/A', quiz?.title || 'Đề thi', group.history)} 
+                                                onClick={() => onViewHistory(group.latest.studentName, group.effectiveCode, quiz?.title || 'Đề thi', group.history)} 
                                                 className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase shadow-sm"
                                             >
                                                 <Eye size={14}/> Chi tiết
