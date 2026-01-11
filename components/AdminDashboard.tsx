@@ -81,7 +81,10 @@ const AdminDashboard = () => {
     const startEdit = (q: Quiz) => {
         setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type);
         setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions);
-        setCategory(q.category || ''); setActiveMenu('editor');
+        setCategory(q.category || ''); 
+        setStartTime(q.startTime || '');
+        setEndTime(q.endTime || '');
+        setActiveMenu('editor');
     };
 
     const exportToDoc = (quiz: Quiz) => {
@@ -156,7 +159,7 @@ const AdminDashboard = () => {
                     {[
                         { id: 'quizzes', icon: LayoutDashboard, label: 'QUẢN LÝ ĐỀ THI' },
                         { id: 'bank', icon: Database, label: 'NGÂN HÀNG CÂU HỎI' },
-                        { id: 'editor', icon: Plus, label: 'SOẠN / CHỈNH ĐỀ', action: () => { setEditingId(null); setTitle(''); setQuestions([]); } },
+                        { id: 'editor', icon: Plus, label: 'SOẠN / CHỈNH ĐỀ', action: () => { setEditingId(null); setTitle(''); setQuestions([]); setStartTime(''); setEndTime(''); setCategory(''); } },
                         { id: 'ai', icon: Sparkles, label: 'SOẠN ĐỀ BẰNG AI' },
                         { id: 'results', icon: BarChart3, label: 'BẢNG ĐIỂM TỔNG' },
                         { id: 'students', icon: Users, label: 'QUẢN LÝ HỌC SINH' },
@@ -175,7 +178,7 @@ const AdminDashboard = () => {
                 <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
                     {activeMenu === 'quizzes' && <QuizList quizzes={quizzes} results={results} chapters={chapters} onEdit={startEdit} onDelete={id => {if(confirm('Xóa đề?')) deleteQuiz(id).then(refreshData)}} onPreview={setPreviewQuiz} qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} />}
                     {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => {setQuestions([...questions, {...q, id: uuidv4()}]); setActiveMenu('editor'); alert('Đã chép!');}} />}
-                    {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSave} onOpenBank={type => { setActiveMenu('bank'); setBTypeFilter(type); }} onPdfExtract={async (e) => { const file = e.target.files?.[0]; if(!file) return; setIsAiLoading(true); const reader = new FileReader(); reader.onload = async () => { const newQs = await parseQuestionsFromPDF((reader.result as string).split(',')[1]); setQuestions([...questions, ...newQs]); setIsAiLoading(false); }; reader.readAsDataURL(file); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
+                    {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSave} onOpenBank={type => { setActiveMenu('bank'); setBTypeFilter(type); }} onPdfExtract={async (e) => { const file = e.target.files?.[0]; if(!file) return; setIsAiLoading(true); const reader = new FileReader(); reader.onload = async () => { const newQs = await parseQuestionsFromPDF((reader.result as string).split(',')[1]); setQuestions([...questions, ...newQs]); setIsAiLoading(false); }; reader.readAsDataURL(file); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                     {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={() => {}} onViewDetail={setSelectedStudent} onDelete={(id, name) => {if(confirm(`Xóa ${name}?`)) deleteUser(id).then(refreshData)}} />}
                     {activeMenu === 'results' && <ResultsBoard results={results} quizzes={quizzes} chapters={chapters} rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter} rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter} rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter} onClearCache={() => { if(confirm('Dọn dẹp cache?')) { clearLocalCache(); refreshData(); } }} onViewHistory={(s, q, h) => setHistoryModal({studentName: s, quizTitle: q, history: h})} onDeleteResult={async (h) => {if(confirm('Xóa?')) { await Promise.all(h.map(x => deleteResult(x.id))); refreshData(); }}} />}
                     {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={async (p, p1, p2, p3) => { setIsAiLoading(true); try { const qs = await generateQuizFromPrompt({grade, topic: p, part1Count: p1, part2Count: p2, part3Count: p3}); setQuestions(qs); setTitle(`Đề AI: ${p}`); setActiveMenu('editor'); } catch(e) { alert('Lỗi AI!'); } finally { setIsAiLoading(false); } }} />}
