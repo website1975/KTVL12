@@ -19,7 +19,7 @@ import LatexText from './LatexText';
 import { 
     LayoutDashboard, Users as UsersIcon, ClipboardList, Sparkles, FolderTree, 
     Database, PlusCircle, X, UserPlus, Save, UserCog, BookOpen, Trophy, 
-    Clock, Eye, ListChecks, Check, Lightbulb, History, Download, FileText
+    Clock, Eye, ListChecks, Check, Lightbulb, History, Download, FileText, Trash2, Medal
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { format, parseISO, isAfter } from 'date-fns';
@@ -138,6 +138,55 @@ const AdminDashboard: React.FC = () => {
         return u.trim().toLowerCase() === c.trim().toLowerCase();
     };
 
+    const exportToDoc = (quiz: Quiz) => {
+        let content = `<html><head><meta charset="utf-8"><style>
+          img { display: block; margin: 15px auto; max-width: 500px; height: auto; border: 1px solid #ddd; }
+          body { font-family: 'Times New Roman', serif; line-height: 1.6; padding: 40px; }
+          h1, h2, h3 { text-align: center; text-transform: uppercase; }
+          .question { margin-top: 20px; font-weight: bold; }
+          .options { margin-left: 30px; display: grid; grid-template-columns: 1fr 1fr; }
+          .option-item { margin-bottom: 5px; }
+          .footer { margin-top: 50px; text-align: center; font-style: italic; }
+        </style></head><body>`;
+        content += `<h3>SỞ GIÁO DỤC VÀ ĐÀO TẠO</h3>`;
+        content += `<h1>${quiz.title}</h1>`;
+        content += `<h3>Môn: Toán - Khối: ${quiz.grade} | Thời gian: ${quiz.durationMinutes} phút</h3><hr/>`;
+        
+        const parts = [
+            { title: 'PHẦN I. Câu trắc nghiệm nhiều lựa chọn', type: 'mcq' },
+            { title: 'PHẦN II. Câu trắc nghiệm Đúng/Sai', type: 'group-tf' },
+            { title: 'PHẦN III. Câu trắc nghiệm Trả lời ngắn', type: 'short' }
+        ];
+
+        parts.forEach(part => {
+            const partQs = quiz.questions.filter(q => q.type === part.type);
+            if (partQs.length > 0) {
+                content += `<h2 style="text-align: left;">${part.title}</h2>`;
+                partQs.forEach((q, idx) => {
+                    content += `<div class="question">Câu ${idx + 1}. ${q.text}</div>`;
+                    if (q.imageUrl) content += `<p style="text-align:center"><img src="${q.imageUrl}" width="400" /></p>`;
+                    if (q.type === 'mcq' && q.options) {
+                        content += `<div class="options">`;
+                        q.options.forEach((opt, oi) => { content += `<div class="option-item">${String.fromCharCode(65+oi)}. ${opt}</div>`; });
+                        content += `</div>`;
+                    } else if (q.type === 'group-tf' && q.subQuestions) {
+                        content += `<div style="margin-left: 20px;">`;
+                        q.subQuestions.forEach((sq, si) => { content += `<p>${String.fromCharCode(97+si)}) ${sq.text}</p>`; });
+                        content += `</div>`;
+                    }
+                });
+            }
+        });
+
+        content += `<div class="footer">--- HẾT ---</div></body></html>`;
+        const blob = new Blob([content], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${quiz.title}.doc`;
+        link.click();
+    };
+
     const allBankQuestions = useMemo(() => {
         return quizzes.flatMap(qz => qz.questions.map(q => ({ ...q, quizTitle: qz.title, quizGrade: qz.grade })))
             .filter(q => (bGradeFilter === 'all' || q.quizGrade === bGradeFilter) && (bTypeFilter === 'all' || q.type === bTypeFilter) && q.text.toLowerCase().includes(bSearch.toLowerCase()));
@@ -145,7 +194,7 @@ const AdminDashboard: React.FC = () => {
 
     return (
         <div className="flex min-h-[calc(100vh-64px)] bg-[#f8fafc]">
-            <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 sticky top-16 h-[calc(100vh-64px)]">
+            <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 sticky top-16 h-[calc(100vh-64px)] shadow-2xl z-20">
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                     {[
                         { id: 'quizzes', icon: ClipboardList, label: 'QUẢN LÝ ĐỀ THI' },
@@ -167,10 +216,10 @@ const AdminDashboard: React.FC = () => {
                 {activeMenu === 'quizzes' && <QuizList quizzes={quizzes} results={results} chapters={chapters} onEdit={startEditQuiz} onDelete={id => confirm('Xóa đề?') && deleteQuiz(id).then(refreshData)} onPreview={setPreviewQuiz} qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} />}
                 {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={() => setStudentModal({isOpen: true, student: null})} onImportCsv={handleImportCsv} onViewDetail={setSelectedStudent} onEdit={u => { setSForm({fullName: u.fullName, studentCode: u.studentCode||'', grade: u.grade||'12', password: u.password}); setStudentModal({isOpen: true, student: u}); }} onDelete={(id, n) => confirm(`Xóa ${n}?`) && deleteUser(id).then(refreshData)} onResetPassword={u => confirm('Reset về 123?') && changePassword(u.id, '123').then(() => alert('Xong'))} />}
                 {activeMenu === 'results' && <ResultsBoard results={results} quizzes={quizzes} users={users} chapters={chapters} rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter} rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter} rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter} onClearCache={() => confirm('Xóa cache?') && clearLocalCache()} onViewHistory={(n, c, t, h) => setHistoryModal({studentName: n, studentCode: c, quizTitle: t, history: h})} onDeleteResult={h => confirm('Xóa?') && Promise.all(h.map(x => deleteResult(x.id))).then(refreshData)} />}
-                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions([...questions, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
+                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions([...questions, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                 {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={async (p, p1, p2, p3) => { setIsAiLoading(true); try { const qs = await generateQuizFromPrompt({grade, topic: p, part1Count: p1, part2Count: p2, part3Count: p3}); setQuestions(qs); setTitle(`Đề AI: ${p}`); setActiveMenu('editor'); } finally { setIsAiLoading(false); } }} />}
                 {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={c => saveChapter(c).then(refreshData)} onDelete={id => deleteChapter(id).then(refreshData)} />}
-                {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => { setQuestions([...questions, {...q, id: uuidv4()}]); alert('Đã chép!'); }} />}
+                {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => { setQuestions([...questions, {...q, id: uuidv4()}]); setActiveMenu('editor'); alert('Đã thêm câu hỏi vào đề!'); }} />}
 
                 {/* MODAL THÊM / SỬA HỌC SINH */}
                 {studentModal.isOpen && (
@@ -233,7 +282,7 @@ const AdminDashboard: React.FC = () => {
                 {/* MODAL XEM CHI TIẾT BÀI LÀM */}
                 {viewingResult && (
                     <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
-                        <div className="bg-white rounded-[3.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
                             <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
                                 <div className="flex items-center gap-5"><div className="p-4 bg-emerald-600 rounded-[1.5rem]"><ListChecks size={28}/></div><div><h3 className="text-lg font-black uppercase tracking-tight">Review: {quizzes.find(q=>q.id===viewingResult.quizId)?.title || 'Đề đã xóa'}</h3><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">HỌC SINH: {viewingResult.studentName} ({viewingResult.studentCode}) • ĐIỂM: {viewingResult.score.toFixed(2)}</p></div></div>
                                 <button onClick={() => setViewingResult(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
@@ -282,6 +331,124 @@ const AdminDashboard: React.FC = () => {
                                     })()}
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL LỊCH SỬ THI CHI TIẾT (HISTORY) */}
+                {historyModal && (
+                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><History size={32}/></div>
+                                    <div>
+                                        <h3 className="text-xl font-black uppercase tracking-tight">{historyModal.studentName}</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">MAHS: {historyModal.studentCode} • Đề: {historyModal.quizTitle}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setHistoryModal(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-8">
+                                <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b text-[9px] font-black uppercase text-slate-400 tracking-[0.2em]">
+                                                <th className="p-6">STT</th>
+                                                <th className="p-6">Thời gian nộp</th>
+                                                <th className="p-6 text-center">Điểm số</th>
+                                                <th className="p-6 text-center">Thời gian làm</th>
+                                                <th className="p-6 text-center">Hành động</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {historyModal.history.sort((a,b) => isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt)) ? 1 : -1).map((h, idx) => (
+                                                <tr key={h.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-6 text-slate-400 font-black">#{(historyModal.history.length - idx).toString().padStart(2, '0')}</td>
+                                                    <td className="p-6">
+                                                        <div className="flex items-center gap-2 text-slate-600 font-bold text-sm">
+                                                            <Clock size={14} className="text-slate-300"/>
+                                                            {format(parseISO(h.submittedAt), 'HH:mm dd/MM/yyyy')}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <span className={`text-lg font-black ${h.score >= 8 ? 'text-emerald-600' : 'text-blue-600'}`}>{h.score.toFixed(2)}</span>
+                                                    </td>
+                                                    <td className="p-6 text-center font-bold text-slate-500 text-xs">
+                                                        {Math.floor(h.durationSeconds / 60)}p {h.durationSeconds % 60}s
+                                                    </td>
+                                                    <td className="p-6 text-center">
+                                                        <button onClick={() => setViewingResult(h)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Eye size={16}/></button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL XEM TRƯỚC ĐỀ THI (PREVIEW) */}
+                {previewQuiz && (
+                    <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+                        <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-5">
+                                    <div className="p-3 bg-blue-600 rounded-2xl"><FileText size={28}/></div>
+                                    <div>
+                                        <h3 className="text-lg font-black uppercase tracking-tight leading-tight">{previewQuiz.title}</h3>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">LỚP {previewQuiz.grade} • {previewQuiz.questions.length} CÂU HỎI</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl">
+                                        <Download size={16}/> XUẤT WORD
+                                    </button>
+                                    <button onClick={() => setPreviewQuiz(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                                <div className="max-w-3xl mx-auto space-y-12 pb-12">
+                                    {['mcq', 'group-tf', 'short'].map((type) => {
+                                        const typeQs = previewQuiz.questions.filter(q => q.type === type);
+                                        if (typeQs.length === 0) return null;
+                                        return (
+                                            <div key={type} className="space-y-8">
+                                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">
+                                                    {type === 'mcq' ? 'PHẦN I. TRẮC NGHIỆM' : type === 'group-tf' ? 'PHẦN II. ĐÚNG/SAI' : 'PHẦN III. TRẢ LỜI NGẮN'}
+                                                </h4>
+                                                {typeQs.map((q, idx) => (
+                                                    <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm">
+                                                        <div className="text-slate-800 text-lg font-bold mb-6 flex gap-4 leading-relaxed">
+                                                            <span className="text-blue-600 shrink-0 font-black italic underline uppercase">Câu {idx + 1}.</span>
+                                                            <LatexText text={q.text}/>
+                                                        </div>
+                                                        {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-[350px] mx-auto rounded-xl border" alt="question"/></div>}
+                                                        {q.type === 'mcq' && q.options && (
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-10">
+                                                                {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                                            </div>
+                                                        )}
+                                                        {q.type === 'group-tf' && q.subQuestions && (
+                                                            <div className="space-y-4 pl-12">
+                                                                {q.subQuestions.map((sq, si) => (
+                                                                    <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
+                                                                        <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
+                                                                        <LatexText text={sq.text}/>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="p-8 bg-white border-t flex justify-center shrink-0"><button onClick={() => { startEditQuiz(previewQuiz!); setPreviewQuiz(null); }} className="px-12 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black uppercase text-xs shadow-2xl hover:scale-105 transition-all">SỬA ĐỀ NÀY</button></div>
                         </div>
                     </div>
                 )}
