@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -18,6 +19,10 @@ interface QuizEditorProps {
     setDuration: (val: number) => void;
     category: string;
     setCategory: (val: string) => void;
+    startTime: string;
+    setStartTime: (val: string) => void;
+    endTime: string;
+    setEndTime: (val: string) => void;
     questions: Question[];
     setQuestions: (val: Question[]) => void;
     chapters: Chapter[];
@@ -153,6 +158,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
 const QuizEditor: React.FC<QuizEditorProps> = (props) => {
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
+    const relevantChapters = props.chapters.filter(c => c.grade === props.grade);
 
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
@@ -167,12 +173,59 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         <input type="file" accept="application/pdf" className="hidden" onChange={props.onPdfExtract}/>
                     </label>
                 </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-1">Khối lớp</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.grade} onChange={e => props.setGrade(e.target.value as Grade)}><option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option></select></div>
-                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-1">Hình thức</label><select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => props.setQuizType(e.target.value as any)}><option value="practice">Luyện tập</option><option value="test">Kiểm tra</option></select></div>
-                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-1">Trạng thái</label><button onClick={() => props.setIsPublished(!props.isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all ${props.isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>{props.isPublished ? 'CÔNG KHAI' : 'NHÁP'}</button></div>
-                    <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-1">Thời gian (p)</label><input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value))} /></div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Khối lớp</label>
+                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.grade} onChange={e => { props.setGrade(e.target.value as Grade); props.setCategory(''); }}>
+                            <option value="12">Khối 12</option>
+                            <option value="11">Khối 11</option>
+                            <option value="10">Khối 10</option>
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Chương học</label>
+                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.category} onChange={e => props.setCategory(e.target.value)}>
+                            <option value="">Chọn chương...</option>
+                            {relevantChapters.map(c => (
+                                <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Hình thức</label>
+                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => props.setQuizType(e.target.value as any)}>
+                            <option value="practice">Luyện tập</option>
+                            <option value="test">Kiểm tra</option>
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Thời gian (p)</label>
+                        <input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value))} />
+                    </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {props.quizType === 'test' && (
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời gian mở đề (Kiểm tra)</label>
+                            <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.startTime} onChange={e => props.setStartTime(e.target.value)} />
+                        </div>
+                    )}
+                    {props.quizType === 'practice' && (
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-red-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Hạn chót đóng đề (Luyện tập)</label>
+                            <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-red-50/30 border-red-100" value={props.endTime} onChange={e => props.setEndTime(e.target.value)} />
+                        </div>
+                    )}
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Trạng thái phát hành</label>
+                        <button onClick={() => props.setIsPublished(!props.isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all ${props.isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                            {props.isPublished ? 'CÔNG KHAI CHO HỌC SINH' : 'LƯU BẢN NHÁP (ẨN)'}
+                        </button>
+                    </div>
+                </div>
+
                 <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> LƯU ĐỀ THI</button>
             </div>
 
