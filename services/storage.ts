@@ -32,7 +32,7 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- Helper for Offline Mode ---
+// --- Helpers for Offline/Backup Mode ---
 const getLocalUsers = (): User[] => {
   const stored = localStorage.getItem('eduquiz_users_offline');
   return stored ? JSON.parse(stored) : [];
@@ -40,6 +40,26 @@ const getLocalUsers = (): User[] => {
 
 const saveLocalUsers = (users: User[]) => {
   localStorage.setItem('eduquiz_users_offline', JSON.stringify(users));
+};
+
+const getLocalResults = (): Result[] => {
+  const stored = localStorage.getItem('eduquiz_results_backup');
+  return stored ? JSON.parse(stored) : [];
+};
+
+const saveLocalResult = (result: Result) => {
+  const local = getLocalResults();
+  if (!local.find(r => r.id === result.id)) {
+    local.push(result);
+    localStorage.setItem('eduquiz_results_backup', JSON.stringify(local));
+  }
+};
+
+// Hàm dọn dẹp cache cục bộ (Dùng khi muốn xóa dữ liệu rác không còn trên Database)
+export const clearLocalCache = () => {
+    localStorage.removeItem('eduquiz_results_backup');
+    localStorage.removeItem('eduquiz_users_offline');
+    console.log("Local cache cleared.");
 };
 
 // --- Storage (Images) ---
@@ -67,7 +87,14 @@ export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return getLocalUsers();
   const { data, error } = await supabase.from('users').select('*');
   if (error) return getLocalUsers();
-  return data.map((row: any) => ({ ...row.data, id: row.id } as User));
+  const dbUsers = data.map((row: any) => ({ ...row.data, id: row.id } as User));
+  
+  const local = getLocalUsers();
+  const merged = [...dbUsers];
+  local.forEach(u => {
+    if (!merged.find(m => m.studentCode === u.studentCode)) merged.push(u);
+  });
+  return merged;
 };
 
 export const saveUser = async (user: User): Promise<void> => {
@@ -96,9 +123,11 @@ export const saveUser = async (user: User): Promise<void> => {
   if (error) throw error;
 };
 
-export const addPointsToUser = async (userId: string, pointsToAdd: number): Promise<void> => {
+export const addPointsToUser = async (userId: string, pointsToAdd: number, studentCode?: string): Promise<void> => {
+  const normalizedCode = studentCode?.toUpperCase();
   const local = getLocalUsers();
-  const user = local.find(u => u.id === userId);
+  
+  const user = local.find(u => u.id === userId || (normalizedCode && u.studentCode === normalizedCode));
   if (user) {
     user.points = (user.points || 0) + pointsToAdd;
     saveLocalUsers(local);
@@ -108,7 +137,7 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number): Prom
     const stored = localStorage.getItem('eduquiz_current_user');
     if (stored) {
       const u = JSON.parse(stored);
-      if (u.id === userId) {
+      if (u.studentCode === normalizedCode) {
         u.points = (u.points || 0) + pointsToAdd;
         localStorage.setItem('eduquiz_current_user', JSON.stringify(u));
       }
@@ -116,16 +145,24 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number): Prom
     return;
   }
   
-  const { data: row } = await supabase.from('users').select('data').eq('id', userId).single();
-  if (row) {
-    const userData = row.data as User;
+  let query = supabase.from('users').select('id, data');
+  if (normalizedCode) {
+    query = query.filter('data->>studentCode', 'eq', normalizedCode);
+  } else {
+    query = query.eq('id', userId);
+  }
+
+  const { data: rows } = await query;
+  if (rows && rows.length > 0) {
+    const targetRow = rows[0];
+    const userData = targetRow.data as User;
     userData.points = (userData.points || 0) + pointsToAdd;
-    await supabase.from('users').update({ data: userData }).eq('id', userId);
+    await supabase.from('users').update({ data: userData }).eq('id', targetRow.id);
     
     const stored = localStorage.getItem('eduquiz_current_user');
     if (stored) {
       const u = JSON.parse(stored);
-      if (u.id === userId) {
+      if (u.studentCode === normalizedCode) {
         localStorage.setItem('eduquiz_current_user', JSON.stringify(userData));
       }
     }
@@ -168,16 +205,26 @@ export const deleteUser = async (id: string): Promise<void> => {
   const newLocalUsers = localUsers.filter(u => u.id !== id);
   saveLocalUsers(newLocalUsers);
 
+  // Xóa sạch cả kết quả luyện tập của học sinh này trong máy (Local Cache)
+  const localResults = getLocalResults();
+  const filteredLocalResults = localResults.filter(r => 
+    r.studentId !== id && (!userToDelete?.studentCode || r.studentCode !== userToDelete.studentCode.toUpperCase())
+  );
+  localStorage.setItem('eduquiz_results_backup', JSON.stringify(filteredLocalResults));
+
   if (!supabase) return;
 
   try {
+    // 1. Xóa trong bảng results (theo ID)
     await supabase.from('results').delete().eq('student_id', id);
+    // 2. Xóa trong bảng results (theo Mã học sinh trong JSON data)
     if (userToDelete?.studentCode) {
       await supabase.from('results').delete().filter('data->>studentCode', 'eq', userToDelete.studentCode.toUpperCase());
     }
+    // 3. Xóa user
     await supabase.from('users').delete().eq('id', id);
   } catch (error) {
-    console.error("Lỗi khi xóa học sinh và các kết quả liên quan:", error);
+    console.error("Lỗi khi xóa triệt để học sinh:", error);
     throw error;
   }
 };
@@ -226,10 +273,24 @@ export const deleteQuiz = async (id: string): Promise<void> => {
 
 // --- Results ---
 export const getResults = async (): Promise<Result[]> => {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('results').select('data');
-  if (error) return [];
-  return data.map((row: any) => row.data as Result);
+  const local = getLocalResults();
+  
+  if (!supabase) return local;
+
+  try {
+    const { data, error } = await supabase.from('results').select('data');
+    if (error) return local;
+    const dbResults = data.map((row: any) => row.data as Result);
+    
+    // Nếu Online, ưu tiên dữ liệu DB. Chỉ lấy Local nếu bản ghi đó chưa có trên DB.
+    const merged = [...dbResults];
+    local.forEach(lr => {
+        if (!merged.find(mr => mr.id === lr.id)) merged.push(lr);
+    });
+    return merged;
+  } catch (e) {
+    return local;
+  }
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
@@ -238,17 +299,27 @@ export const saveResult = async (result: Result): Promise<void> => {
     studentCode: result.studentCode ? result.studentCode.toUpperCase() : undefined
   };
 
+  saveLocalResult(normalizedResult);
+
   if (!supabase) return;
-  const { error } = await supabase.from('results').insert({ 
-    id: normalizedResult.id, 
-    quiz_id: normalizedResult.quizId, 
-    student_id: normalizedResult.studentId, 
-    data: normalizedResult 
-  });
-  if (error) throw error;
+  
+  try {
+    const { error } = await supabase.from('results').insert({ 
+        id: normalizedResult.id, 
+        quiz_id: normalizedResult.quizId, 
+        student_id: normalizedResult.studentId, 
+        data: normalizedResult 
+      });
+      if (error) console.warn("Lưu lên DB thất bại, nhưng đã lưu local backup.");
+  } catch (err) {
+      console.warn("Lỗi Supabase, đã lưu local backup.");
+  }
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
+  const local = getLocalResults();
+  localStorage.setItem('eduquiz_results_backup', JSON.stringify(local.filter(r => r.id !== id)));
+
   if (!supabase) return;
   await supabase.from('results').delete().eq('id', id);
 };
@@ -256,7 +327,6 @@ export const deleteResult = async (id: string): Promise<void> => {
 export const getStudentStats = async (studentId: string, studentCode?: string) => {
   const allResults = await getResults();
   
-  // Lọc thông minh: Tìm theo ID HOẶC Mã học sinh
   const userResults = allResults.filter(r => 
     r.studentId === studentId || (studentCode && r.studentCode === studentCode.toUpperCase())
   );
