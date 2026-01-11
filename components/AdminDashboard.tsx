@@ -7,7 +7,7 @@ import {
 } from '../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../services/gemini';
 import { v4 as uuidv4 } from 'uuid';
-import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download, Medal, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, Database, Plus, Sparkles, BarChart3, Users, FolderTree, Cpu, History, UserCog, Clock, X, FileText, ListChecks, Download, Medal, CheckCircle2, UserPlus, Save, ShieldAlert, Key } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 
 // Import sub-components
@@ -38,6 +38,10 @@ const AdminDashboard = () => {
     const [category, setCategory] = useState('');
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
+
+    // Student Management States
+    const [studentModal, setStudentModal] = useState<{ isOpen: boolean, student: User | null }>({ isOpen: false, student: null });
+    const [sForm, setSForm] = useState({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
 
     // Shared UI state
     const [isAiLoading, setIsAiLoading] = useState(false);
@@ -85,6 +89,76 @@ const AdminDashboard = () => {
         setStartTime(q.startTime || '');
         setEndTime(q.endTime || '');
         setActiveMenu('editor');
+    };
+
+    // Student Actions
+    const openAddStudent = () => {
+        setSForm({ fullName: '', studentCode: '', grade: '12', password: '123' });
+        setStudentModal({ isOpen: true, student: null });
+    };
+
+    const openEditStudent = (u: User) => {
+        setSForm({ fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password });
+        setStudentModal({ isOpen: true, student: u });
+    };
+
+    const handleSaveStudent = async () => {
+        if (!sForm.fullName || !sForm.studentCode) return alert("Vui lòng nhập đủ Tên và Mã số!");
+        const userData: User = {
+            id: studentModal.student?.id || uuidv4(),
+            username: sForm.studentCode.toLowerCase(),
+            password: sForm.password || '123',
+            role: 'student',
+            fullName: sForm.fullName,
+            studentCode: sForm.studentCode.toUpperCase(),
+            grade: sForm.grade,
+            points: studentModal.student?.points || 0
+        };
+        await saveUser(userData);
+        setStudentModal({ isOpen: false, student: null });
+        refreshData();
+    };
+
+    const handleResetPassword = async (u: User) => {
+        if (confirm(`Bạn có muốn reset mật khẩu học sinh ${u.fullName} về "123456"?`)) {
+            await changePassword(u.id, "123456");
+            alert("Đã reset mật khẩu thành công!");
+            refreshData();
+        }
+    };
+
+    const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const text = event.target?.result as string;
+            const rows = text.split('\n').map(r => r.split(','));
+            // Giả định định dạng CSV: Họ tên, Mã học sinh, Khối, Mật khẩu
+            // Bỏ qua dòng header nếu có
+            let count = 0;
+            for (let i = 0; i < rows.length; i++) {
+                const [name, code, gradeVal, pass] = rows[i];
+                if (!name || !code) continue;
+                if (name.trim().toLowerCase() === 'họ tên') continue;
+
+                await saveUser({
+                    id: uuidv4(),
+                    username: code.trim().toLowerCase(),
+                    password: pass?.trim() || '123',
+                    role: 'student',
+                    fullName: name.trim(),
+                    studentCode: code.trim().toUpperCase(),
+                    grade: (gradeVal?.trim() || '12') as Grade,
+                    points: 0
+                });
+                count++;
+            }
+            alert(`Đã nhập thành công ${count} học sinh!`);
+            refreshData();
+        };
+        reader.readAsText(file);
     };
 
     const exportToDoc = (quiz: Quiz) => {
@@ -179,11 +253,51 @@ const AdminDashboard = () => {
                     {activeMenu === 'quizzes' && <QuizList quizzes={quizzes} results={results} chapters={chapters} onEdit={startEdit} onDelete={id => {if(confirm('Xóa đề?')) deleteQuiz(id).then(refreshData)}} onPreview={setPreviewQuiz} qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} />}
                     {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => {setQuestions([...questions, {...q, id: uuidv4()}]); setActiveMenu('editor'); alert('Đã chép!');}} />}
                     {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSave} onOpenBank={type => { setActiveMenu('bank'); setBTypeFilter(type); }} onPdfExtract={async (e) => { const file = e.target.files?.[0]; if(!file) return; setIsAiLoading(true); const reader = new FileReader(); reader.onload = async () => { const newQs = await parseQuestionsFromPDF((reader.result as string).split(',')[1]); setQuestions([...questions, ...newQs]); setIsAiLoading(false); }; reader.readAsDataURL(file); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
-                    {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={() => {}} onViewDetail={setSelectedStudent} onDelete={(id, name) => {if(confirm(`Xóa ${name}?`)) deleteUser(id).then(refreshData)}} />}
+                    {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={openAddStudent} onImportCsv={handleImportCsv} onViewDetail={setSelectedStudent} onEdit={openEditStudent} onDelete={(id, name) => {if(confirm(`Xóa ${name}?`)) deleteUser(id).then(refreshData)}} onResetPassword={handleResetPassword} />}
                     {activeMenu === 'results' && <ResultsBoard results={results} quizzes={quizzes} chapters={chapters} rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter} rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter} rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter} onClearCache={() => { if(confirm('Dọn dẹp cache?')) { clearLocalCache(); refreshData(); } }} onViewHistory={(sName, sCode, qTitle, history) => setHistoryModal({studentName: sName, studentCode: sCode, quizTitle: qTitle, history: history})} onDeleteResult={async (h) => {if(confirm('Xóa?')) { await Promise.all(h.map(x => deleteResult(x.id))); refreshData(); }}} />}
                     {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={async (p, p1, p2, p3) => { setIsAiLoading(true); try { const qs = await generateQuizFromPrompt({grade, topic: p, part1Count: p1, part2Count: p2, part3Count: p3}); setQuestions(qs); setTitle(`Đề AI: ${p}`); setActiveMenu('editor'); } catch(e) { alert('Lỗi AI!'); } finally { setIsAiLoading(false); } }} />}
                     {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={async ch => { await saveChapter(ch); refreshData(); }} onDelete={async id => { if(confirm('Xóa?')) { await deleteChapter(id); refreshData(); } }} />}
                 </div>
+
+                {/* MODAL THÊM / SỬA HỌC SINH */}
+                {studentModal.isOpen && (
+                    <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-white rounded-[3rem] w-full max-w-md flex flex-col overflow-hidden border-8 border-white animate-fade-in-up shadow-2xl">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><UserPlus size={24}/></div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight">{studentModal.student ? 'SỬA HỌC SINH' : 'THÊM HỌC SINH MỚI'}</h3>
+                                </div>
+                                <button onClick={() => setStudentModal({ isOpen: false, student: null })} className="p-3 bg-slate-800 rounded-xl hover:bg-red-600 transition-colors"><X/></button>
+                            </div>
+                            <div className="p-10 space-y-6">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Họ và tên</label>
+                                    <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-blue-400" value={sForm.fullName} onChange={e => setSForm({...sForm, fullName: e.target.value})} placeholder="Nguyễn Văn A..." />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Mã học sinh (MAHS)</label>
+                                    <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold uppercase outline-none focus:border-blue-400" value={sForm.studentCode} onChange={e => setSForm({...sForm, studentCode: e.target.value})} placeholder="HS123456..." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Khối lớp</label>
+                                        <select className="w-full p-4 bg-slate-50 border rounded-2xl font-black outline-none" value={sForm.grade} onChange={e => setSForm({...sForm, grade: e.target.value as Grade})}>
+                                            <option value="12">Khối 12</option>
+                                            <option value="11">Khối 11</option>
+                                            <option value="10">Khối 10</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Mật khẩu</label>
+                                        <input type="password" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none" value={sForm.password} onChange={e => setSForm({...sForm, password: e.target.value})} placeholder="Mặc định: 123" />
+                                    </div>
+                                </div>
+                                <button onClick={handleSaveStudent} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl mt-4"><Save size={18}/> LƯU THÔNG TIN</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* MODAL CHI TIẾT BẢNG ĐIỂM (HISTORY MODAL) */}
                 {historyModal && (
