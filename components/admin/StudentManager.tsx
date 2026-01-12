@@ -1,11 +1,12 @@
 
 import React from 'react';
-import { User, Grade, Result } from '../../types';
+import { User, Grade, Result, Quiz } from '../../types';
 import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal } from 'lucide-react';
 
 interface StudentManagerProps {
     students: User[];
     results: Result[]; 
+    quizzes: Quiz[]; // Thêm quizzes để biết loại đề
     sSearch: string;
     setSSearch: (val: string) => void;
     sGradeFilter: Grade | 'all';
@@ -19,7 +20,7 @@ interface StudentManagerProps {
 }
 
 const StudentManager: React.FC<StudentManagerProps> = ({ 
-    students, results, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
+    students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
     onAdd, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword 
 }) => {
     const filtered = students.filter(u => 
@@ -72,15 +73,32 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                     </thead>
                     <tbody className="divide-y">
                         {filtered.map(u => {
-                            // TÌM KẾT QUẢ ĐỐI SOÁT QUA ID HOẶC STUDENTCODE ĐỂ ĐẢM BẢO CHÍNH XÁC
                             const userResults = results.filter(r => 
                                 r.studentId === u.id || 
                                 (u.studentCode && r.studentCode === u.studentCode.toUpperCase())
                             );
                             
-                            // TÍNH TOÁN TRỰC TIẾP ĐỂ TRÁNH MÂU THUẪN DỮ LIỆU
+                            // 1. TÍNH ĐIỂM THỜI GIAN (45p = 1đ)
                             const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
-                            const calculatedPoints = userResults.reduce((acc, r) => acc + (r.score || 0), 0);
+                            const timePoints = totalSeconds / 2700; // 45 * 60 = 2700
+
+                            // 2. TÍNH ĐIỂM THƯỞNG (KT >= 8 cộng 1đ)
+                            const testBestScores: Record<string, number> = {};
+                            userResults.forEach(r => {
+                                const quiz = quizzes.find(q => q.id === r.quizId);
+                                if (quiz && quiz.type === 'test') {
+                                    if (!testBestScores[r.quizId] || r.score > testBestScores[r.quizId]) {
+                                        testBestScores[r.quizId] = r.score;
+                                    }
+                                }
+                            });
+                            
+                            let bonusPoints = 0;
+                            Object.values(testBestScores).forEach(score => {
+                                if (score >= 8) bonusPoints += 1;
+                            });
+
+                            const totalAccumulated = timePoints + bonusPoints;
 
                             return (
                                 <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
@@ -97,7 +115,7 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                                     <td className="p-6 text-center">
                                         <div className="flex items-center justify-center gap-1.5 text-yellow-600 font-black text-sm">
                                             <Medal size={14} className="text-yellow-500"/>
-                                            {calculatedPoints.toFixed(2)}
+                                            {totalAccumulated.toFixed(2)}
                                         </div>
                                     </td>
                                     <td className="p-6 text-center">
