@@ -6,7 +6,7 @@ import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Meda
 interface StudentManagerProps {
     students: User[];
     results: Result[]; 
-    quizzes: Quiz[]; // Thêm quizzes để biết loại đề
+    quizzes: Quiz[];
     sSearch: string;
     setSSearch: (val: string) => void;
     sGradeFilter: Grade | 'all';
@@ -78,11 +78,11 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                                 (u.studentCode && r.studentCode === u.studentCode.toUpperCase())
                             );
                             
-                            // 1. TÍNH ĐIỂM THỜI GIAN (45p = 1đ)
+                            // 1. Điểm thời gian: 45p = 1đ
                             const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
-                            const timePoints = totalSeconds / 2700; // 45 * 60 = 2700
+                            const timePoints = totalSeconds / 2700;
 
-                            // 2. TÍNH ĐIỂM THƯỞNG (KT >= 8 cộng 1đ)
+                            // 2. Điểm thưởng: Mỗi đề TEST >= 8 thì +1đ (tính trên điểm cao nhất của đề đó)
                             const testBestScores: Record<string, number> = {};
                             userResults.forEach(r => {
                                 const quiz = quizzes.find(q => q.id === r.quizId);
@@ -113,9 +113,12 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                                         <span className="font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg text-xs">{u.grade || '-'}</span>
                                     </td>
                                     <td className="p-6 text-center">
-                                        <div className="flex items-center justify-center gap-1.5 text-yellow-600 font-black text-sm">
-                                            <Medal size={14} className="text-yellow-500"/>
-                                            {totalAccumulated.toFixed(2)}
+                                        <div className="flex flex-col items-center">
+                                            <div className="flex items-center gap-1.5 text-yellow-600 font-black text-sm">
+                                                <Medal size={14} className="text-yellow-500"/>
+                                                {totalAccumulated.toFixed(2)}
+                                            </div>
+                                            <p className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">({timePoints.toFixed(1)} nỗ lực + {bonusPoints} thưởng)</p>
                                         </div>
                                     </td>
                                     <td className="p-6 text-center">
