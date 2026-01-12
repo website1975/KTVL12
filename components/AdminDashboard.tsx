@@ -112,17 +112,36 @@ const AdminDashboard: React.FC = () => {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = async (event) => {
-            const rows = (event.target?.result as string).split('\n').map(r => r.split(','));
-            for (const row of rows) {
-                const [name, code, g, p] = row;
-                if (!name || name.trim() === 'Họ tên') continue;
+            const content = event.target?.result as string;
+            const lines = content.split('\n').map(l => l.trim()).filter(l => l !== '');
+            let count = 0;
+            for (let i = 0; i < lines.length; i++) {
+                const row = lines[i].split(',').map(item => item.trim());
+                if (row.length < 2) continue;
+                
+                // THỨ TỰ CHUẨN CỦA BẠN: [0: MAHS, 1: HỌ TÊN, 2: KHỐI, 3: MẬT KHẨU]
+                const [code, name, g, p] = row;
+                
+                // Bỏ qua dòng tiêu đề
+                const isHeader = (code.toLowerCase().includes('mã') || code.toLowerCase().includes('code') || name.toLowerCase().includes('tên') || name.toLowerCase().includes('name'));
+                if (i === 0 && isHeader) continue;
+                
+                if (!code || !name) continue;
+
                 await saveUser({
-                    id: uuidv4(), username: code.trim().toLowerCase(), password: p?.trim() || '123',
-                    role: 'student', fullName: name.trim(), studentCode: code.trim().toUpperCase(),
-                    grade: (g?.trim() || '12') as Grade, points: 0
+                    id: uuidv4(), 
+                    username: code.toLowerCase(), 
+                    password: p || '123',
+                    role: 'student', 
+                    fullName: name, 
+                    studentCode: code.toUpperCase(),
+                    grade: (g || '12') as Grade, 
+                    points: 0
                 });
+                count++;
             }
-            alert("Đã nhập thành công!"); refreshData();
+            alert(`Đã nhập thành công ${count} học sinh!`); 
+            refreshData();
         };
         reader.readAsText(file);
     };
