@@ -1,13 +1,14 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Result, Quiz, Grade, Chapter, User as UserType } from '../../types';
-import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter } from 'lucide-react';
+import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter, ShieldAlert, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
+import { updateResultCode, deleteResult } from '../../services/storage';
 
 interface ResultsBoardProps {
     results: Result[];
     quizzes: Quiz[];
-    users: UserType[]; // Thêm danh sách users để đối soát
+    users: UserType[]; 
     chapters: Chapter[];
     rGradeFilter: Grade | 'all';
     setRGradeFilter: (val: Grade | 'all') => void;
@@ -25,11 +26,49 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
     onClearCache, onViewHistory, onDeleteResult
 }) => {
+    const [isFixing, setIsFixing] = useState(false);
+    const [fixReport, setFixReport] = useState<{updated: number, deleted: number} | null>(null);
+
     // Hàm lấy MAHS chuẩn nhất: Ưu tiên mã trong Result, nếu N/A thì tìm trong danh sách Users
     const getEffectiveStudentCode = (res: Result) => {
         if (res.studentCode && res.studentCode !== 'N/A') return res.studentCode;
         const user = users.find(u => u.id === res.studentId);
         return user?.studentCode || 'N/A';
+    };
+
+    // Công cụ truy vết & Sửa lỗi
+    const handleAutoFix = async () => {
+        if (!confirm('Hệ thống sẽ đối soát ID học sinh để cập nhật MAHS bị thiếu. Tiếp tục?')) return;
+        setIsFixing(true);
+        let updatedCount = 0;
+        
+        const naResults = results.filter(r => !r.studentCode || r.studentCode === 'N/A');
+        
+        for (const res of naResults) {
+            const user = users.find(u => u.id === res.studentId);
+            if (user && user.studentCode && user.studentCode !== 'N/A') {
+                await updateResultCode(res.id, user.studentCode);
+                updatedCount++;
+            }
+        }
+        
+        setFixReport({ updated: updatedCount, deleted: 0 });
+        setIsFixing(false);
+        setTimeout(() => window.location.reload(), 2000);
+    };
+
+    const handleDeleteRemainingNA = async () => {
+        const naResults = results.filter(r => !r.studentCode || r.studentCode === 'N/A');
+        if (naResults.length === 0) return alert("Không còn bản ghi N/A nào!");
+        if (!confirm(`Xóa vĩnh viễn ${naResults.length} bản ghi rác không thể truy vết?`)) return;
+        
+        setIsFixing(true);
+        for (const res of naResults) {
+            await deleteResult(res.id);
+        }
+        setFixReport({ updated: 0, deleted: naResults.length });
+        setIsFixing(false);
+        setTimeout(() => window.location.reload(), 2000);
     };
 
     // Logic gộp kết quả
@@ -59,6 +98,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
         return Object.values(groups).sort((a, b) => isAfter(parseISO(b.latest.submittedAt), parseISO(a.latest.submittedAt)) ? 1 : -1);
     }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
 
+    const naCount = results.filter(r => !r.studentCode || r.studentCode === 'N/A').length;
     const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter);
     const relevantQuizzes = quizzes.filter(q => 
         (rGradeFilter === 'all' || q.grade === rGradeFilter) &&
@@ -67,7 +107,50 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
 
     return (
         <div className="space-y-8 animate-fade-in">
-            {/* Thanh lọc kết quả */}
+            {/* Công cụ dọn dẹp dữ liệu N/A */}
+            {naCount > 0 && (
+                <div className="bg-orange-50 border-2 border-orange-200 p-8 rounded-[3rem] shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse-slow">
+                    <div className="flex items-center gap-5">
+                        <div className="p-4 bg-orange-500 text-white rounded-[1.5rem] shadow-lg"><ShieldAlert size={28}/></div>
+                        <div>
+                            <h4 className="text-orange-900 font-black uppercase text-sm">Phát hiện {naCount} bản ghi chưa có MAHS</h4>
+                            <p className="text-orange-700 text-[10px] font-bold uppercase tracking-tight mt-1 leading-tight">Có thể đây là dữ liệu cũ hoặc từ tài khoản đã bị xóa.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <button 
+                            disabled={isFixing}
+                            onClick={handleAutoFix}
+                            className="flex items-center gap-2 px-6 py-4 bg-white text-orange-600 border border-orange-200 rounded-2xl hover:bg-orange-600 hover:text-white transition-all text-[10px] font-black uppercase shadow-sm"
+                        >
+                            {isFixing ? <Loader2 className="animate-spin" size={14}/> : <Sparkles size={14}/>} 
+                            Tự động sửa lỗi
+                        </button>
+                        <button 
+                            disabled={isFixing}
+                            onClick={handleDeleteRemainingNA}
+                            className="flex items-center gap-2 px-6 py-4 bg-red-600 text-white rounded-2xl hover:bg-red-700 transition-all text-[10px] font-black uppercase shadow-xl"
+                        >
+                            <Trash2 size={14}/> Xóa dữ liệu rác
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {fixReport && (
+                <div className="fixed inset-0 bg-slate-900/80 z-[3000] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white p-10 rounded-[3rem] text-center space-y-4 max-w-sm w-full">
+                        <CheckCircle2 size={64} className="mx-auto text-emerald-500 animate-bounce"/>
+                        <h3 className="text-xl font-black uppercase">Hoàn tất xử lý</h3>
+                        <p className="text-sm font-bold text-slate-500">
+                            {fixReport.updated > 0 && `Đã cập nhật ${fixReport.updated} bản ghi.`}
+                            {fixReport.deleted > 0 && `Đã xóa ${fixReport.deleted} bản ghi rác.`}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-black uppercase italic">Vui lòng chờ giây lát...</p>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -78,7 +161,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         onClick={onClearCache} 
                         className="flex items-center gap-2 px-5 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase"
                     >
-                        <Eraser size={14}/> Dọn dẹp cache
+                        <Eraser size={14}/> Reset Cache
                     </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -108,7 +191,6 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                 </div>
             </div>
 
-            {/* Bảng hiển thị */}
             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
                 <table className="w-full text-left">
                     <thead>
@@ -124,15 +206,16 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         {groupedResults.map((group, gIdx) => {
                             const quiz = quizzes.find(item => item.id === group.latest.quizId);
                             const maxScore = Math.max(...group.history.map(h => h.score));
+                            const isNA = group.effectiveCode === 'N/A';
                             
                             return (
-                                <tr key={gIdx} className="hover:bg-slate-50 transition-colors group">
+                                <tr key={gIdx} className={`hover:bg-slate-50 transition-colors group ${isNA ? 'bg-orange-50/20' : ''}`}>
                                     <td className="p-6">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-all"><User size={18}/></div>
+                                            <div className={`w-10 h-10 ${isNA ? 'bg-orange-100 text-orange-600' : 'bg-blue-50 text-blue-600'} rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-all`}><User size={18}/></div>
                                             <div>
                                                 <p className="font-black text-slate-800 uppercase text-sm leading-tight">{group.latest.studentName}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">MAHS: {group.effectiveCode}</p>
+                                                <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isNA ? 'text-orange-500' : 'text-slate-400'}`}>MAHS: {group.effectiveCode}</p>
                                             </div>
                                         </div>
                                     </td>
