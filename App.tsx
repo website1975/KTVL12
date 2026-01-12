@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AuthState, User } from './types';
-import { initStorage } from './services/storage';
+import { initStorage, findUserByStudentCode, isDatabaseConnected } from './services/storage';
 import Auth from './components/Auth';
 import AdminDashboard from './components/AdminDashboard';
 import StudentDashboard from './components/StudentDashboard';
@@ -12,21 +12,41 @@ const App: React.FC = () => {
     user: null,
     isAuthenticated: false,
   });
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    // Initialize dummy data for demo
     initStorage();
-    
-    // Check local storage for persistent login
+    checkPersistentLogin();
+  }, []);
+
+  const checkPersistentLogin = async () => {
     const storedUser = localStorage.getItem('eduquiz_current_user');
     if (storedUser) {
       try {
-        setAuth({ user: JSON.parse(storedUser), isAuthenticated: true });
+        const parsedUser = JSON.parse(storedUser);
+        
+        // Nếu có mạng, kiểm tra xem user này còn tồn tại trong DB không
+        if (isDatabaseConnected() && parsedUser.studentCode) {
+            const dbUser = await findUserByStudentCode(parsedUser.studentCode);
+            if (!dbUser) {
+                // Tài khoản đã bị xóa khỏi DB -> Ép đăng xuất
+                console.warn("Tài khoản không tồn tại trên hệ thống. Đang đăng xuất...");
+                handleLogout();
+                setIsChecking(false);
+                return;
+            }
+            // Cập nhật dữ liệu mới nhất từ DB vào local
+            setAuth({ user: dbUser, isAuthenticated: true });
+            localStorage.setItem('eduquiz_current_user', JSON.stringify(dbUser));
+        } else {
+            setAuth({ user: parsedUser, isAuthenticated: true });
+        }
       } catch (e) {
-        localStorage.removeItem('eduquiz_current_user');
+        handleLogout();
       }
     }
-  }, []);
+    setIsChecking(false);
+  };
 
   const handleLogin = (user: User) => {
     setAuth({ user, isAuthenticated: true });
@@ -36,7 +56,20 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setAuth({ user: null, isAuthenticated: false });
     localStorage.removeItem('eduquiz_current_user');
+    // Xóa thêm các cache rác để đảm bảo sạch sẽ
+    localStorage.removeItem('eduquiz_users_offline'); 
   };
+
+  if (isChecking) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+              <div className="text-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Đang xác thực hệ thống...</p>
+              </div>
+          </div>
+      );
+  }
 
   if (!auth.isAuthenticated || !auth.user) {
     return <Auth onLogin={handleLogin} />;
