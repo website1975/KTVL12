@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Quiz, Result, Grade, Chapter } from '../../types';
-import { Edit, Trash2, Eye, Trophy, Users, Filter } from 'lucide-react';
+import { Edit, Trash2, Eye, Trophy, Users, Filter, FileText } from 'lucide-react';
 
 interface QuizListProps {
     quizzes: Quiz[];
@@ -80,7 +80,7 @@ const QuizList: React.FC<QuizListProps> = ({
                                     <span className="px-4 py-1.5 rounded-xl text-[9px] font-black uppercase bg-slate-100 text-slate-500 tracking-widest w-fit">LỚP {q.grade}</span>
                                     {q.category && <span className="text-[8px] font-bold text-blue-500 uppercase px-2">{q.category}</span>}
                                 </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                     <button onClick={() => onEdit(q)} className="p-2.5 bg-white border rounded-xl hover:bg-slate-900 hover:text-white shadow-sm transition-colors" title="Sửa đề"><Edit size={16}/></button>
                                     <button onClick={() => onDelete(q.id)} className="p-2.5 bg-red-50 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white shadow-sm transition-colors" title="Xóa đề"><Trash2 size={16}/></button>
                                 </div>
@@ -89,13 +89,13 @@ const QuizList: React.FC<QuizListProps> = ({
                             <h3 className="font-black text-slate-800 text-lg mb-6 line-clamp-2 min-h-[56px] leading-tight uppercase group-hover:text-blue-600 transition-colors">{q.title}</h3>
                             
                             <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-blue-50/50 rounded-2xl p-3 flex flex-col items-center justify-center border border-blue-100">
+                                    <FileText size={14} className="text-blue-500 mb-1"/>
+                                    <span className="text-[10px] font-black text-blue-700">{q.questions.length} câu hỏi</span>
+                                </div>
                                 <div className="bg-slate-50 rounded-2xl p-3 flex flex-col items-center justify-center">
                                     <Users size={14} className="text-slate-400 mb-1"/>
                                     <span className="text-[10px] font-black text-slate-700">{attempts} lượt làm</span>
-                                </div>
-                                <div className="bg-emerald-50 rounded-2xl p-3 flex flex-col items-center justify-center">
-                                    <Trophy size={14} className="text-emerald-500 mb-1"/>
-                                    <span className="text-[10px] font-black text-emerald-700">{attempts > 0 ? maxScore.toFixed(2) : '-'} điểm cao</span>
                                 </div>
                             </div>
 
@@ -108,14 +108,6 @@ const QuizList: React.FC<QuizListProps> = ({
                     );
                 })}
             </div>
-            {filtered.length === 0 && (
-                <div className="bg-white p-20 rounded-[3rem] border border-dashed border-slate-200 text-center">
-                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
-                        <Filter size={40}/>
-                    </div>
-                    <p className="font-black text-slate-400 uppercase tracking-widest">Không tìm thấy đề thi phù hợp</p>
-                </div>
-            )}
         </div>
     );
 };
