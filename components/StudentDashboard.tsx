@@ -40,7 +40,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     );
     setResults(userResults);
 
-    // LOGIC TÍNH ĐIỂM TÍCH LŨY CHUẨN (CÔNG BẰNG)
+    // LOGIC TÍNH ĐIỂM TÍCH LŨY
     const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
     const effortPoints = totalSeconds / 2700; // 45p = 1đ
 
@@ -150,7 +150,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     <p className="text-[9px] font-black text-yellow-600 uppercase leading-none mb-1">Tích lũy</p>
                     <span className="text-xl font-black text-yellow-700">{stats.accumulatedPoints.toFixed(2)}</span>
                     <div className="absolute top-full right-0 mt-2 bg-slate-900 text-white text-[8px] p-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap shadow-xl uppercase font-black tracking-widest pointer-events-none">
-                        {stats.effortPoints.toFixed(2)}đ nỗ lực (45p=1đ) + {stats.bonusPoints}đ thưởng (KT >= 8)
+                        {stats.effortPoints.toFixed(2)}đ nỗ lực (45p=1đ) + {stats.bonusPoints}đ thưởng (KT {'>'}= 8)
                     </div>
                 </div>
             </div>
@@ -257,8 +257,67 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             })}
           </div>
       </section>
-      
-      {/* Modals keep same as before */}
+
+      {previewQuiz && (
+          <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+              <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
+                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-5">
+                          <div className="p-3 bg-blue-600 rounded-2xl"><FileText size={28}/></div>
+                          <div>
+                              <h3 className="text-lg font-black uppercase tracking-tight leading-tight">{previewQuiz.title}</h3>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">LỚP {previewQuiz.grade} • {previewQuiz.questions.length} CÂU HỎI</p>
+                          </div>
+                      </div>
+                      <div className="flex gap-2">
+                          <button onClick={() => exportToDoc(previewQuiz)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl">
+                              <Download size={16}/> TẢI ĐỀ (.DOC)
+                          </button>
+                          <button onClick={() => setPreviewQuiz(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><XCircle/></button>
+                      </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                      <div className="max-w-3xl mx-auto space-y-12 pb-12">
+                          {['mcq', 'group-tf', 'short'].map((type) => {
+                              const typeQs = previewQuiz.questions.filter(q => q.type === type);
+                              if (typeQs.length === 0) return null;
+                              return (
+                                  <div key={type} className="space-y-8">
+                                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">
+                                          {type === 'mcq' ? 'PHẦN I. TRẮC NGHIỆM' : type === 'group-tf' ? 'PHẦN II. ĐÚNG/SAI' : 'PHẦN III. TRẢ LỜI NGẮN'}
+                                      </h4>
+                                      {typeQs.map((q, idx) => (
+                                          <div key={q.id} className="bg-white p-10 rounded-[2.5rem] border shadow-sm">
+                                              <div className="text-slate-800 text-lg font-bold mb-6 flex gap-4 leading-relaxed">
+                                                  <span className="text-blue-600 shrink-0 font-black italic underline uppercase">Câu {idx + 1}.</span>
+                                                  <LatexText text={q.text}/>
+                                              </div>
+                                              {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-[350px] mx-auto rounded-xl border" alt="question"/></div>}
+                                              {q.type === 'mcq' && q.options && (
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-10">
+                                                      {q.options.map((opt, oi) => <div key={oi} className="text-sm font-medium"><span className="text-slate-300 mr-2 font-black">{String.fromCharCode(65+oi)}.</span> <LatexText text={opt}/></div>)}
+                                                  </div>
+                                              )}
+                                              {q.type === 'group-tf' && q.subQuestions && (
+                                                  <div className="space-y-4 pl-12">
+                                                      {q.subQuestions.map((sq, si) => (
+                                                          <div key={si} className="text-sm font-medium text-slate-600 flex items-start gap-3">
+                                                              <span className="text-slate-400 font-black">{String.fromCharCode(97+si)})</span>
+                                                              <LatexText text={sq.text}/>
+                                                          </div>
+                                                      ))}
+                                                  </div>
+                                              )}
+                                          </div>
+                                      ))}
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
