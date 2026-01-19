@@ -143,7 +143,6 @@ const AdminDashboard: React.FC = () => {
                 alert(`Đã lưu ${qs.length} câu vào ngân hàng!`);
                 refreshData(); setActiveMenu('bank');
             } else {
-                // SỬA LỖI: Chèn thêm (Append) vào danh sách hiện tại thay vì ghi đè
                 setQuestions(prev => [...prev, ...qs]);
                 if (!title) setTitle(`Đề AI: ${p}`);
                 setActiveMenu('editor');
