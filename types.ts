@@ -38,6 +38,9 @@ export interface Question {
   options?: string[]; 
   correctAnswer?: string; 
   subQuestions?: SubQuestion[];
+  // Metadata để truy vết nguồn gốc câu hỏi trong ngân hàng
+  quizTitle?: string;
+  quizGrade?: Grade;
 }
 
 export interface Quiz {
@@ -60,7 +63,7 @@ export interface Result {
   quizId: string;
   studentId: string;
   studentName: string;
-  studentCode?: string; // Thêm mã học sinh để đối soát chính xác
+  studentCode?: string; 
   score: number;
   totalQuestions: number;
   submittedAt: string;
