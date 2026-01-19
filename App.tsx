@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthState, User } from './types';
 import { initStorage, findUserByStudentCode, isDatabaseConnected } from './services/storage';
 import Auth from './components/Auth';
-import AdminDashboard from './components/AdminDashboard';
+import AdminDashboard from './components/admin/AdminDashboard'; 
 import StudentDashboard from './components/StudentDashboard';
 import Layout from './components/Layout';
 
@@ -25,17 +25,13 @@ const App: React.FC = () => {
       try {
         const parsedUser = JSON.parse(storedUser);
         
-        // Nếu có mạng, kiểm tra xem user này còn tồn tại trong DB không
         if (isDatabaseConnected() && parsedUser.studentCode) {
             const dbUser = await findUserByStudentCode(parsedUser.studentCode);
             if (!dbUser) {
-                // Tài khoản đã bị xóa khỏi DB -> Ép đăng xuất
-                console.warn("Tài khoản không tồn tại trên hệ thống. Đang đăng xuất...");
                 handleLogout();
                 setIsChecking(false);
                 return;
             }
-            // Cập nhật dữ liệu mới nhất từ DB vào local
             setAuth({ user: dbUser, isAuthenticated: true });
             localStorage.setItem('eduquiz_current_user', JSON.stringify(dbUser));
         } else {
@@ -56,7 +52,6 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setAuth({ user: null, isAuthenticated: false });
     localStorage.removeItem('eduquiz_current_user');
-    // Xóa thêm các cache rác để đảm bảo sạch sẽ
     localStorage.removeItem('eduquiz_users_offline'); 
   };
 
