@@ -132,19 +132,18 @@ const AdminDashboard: React.FC = () => {
             const qs = await generateQuizFromPrompt({grade, topic: p, part1Count: p1, part2Count: p2, part3Count: p3});
             
             if (target === 'bank') {
-                // Lưu từng câu vào ngân hàng tự do
                 for (const q of qs) {
-                    await saveBankQuestion({ 
+                    const questionWithMeta: Question = { 
                         ...q, 
                         quizTitle: 'NGÂN HÀNG AI', 
                         quizGrade: grade 
-                    });
+                    };
+                    await saveBankQuestion(questionWithMeta);
                 }
                 alert(`Đã lưu ${qs.length} câu hỏi vào Ngân hàng thành công!`);
                 await refreshData();
                 setActiveMenu('bank');
             } else {
-                // Mở trong trình soạn thảo đề thi
                 setQuestions(qs);
                 setTitle(`Đề AI: ${p}`);
                 setActiveMenu('editor');
@@ -158,21 +157,19 @@ const AdminDashboard: React.FC = () => {
 
     // --- GỘP NGÂN HÀNG CÂU HỎI ---
     const allBankQuestions = useMemo(() => {
-        // 1. Lấy câu hỏi từ tất cả các đề thi hiện có
         const fromQuizzes = quizzes.flatMap(qz => qz.questions.map(q => ({ 
             ...q, 
             quizTitle: qz.title, 
             quizGrade: qz.grade 
         })));
         
-        // 2. Lấy câu hỏi từ kho câu hỏi tự do (standalone)
         const fromStandalone = standaloneBank.map(q => ({
             ...q,
             quizTitle: q.quizTitle || 'CÂU HỎI TỰ DO',
             quizGrade: q.quizGrade || 'all'
         }));
 
-        return [...fromStandalone, ...fromQuizzes];
+        return [...fromStandalone, ...fromQuizzes] as Question[];
     }, [quizzes, standaloneBank]);
 
     return (
