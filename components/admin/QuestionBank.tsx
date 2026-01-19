@@ -5,7 +5,7 @@ import { Database, Search } from 'lucide-react';
 import LatexText from '../LatexText';
 
 interface QuestionBankProps {
-    questions: (Question & { quizTitle: string, quizGrade: Grade })[];
+    questions: Question[];
     bGradeFilter: Grade | 'all';
     setBGradeFilter: (val: Grade | 'all') => void;
     bTypeFilter: QuestionType | 'all';
@@ -25,11 +25,11 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ questions, bGradeFilter, se
             </div>
             <div className="grid grid-cols-1 gap-4">
                 {questions.map((bq, idx) => (
-                    <div key={idx} className="bg-white p-6 rounded-3xl border shadow-sm flex items-center justify-between group hover:border-blue-300">
+                    <div key={bq.id || idx} className="bg-white p-6 rounded-3xl border shadow-sm flex items-center justify-between group hover:border-blue-300">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
-                                <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white uppercase ${bq.type === 'mcq' ? 'bg-blue-500' : 'bg-purple-500'}`}>{bq.type}</span>
-                                <span className="text-[8px] text-slate-400 font-bold uppercase">Nguồn: {bq.quizTitle} ({bq.quizGrade})</span>
+                                <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white uppercase ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type === 'group-tf' ? 'bg-purple-500' : 'bg-orange-500'}`}>{bq.type}</span>
+                                <span className="text-[8px] text-slate-400 font-bold uppercase">Nguồn: {bq.quizTitle || 'Không xác định'} ({bq.quizGrade || 'all'})</span>
                             </div>
                             <div className="font-bold text-slate-800"><LatexText text={bq.text}/></div>
                         </div>
@@ -42,4 +42,3 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ questions, bGradeFilter, se
 };
 
 export default QuestionBank;
-
