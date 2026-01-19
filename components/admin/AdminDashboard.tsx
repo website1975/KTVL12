@@ -200,7 +200,15 @@ const AdminDashboard: React.FC = () => {
                 {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions(prev => [...prev, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                 {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={handleAiGenerate} hasQuestionsInEditor={questions.length > 0} />}
                 {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={c => saveChapter(c).then(refreshData)} onDelete={id => deleteChapter(id).then(refreshData)} />}
-                {activeMenu === 'bank' && <QuestionBank questions={allBankQuestions.filter(q => (bGradeFilter === 'all' || q.quizGrade === bGradeFilter) && (bTypeFilter === 'all' || q.type === bTypeFilter) && q.text.toLowerCase().includes(bSearch.toLowerCase()))} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch} onCopy={q => { setQuestions(prev => [...prev, {...q, id: uuidv4()}]); setActiveMenu('editor'); alert('Đã chèn!'); }} />}
+                {activeMenu === 'bank' && (
+                    <QuestionBank 
+                        questions={allBankQuestions.filter(q => (bGradeFilter === 'all' || q.quizGrade === bGradeFilter) && (bTypeFilter === 'all' || q.type === bTypeFilter) && q.text.toLowerCase().includes(bSearch.toLowerCase()))} 
+                        bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter} 
+                        bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} 
+                        bSearch={bSearch} setBSearch={setBSearch} 
+                        onAddMultiple={qs => { setQuestions(prev => [...prev, ...qs]); setActiveMenu('editor'); alert(`Đã chèn ${qs.length} câu vào đề!`); }} 
+                    />
+                )}
 
                 <StudentModal isOpen={studentModal.isOpen} student={studentModal.student} form={sForm} setForm={setSForm} onClose={() => setStudentModal({isOpen:false, student:null})} onSave={handleSaveStudent} />
                 <StudentDetailModal student={selectedStudent} results={results} quizzes={quizzes} onClose={() => setSelectedStudent(null)} onViewResult={res => setDetailModal({ isOpen: true, result: res, quiz: quizzes.find(q => q.id === res.quizId) || null })} />
