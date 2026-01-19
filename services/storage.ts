@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter } from '../types';
+import { User, Quiz, Result, Chapter, Question } from '../types';
 
 const getEnv = (name: string): string | undefined => {
   try {
@@ -84,10 +84,8 @@ export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return getLocalUsers();
   const { data, error } = await supabase.from('users').select('*');
   if (error) return getLocalUsers();
-  
-  // NẾU CÓ KẾT NỐI DB: Chỉ lấy dữ liệu từ DB, không merge từ local để tránh "phục sinh" user đã xóa
   const dbUsers = data.map((row: any) => ({ ...row.data, id: row.id } as User));
-  saveLocalUsers(dbUsers); // Cập nhật lại cache local cho đồng bộ
+  saveLocalUsers(dbUsers);
   return dbUsers;
 };
 
@@ -98,7 +96,6 @@ export const saveUser = async (user: User): Promise<void> => {
     studentCode: user.studentCode ? user.studentCode.toUpperCase() : undefined,
     fullName: user.fullName.trim()
   };
-
   if (!supabase) {
       const local = getLocalUsers();
       const existingIdx = local.findIndex(u => u.id === normalizedUser.id || (normalizedUser.studentCode && u.studentCode === normalizedUser.studentCode));
@@ -107,12 +104,7 @@ export const saveUser = async (user: User): Promise<void> => {
       saveLocalUsers(local);
       return;
   }
-
-  const { error } = await supabase.from('users').upsert({ 
-    id: normalizedUser.id, 
-    username: normalizedUser.username, 
-    data: normalizedUser 
-  });
+  const { error } = await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
   if (error) throw error;
 };
 
@@ -122,7 +114,6 @@ export const addPointsToUser = async (userId: string, pointsToAdd: number, stude
   let query = supabase.from('users').select('id, data');
   if (normalizedCode) query = query.filter('data->>studentCode', 'eq', normalizedCode);
   else query = query.eq('id', userId);
-
   const { data: rows } = await query;
   if (rows && rows.length > 0) {
     const targetRow = rows[0];
@@ -152,19 +143,12 @@ export const deleteUser = async (id: string): Promise<void> => {
   const localUsers = getLocalUsers();
   const userToDelete = localUsers.find(u => u.id === id);
   saveLocalUsers(localUsers.filter(u => u.id !== id));
-
   if (!supabase) return;
-
   try {
-    // 1. Xóa các bài làm trong bảng results có liên quan đến ID này
     await supabase.from('results').delete().eq('student_id', id);
-    
-    // 2. Nếu có mã HS, xóa các bài làm liên quan đến mã HS đó (đề phòng trường hợp id lệch)
     if (userToDelete?.studentCode) {
       await supabase.from('results').delete().filter('data->>studentCode', 'eq', userToDelete.studentCode.toUpperCase());
     }
-    
-    // 3. Cuối cùng mới xóa User
     await supabase.from('users').delete().eq('id', id);
   } catch (error) {
     console.error("Lỗi xóa triệt để:", error);
@@ -263,6 +247,35 @@ export const saveChapter = async (chapter: Chapter): Promise<void> => {
 export const deleteChapter = async (id: string): Promise<void> => {
   if (!supabase) return;
   await supabase.from('chapters').delete().eq('id', id);
+};
+
+// --- Standalone Bank Questions (Câu hỏi không thuộc đề nào) ---
+export const getBankQuestions = async (): Promise<Question[]> => {
+    if (!supabase) {
+        const stored = localStorage.getItem('eduquiz_standalone_bank');
+        return stored ? JSON.parse(stored) : [];
+    }
+    const { data, error } = await supabase.from('bank_questions').select('data');
+    return error ? [] : data.map((row: any) => row.data as Question);
+};
+
+export const saveBankQuestion = async (question: Question): Promise<void> => {
+    if (!supabase) {
+        const local = await getBankQuestions();
+        local.push(question);
+        localStorage.setItem('eduquiz_standalone_bank', JSON.stringify(local));
+        return;
+    }
+    await supabase.from('bank_questions').insert({ id: question.id, data: question });
+};
+
+export const deleteBankQuestion = async (id: string): Promise<void> => {
+    if (!supabase) {
+        const local = await getBankQuestions();
+        localStorage.setItem('eduquiz_standalone_bank', JSON.stringify(local.filter(q => q.id !== id)));
+        return;
+    }
+    await supabase.from('bank_questions').delete().eq('id', id);
 };
 
 export const initStorage = () => {
