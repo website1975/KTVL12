@@ -44,6 +44,7 @@ const AdminDashboard: React.FC = () => {
     const [grade, setGrade] = useState<Grade>('12');
     const [quizType, setQuizType] = useState<QuizType>('practice');
     const [isPublished, setIsPublished] = useState(false);
+    const [isMonitored, setIsMonitored] = useState(false);
     const [duration, setDuration] = useState(45);
     const [category, setCategory] = useState('');
     const [startTime, setStartTime] = useState('');
@@ -88,7 +89,7 @@ const AdminDashboard: React.FC = () => {
         if (!title) return alert("Vui lòng nhập tiêu đề");
         const quiz: Quiz = {
             id: editingId || uuidv4(), title, grade, type: quizType, category, durationMinutes: duration,
-            startTime, endTime, questions, isPublished, createdAt: new Date().toISOString(), description: ''
+            startTime, endTime, questions, isPublished, isMonitored, createdAt: new Date().toISOString(), description: ''
         };
         if (editingId) await updateQuiz(quiz); else await saveQuiz(quiz);
         alert("Đã lưu đề thi thành công!");
@@ -178,7 +179,7 @@ const AdminDashboard: React.FC = () => {
                         <button key={m.id} onClick={() => setActiveMenu(m.id as any)} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMenu === m.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}><m.icon size={16}/> {m.label}</button>
                     ))}
                     <div className="pt-6 border-t border-slate-800">
-                        <button onClick={() => { setEditingId(null); setTitle(''); setQuestions([]); setActiveMenu('editor'); }} className="w-full flex items-center justify-center gap-2 py-4 bg-white text-slate-900 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-blue-50 transition-all"><PlusCircle size={16}/> TẠO ĐỀ MỚI</button>
+                        <button onClick={() => { setEditingId(null); setTitle(''); setQuestions([]); setIsMonitored(false); setActiveMenu('editor'); }} className="w-full flex items-center justify-center gap-2 py-4 bg-white text-slate-900 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-blue-50 transition-all"><PlusCircle size={16}/> TẠO ĐỀ MỚI</button>
                     </div>
                 </nav>
             </aside>
@@ -187,7 +188,7 @@ const AdminDashboard: React.FC = () => {
                 {activeMenu === 'quizzes' && (
                     <QuizList 
                         quizzes={quizzes} results={results} chapters={chapters} 
-                        onEdit={q => { setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type); setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions); setCategory(q.category || ''); setStartTime(q.startTime || ''); setEndTime(q.endTime || ''); setActiveMenu('editor'); }} 
+                        onEdit={q => { setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type); setIsPublished(q.isPublished); setIsMonitored(q.isMonitored || false); setDuration(q.durationMinutes); setQuestions(q.questions); setCategory(q.category || ''); setStartTime(q.startTime || ''); setEndTime(q.endTime || ''); setActiveMenu('editor'); }} 
                         onDelete={id => confirm('Xóa đề?') && deleteQuiz(id).then(refreshData)} 
                         onPreview={q => setPreviewQuiz(q)} 
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} 
@@ -207,7 +208,7 @@ const AdminDashboard: React.FC = () => {
                     />
                 )}
 
-                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions(prev => [...prev, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
+                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions(prev => [...prev, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                 {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={handleAiGenerate} hasQuestionsInEditor={questions.length > 0} />}
                 {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={c => saveChapter(c).then(refreshData)} onDelete={id => deleteChapter(id).then(refreshData)} />}
                 {activeMenu === 'bank' && (
