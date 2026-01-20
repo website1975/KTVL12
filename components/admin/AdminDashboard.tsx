@@ -20,6 +20,7 @@ import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
 import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
+import QuizPreviewModal from './QuizPreviewModal';
 import { 
     Users as UsersIcon, ClipboardList, Sparkles, FolderTree, 
     Database, PlusCircle, LayoutDashboard
@@ -68,6 +69,7 @@ const AdminDashboard: React.FC = () => {
     const [studentModal, setStudentModal] = useState<{ isOpen: boolean, student: User | null }>({ isOpen: false, student: null });
     const [sForm, setSForm] = useState({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+    const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
     
     // Results Detail Modals
     const [historyModal, setHistoryModal] = useState<{ isOpen: boolean, studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
@@ -182,7 +184,15 @@ const AdminDashboard: React.FC = () => {
             </aside>
 
             <main className="flex-1 p-8 overflow-y-auto">
-                {activeMenu === 'quizzes' && <QuizList quizzes={quizzes} results={results} chapters={chapters} onEdit={q => { setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type); setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions); setCategory(q.category || ''); setStartTime(q.startTime || ''); setEndTime(q.endTime || ''); setActiveMenu('editor'); }} onDelete={id => confirm('Xóa đề?') && deleteQuiz(id).then(refreshData)} onPreview={()=>{}} qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} />}
+                {activeMenu === 'quizzes' && (
+                    <QuizList 
+                        quizzes={quizzes} results={results} chapters={chapters} 
+                        onEdit={q => { setEditingId(q.id); setTitle(q.title); setGrade(q.grade); setQuizType(q.type); setIsPublished(q.isPublished); setDuration(q.durationMinutes); setQuestions(q.questions); setCategory(q.category || ''); setStartTime(q.startTime || ''); setEndTime(q.endTime || ''); setActiveMenu('editor'); }} 
+                        onDelete={id => confirm('Xóa đề?') && deleteQuiz(id).then(refreshData)} 
+                        onPreview={q => setPreviewQuiz(q)} 
+                        qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter} qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter} 
+                    />
+                )}
                 {activeMenu === 'students' && <StudentManager students={users.filter(u => u.role === 'student')} results={results} quizzes={quizzes} sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter} onAdd={() => { setSForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setStudentModal({isOpen: true, student: null}); }} onImportCsv={handleImportCsv} onViewDetail={setSelectedStudent} onEdit={u => { setSForm({fullName: u.fullName, studentCode: u.studentCode||'', grade: u.grade||'12', password: u.password}); setStudentModal({isOpen: true, student: u}); }} onDelete={(id, n) => confirm(`Xóa ${n}?`) && deleteUser(id).then(refreshData)} onResetPassword={u => confirm('Reset về 123?') && changePassword(u.id, '123').then(() => alert('Xong'))} />}
                 
                 {activeMenu === 'results' && (
@@ -223,6 +233,10 @@ const AdminDashboard: React.FC = () => {
                 )}
                 
                 <ResultDetailModal isOpen={detailModal.isOpen} result={detailModal.result} quiz={detailModal.quiz} onClose={() => setDetailModal({ isOpen: false, result: null, quiz: null })} />
+                
+                {previewQuiz && (
+                    <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />
+                )}
             </main>
         </div>
     );
