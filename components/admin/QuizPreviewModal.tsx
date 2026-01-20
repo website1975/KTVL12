@@ -11,42 +11,51 @@ interface QuizPreviewModalProps {
 
 const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) => {
     
-    // Hàm tính toán số cột dựa trên độ dài các lựa chọn
+    // Tính toán số cột (Tab) linh hoạt dựa trên độ dài đáp án
     const getColumnCount = (options: string[]) => {
         const maxLength = Math.max(...options.map(opt => opt.length));
-        if (maxLength > 45) return 1; // Quá dài -> 1 cột
-        if (maxLength > 18) return 2; // Hơi dài -> 2 cột
-        return 4; // Ngắn -> 4 cột
+        // Nếu đáp án dài trên 40 ký tự -> 1 cột
+        if (maxLength > 40) return 1;
+        // Nếu đáp án dài trên 15 ký tự -> 2 cột (Tab 2)
+        if (maxLength > 15) return 2;
+        // Đáp án ngắn -> 4 cột (Tab 4)
+        return 4;
     };
 
-    // Hàm render bảng đáp án trắc nghiệm chuẩn "canh tab"
-    const renderMcqOptions = (q: Question) => {
+    // Render các phương án theo dạng bảng (Tab) để đảm bảo căn lề chuẩn trong cả Preview và Word
+    const renderOptionsTable = (q: Question) => {
         if (!q.options) return null;
         const cols = getColumnCount(q.options);
         const rows = [];
-        
         for (let i = 0; i < q.options.length; i += cols) {
             rows.push(q.options.slice(i, i + cols));
         }
 
         return (
-            <table className="options-table w-full border-collapse mt-4 ml-8">
+            <table className="options-table w-full border-collapse mt-3 ml-6" style={{ width: '100%' }}>
                 <tbody>
                     {rows.map((row, rIdx) => (
                         <tr key={rIdx}>
                             {row.map((opt, cIdx) => (
                                 <td 
                                     key={cIdx} 
-                                    style={{ width: `${100 / cols}%` }} 
-                                    className="option-cell pr-4 py-1 align-top text-justify"
+                                    style={{ 
+                                        width: `${100 / cols}%`, 
+                                        textAlign: 'left', // Bỏ justify để chữ không bị thưa
+                                        padding: '4px 8px 4px 0',
+                                        verticalAlign: 'top'
+                                    }} 
+                                    className="option-cell"
                                 >
-                                    <span className="font-bold mr-1">{String.fromCharCode(65 + (rIdx * cols + cIdx))}.</span>
+                                    <span style={{ fontWeight: 'bold', marginRight: '4px' }}>
+                                        {String.fromCharCode(65 + (rIdx * cols + cIdx))}.
+                                    </span>
                                     <LatexText text={opt} />
                                 </td>
                             ))}
-                            {/* Fill empty cells if row not full */}
-                            {row.length < cols && Array(cols - row.length).fill(0).map((_, emptyIdx) => (
-                                <td key={`empty-${emptyIdx}`} style={{ width: `${100 / cols}%` }}></td>
+                            {/* Bổ sung các ô trống nếu hàng chưa đủ cột */}
+                            {row.length < cols && Array(cols - row.length).fill(0).map((_, i) => (
+                                <td key={`empty-${i}`} style={{ width: `${100 / cols}%` }}></td>
                             ))}
                         </tr>
                     ))}
@@ -57,7 +66,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
 
     const handleExportWord = () => {
         const content = document.getElementById('quiz-export-content')?.innerHTML;
-        if (!content) return alert("Không tìm thấy nội dung để xuất!");
+        if (!content) return alert("Không tìm thấy nội dung!");
 
         const header = `
             <html xmlns:o='urn:schemas-microsoft-com:office:office' 
@@ -67,19 +76,18 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                 <meta charset='utf-8'>
                 <title>${quiz.title}</title>
                 <style>
-                    @page { size: 21cm 29.7cm; margin: 1.5cm; }
+                    @page { size: 21cm 29.7cm; margin: 2cm; }
                     body { font-family: 'Times New Roman', serif; line-height: 1.5; font-size: 12pt; color: black; }
-                    .print-header { width: 100%; margin-bottom: 20px; }
-                    .section-title { font-weight: bold; margin-top: 25px; font-size: 12pt; text-transform: uppercase; border-bottom: 1.5pt solid black; padding-bottom: 2pt; margin-bottom: 15pt; }
-                    .question { margin-top: 15px; margin-bottom: 15px; page-break-inside: avoid; }
+                    .section-title { font-weight: bold; margin-top: 20px; font-size: 12pt; text-transform: uppercase; border-bottom: 1.5pt solid black; padding-bottom: 2pt; }
+                    .question { margin-top: 15px; margin-bottom: 10px; page-break-inside: avoid; }
                     .q-label { font-weight: bold; font-style: italic; text-decoration: underline; }
-                    .options-table { width: 100%; margin-top: 8px; border-collapse: collapse; }
-                    .option-cell { padding: 3pt 0; vertical-align: top; font-size: 11pt; }
+                    .options-table { width: 100%; margin-top: 5px; border-collapse: collapse; }
+                    .option-cell { padding: 2pt 0; vertical-align: top; text-align: left; }
                     .q-image-container { text-align: center; margin: 15pt 0; }
-                    img { max-width: 450px; height: auto; display: block; margin: 5pt auto; border: 0.5pt solid #eee; }
-                    .ans-box { border: 1pt solid black; width: 140pt; height: 30pt; text-align: center; margin-top: 10pt; vertical-align: middle; }
-                    .footer { text-align: center; margin-top: 40pt; border-top: 1.5pt solid black; font-weight: bold; padding-top: 15pt; }
-                    table { border-collapse: collapse; }
+                    img { max-width: 450px; height: auto; display: block; margin: 5pt auto; }
+                    .footer { text-align: center; margin-top: 40pt; border-top: 1pt solid black; padding-top: 10pt; font-weight: bold; }
+                    table { border-collapse: collapse; width: 100%; }
+                    td { vertical-align: top; }
                 </style>
             </head>
             <body>
@@ -103,7 +111,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
             <div className="bg-white rounded-[0] md:rounded-[3.5rem] w-full max-w-5xl h-full md:h-[95vh] flex flex-col overflow-hidden shadow-2xl">
                 
                 {/* Header điều khiển */}
-                <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
                     <div className="flex items-center gap-5">
                         <div className="p-3 bg-blue-600 rounded-2xl shadow-lg">
                             <FileType size={24}/>
@@ -118,7 +126,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                     <div className="flex items-center gap-3">
                         <button 
                             onClick={handleExportWord}
-                            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase hover:bg-blue-700 transition-all shadow-xl"
+                            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase hover:bg-blue-700 transition-all shadow-xl active:scale-95"
                         >
                             <Download size={16}/> Xuất file Word
                         </button>
@@ -135,24 +143,28 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                 <div className="flex-1 overflow-y-auto p-12 bg-white custom-scrollbar">
                     <div id="quiz-export-content" className="max-w-4xl mx-auto font-serif text-black space-y-12 pb-24">
                         
-                        {/* Phần tiêu đề trường/sở */}
-                        <div className="mb-10 pb-6">
-                            <div className="flex justify-between items-start">
-                                <div className="text-center" style={{ width: '40%' }}>
-                                    <p className="font-bold text-[10.5pt] uppercase">SỞ GIÁO DỤC VÀ ĐÀO TẠO</p>
-                                    <p className="font-bold text-[10.5pt] uppercase underline">TRƯỜNG THPT CHUYÊN AI</p>
-                                    <p className="text-[9pt] mt-1 italic">Mã đề: {quiz.id.slice(0, 3).toUpperCase()}</p>
-                                </div>
-                                <div className="text-center" style={{ width: '55%' }}>
-                                    <p className="font-bold text-[11pt] uppercase">KIỂM TRA {quiz.type === 'test' ? 'ĐỊNH KỲ' : 'THƯỜNG XUYÊN'}</p>
-                                    <p className="font-bold text-[11pt] uppercase">MÔN: TOÁN - KHỐI {quiz.grade}</p>
-                                    <p className="italic text-[10pt] mt-1">Thời gian làm bài: {quiz.durationMinutes} phút</p>
-                                </div>
+                        {/* Phần tiêu đề đề thi */}
+                        <div className="mb-10">
+                            <table style={{ width: '100%' }}>
+                                <tbody>
+                                    <tr>
+                                        <td style={{ width: '40%', textAlign: 'center' }}>
+                                            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', margin: 0 }}>SỞ GD&ĐT EDUQUIZ VN</p>
+                                            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', textDecoration: 'underline', margin: 0 }}>TRƯỜNG THPT CHUYÊN AI</p>
+                                            <p style={{ fontSize: '10pt', fontStyle: 'italic' }}>Mã đề: {quiz.id.slice(0, 3).toUpperCase()}</p>
+                                        </td>
+                                        <td style={{ width: '60%', textAlign: 'center' }}>
+                                            <p style={{ fontWeight: 'bold', fontSize: '14pt', margin: 0 }}>ĐỀ THI {quiz.type === 'test' ? 'CHÍNH THỨC' : 'LUYỆN TẬP'}</p>
+                                            <p style={{ fontWeight: 'bold', margin: 0 }}>MÔN: TOÁN - KHỐI {quiz.grade}</p>
+                                            <p style={{ fontStyle: 'italic' }}>Thời gian: {quiz.durationMinutes} phút</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div style={{ border: '1.5pt solid black', padding: '10px', marginTop: '20px' }}>
+                                <p style={{ fontWeight: 'bold', margin: 0 }}>Họ và tên thí sinh: ................................................................... SBD: ......................</p>
                             </div>
-                            <div className="mt-8 border-2 border-black p-4">
-                                <p className="font-bold text-[11pt]">Họ và tên thí sinh: ................................................................... SBD: ......................</p>
-                            </div>
-                            <h2 className="text-center font-black text-xl mt-10 uppercase tracking-widest leading-tight">{quiz.title}</h2>
+                            <h2 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16pt', marginTop: '30px', textTransform: 'uppercase' }}>{quiz.title}</h2>
                         </div>
 
                         {/* Nội dung câu hỏi */}
@@ -161,8 +173,8 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                             if (typeQs.length === 0) return null;
                             
                             return (
-                                <div key={type} className="section-block">
-                                    <div className="section-title">
+                                <div key={type} className="section-block" style={{ marginBottom: '30px' }}>
+                                    <div className="section-title" style={{ fontWeight: 'bold', textTransform: 'uppercase', borderBottom: '1.5pt solid black', marginBottom: '15px', paddingBottom: '3px' }}>
                                         {type === 'mcq' ? 'PHẦN I. CÂU HỎI TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN' : 
                                          type === 'group-tf' ? 'PHẦN II. CÂU HỎI TRẮC NGHIỆM ĐÚNG SAI' : 
                                          'PHẦN III. CÂU HỎI TRẮC NGHIỆM TRẢ LỜI NGẮN'}
@@ -170,46 +182,42 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                                     
                                     <div className="space-y-8">
                                         {typeQs.map((q, idx) => (
-                                            <div key={q.id} className="question">
-                                                <div className="flex gap-2 items-start">
-                                                    <span className="font-bold shrink-0 italic underline q-label">Câu {idx + 1}.</span>
-                                                    <div className="flex-1 text-justify leading-relaxed">
+                                            <div key={q.id} className="question" style={{ marginBottom: '20px' }}>
+                                                <div style={{ display: 'table', width: '100%' }}>
+                                                    <div style={{ display: 'table-cell', width: '50px', fontWeight: 'bold', fontStyle: 'italic', textDecoration: 'underline' }}>Câu {idx + 1}.</div>
+                                                    <div style={{ display: 'table-cell', textAlign: 'justify' }}>
                                                         <LatexText text={q.text}/>
                                                     </div>
                                                 </div>
 
-                                                {/* Hiển thị hình ảnh đề thi */}
+                                                {/* Ảnh đề thi */}
                                                 {q.imageUrl && (
-                                                    <div className="q-image-container">
-                                                        <img src={q.imageUrl} alt={`Hình minh họa câu ${idx + 1}`} />
+                                                    <div className="q-image-container" style={{ textAlign: 'center', margin: '15px 0' }}>
+                                                        <img src={q.imageUrl} alt={`Hình ${idx + 1}`} style={{ maxWidth: '400px', border: '0.5pt solid #ddd' }} />
                                                     </div>
                                                 )}
 
-                                                {/* Render tùy chọn Trắc nghiệm (P.I) */}
-                                                {q.type === 'mcq' && renderMcqOptions(q)}
+                                                {/* Canh Tab linh hoạt cho phần I */}
+                                                {q.type === 'mcq' && renderOptionsTable(q)}
 
-                                                {/* Render tùy chọn Đúng/Sai (P.II) */}
+                                                {/* Phần II: Đúng/Sai */}
                                                 {q.type === 'group-tf' && q.subQuestions && (
-                                                    <div className="mt-3 ml-8 space-y-1.5">
+                                                    <div style={{ marginLeft: '30px', marginTop: '5px' }}>
                                                         {q.subQuestions.map((sq, si) => (
-                                                            <div key={si} className="flex gap-3 items-start">
-                                                                <span className="font-bold shrink-0">{String.fromCharCode(97 + si)})</span>
-                                                                <div className="flex-1 text-justify"><LatexText text={sq.text}/></div>
+                                                            <div key={si} style={{ display: 'table', width: '100%', marginBottom: '4px' }}>
+                                                                <div style={{ display: 'table-cell', width: '30px', fontWeight: 'bold' }}>{String.fromCharCode(97 + si)})</div>
+                                                                <div style={{ display: 'table-cell' }}><LatexText text={sq.text}/></div>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 )}
 
-                                                {/* Render ô trả lời ngắn (P.III) */}
+                                                {/* Phần III: Trả lời ngắn */}
                                                 {q.type === 'short' && (
-                                                    <div className="mt-3 ml-8">
-                                                        <table className="ans-box">
-                                                            <tr>
-                                                                <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                                                                    <span style={{ color: '#ccc', fontStyle: 'italic', fontSize: '9pt' }}>Đáp số: .........</span>
-                                                                </td>
-                                                            </tr>
-                                                        </table>
+                                                    <div style={{ marginLeft: '30px', marginTop: '10px' }}>
+                                                        <div style={{ border: '1pt solid black', width: '150px', height: '35px', textAlign: 'center', lineHeight: '35px', color: '#ccc', fontStyle: 'italic', fontSize: '10pt' }}>
+                                                            Đáp số: .........
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -219,10 +227,9 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                             );
                         })}
 
-                        {/* Footer đề thi */}
-                        <div className="footer">
+                        <div className="footer" style={{ textAlign: 'center', marginTop: '50px', borderTop: '1pt solid black', paddingTop: '15px', fontWeight: 'bold' }}>
                             <p>--- HẾT ---</p>
-                            <p className="text-[10pt] italic font-normal mt-2">(Thí sinh không được sử dụng tài liệu. Cán bộ coi thi không giải thích gì thêm)</p>
+                            <p style={{ fontSize: '10pt', fontWeight: 'normal', fontStyle: 'italic' }}>(Thí sinh không được sử dụng tài liệu. Cán bộ coi thi không giải thích gì thêm)</p>
                         </div>
                     </div>
                 </div>
