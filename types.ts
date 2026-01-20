@@ -56,6 +56,7 @@ export interface Quiz {
   questions: Question[];
   createdAt: string;
   isPublished: boolean;
+  isMonitored?: boolean; // Chế độ giám sát (chống gian lận)
 }
 
 export interface Result {
@@ -71,6 +72,7 @@ export interface Result {
   detailScores?: number[];
   pointsAwarded?: number;
   userAnswers?: Record<string, any>; 
+  violationCount?: number; // Số lần vi phạm chuyển tab
 }
 
 export interface AuthState {
