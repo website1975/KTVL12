@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question } from '../types';
 import { saveResult, addPointsToUser } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, Info, CheckCircle2 } from 'lucide-react';
+import { Clock, Send, XCircle, Info, CheckCircle2, ShieldAlert } from 'lucide-react';
 import LatexText from './LatexText';
 
 interface QuizTakerProps {
@@ -15,6 +15,25 @@ interface QuizTakerProps {
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const [spent, setSpent] = useState(0);
     const [currentAnswers, setCurrentAnswers] = useState<Record<string, any>>({});
+    const [violations, setViolations] = useState(0);
+    const [showWarning, setShowWarning] = useState(false);
+    
+    // Sử dụng ref để handleSubmit có thể truy cập state mới nhất trong event listener
+    const currentAnswersRef = useRef(currentAnswers);
+    const spentRef = useRef(spent);
+    const violationsRef = useRef(violations);
+
+    useEffect(() => {
+        currentAnswersRef.current = currentAnswers;
+    }, [currentAnswers]);
+
+    useEffect(() => {
+        spentRef.current = spent;
+    }, [spent]);
+
+    useEffect(() => {
+        violationsRef.current = violations;
+    }, [violations]);
 
     // Sắp xếp câu hỏi theo thứ tự chuẩn: MCQ -> Group-TF -> Short
     const orderedQuestions = useMemo(() => {
@@ -31,12 +50,40 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return () => clearInterval(timer);
     }, []);
 
-    const handleSubmit = async () => {
-        if (!confirm('Bạn có chắc chắn muốn nộp bài?')) return;
-        
+    // Logic Giám sát thi (Chống chuyển tab)
+    useEffect(() => {
+        if (!quiz.isMonitored) return;
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                // Khi rời khỏi tab
+            } else {
+                // Khi quay lại tab
+                setViolations(v => {
+                    const newVal = v + 1;
+                    if (newVal >= 3) {
+                        handleAutoSubmit();
+                    } else {
+                        setShowWarning(true);
+                    }
+                    return newVal;
+                });
+            }
+        };
+
+        window.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('blur', handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', handleVisibilityChange);
+        };
+    }, [quiz.isMonitored]);
+
+    const calculateScore = (answers: Record<string, any>) => {
         let score = 0;
         quiz.questions.forEach(q => {
-            const ans = currentAnswers[q.id];
+            const ans = answers[q.id];
             if (q.type === 'mcq') {
                 if (ans === q.correctAnswer) score += Number(q.points);
             } else if (q.type === 'short') {
@@ -46,14 +93,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 q.subQuestions.forEach((sq, i) => {
                     if (ans?.[i] === sq.correctAnswer) subCorrect++;
                 });
-                
-                // Quy tắc tính điểm Phần II (Tham khảo chuẩn mới)
                 if (subCorrect === 4) score += Number(q.points);
-                else if (subCorrect === 3) score += Number(q.points) * 0.5; // Ví dụ 0.5/1.0
-                else if (subCorrect === 2) score += Number(q.points) * 0.25; // Ví dụ 0.25/1.0
+                else if (subCorrect === 3) score += Number(q.points) * 0.5;
+                else if (subCorrect === 2) score += Number(q.points) * 0.25;
                 else if (subCorrect === 1) score += Number(q.points) * 0.1;
             }
         });
+        return score;
+    };
+
+    const handleAutoSubmit = async () => {
+        alert("BẠN ĐÃ VI PHẠM QUY CHẾ THI QUÁ 3 LẦN (CHUYỂN TAB/RỜI TRÌNH DUYỆT). HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI!");
+        await finalizeSubmit(true);
+    };
+
+    const finalizeSubmit = async (isAuto = false) => {
+        const finalAnswers = currentAnswersRef.current;
+        const finalSpent = spentRef.current;
+        const finalViolations = violationsRef.current;
+        const score = calculateScore(finalAnswers);
 
         const result: Result = {
             id: uuidv4(),
@@ -64,20 +122,26 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             score: score,
             totalQuestions: quiz.questions.length,
             submittedAt: new Date().toISOString(),
-            durationSeconds: spent,
+            durationSeconds: finalSpent,
             pointsAwarded: score,
-            userAnswers: currentAnswers 
+            userAnswers: finalAnswers,
+            violationCount: finalViolations
         };
 
         try {
             await saveResult(result);
             await addPointsToUser(student.id, score);
-            alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
+            if (!isAuto) alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
             onExit();
         } catch (error) {
             console.error("Submission error:", error);
             alert("Có lỗi khi lưu kết quả!");
         }
+    };
+
+    const handleSubmit = async () => {
+        if (!confirm('Bạn có chắc chắn muốn nộp bài?')) return;
+        await finalizeSubmit(false);
     };
 
     const renderQuestion = (q: Question, globalIdx: number) => (
@@ -152,11 +216,41 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
+            {/* Overlay Cảnh báo */}
+            {showWarning && (
+                <div className="fixed inset-0 z-[2000] bg-red-600/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white rounded-[3rem] p-12 max-w-lg text-center shadow-2xl space-y-6">
+                        <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
+                            <ShieldAlert size={48}/>
+                        </div>
+                        <h2 className="text-2xl font-black uppercase text-red-600">CẢNH BÁO VI PHẠM!</h2>
+                        <p className="font-bold text-slate-600 leading-relaxed">
+                            Hệ thống ghi nhận bạn vừa chuyển tab hoặc rời khỏi cửa sổ làm bài. <br/>
+                            <span className="text-red-600 underline">Số lần vi phạm: {violations}/3</span>
+                        </p>
+                        <p className="text-xs text-slate-400 italic">
+                            Nếu vi phạm đủ 3 lần, bài làm của bạn sẽ bị hệ thống tự động nộp ngay lập tức.
+                        </p>
+                        <button 
+                            onClick={() => setShowWarning(false)}
+                            className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all"
+                        >
+                            TÔI ĐÃ HIỂU VÀ QUAY LẠI LÀM BÀI
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <header className="max-w-5xl w-full mx-auto flex justify-between items-center bg-white/90 backdrop-blur-xl p-6 rounded-[2.5rem] border shadow-sm sticky top-6 z-50 mb-10 mt-6 px-10">
                 <div>
                     <h1 className="font-black text-slate-800 uppercase tracking-tight text-lg">{quiz.title}</h1>
                     <div className="flex items-center gap-3 mt-1">
                         <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase">KHỐI {quiz.grade}</span>
+                        {quiz.isMonitored && (
+                            <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 animate-pulse">
+                                <ShieldAlert size={10}/> ĐANG GIÁM SÁT ({violations}/3)
+                            </span>
+                        )}
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Thí sinh: {student.fullName}</p>
                     </div>
                 </div>
