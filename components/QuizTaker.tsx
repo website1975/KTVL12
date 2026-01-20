@@ -17,11 +17,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const [currentAnswers, setCurrentAnswers] = useState<Record<string, any>>({});
     const [violations, setViolations] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Sử dụng ref để handleSubmit có thể truy cập state mới nhất trong event listener
+    // Sử dụng ref để quản lý trạng thái đồng bộ
     const currentAnswersRef = useRef(currentAnswers);
     const spentRef = useRef(spent);
     const violationsRef = useRef(violations);
+    const isInternalActionRef = useRef(false); // Dùng để chặn cảnh báo khi hiện confirm/alert
 
     useEffect(() => {
         currentAnswersRef.current = currentAnswers;
@@ -52,12 +54,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     // Logic Giám sát thi (Chống chuyển tab)
     useEffect(() => {
-        if (!quiz.isMonitored) return;
+        if (!quiz.isMonitored || isSubmitting) return;
 
         const handleVisibilityChange = () => {
-            if (document.hidden) {
-                // Khi rời khỏi tab
-            } else {
+            // Nếu đang thực hiện hành động nội bộ (như confirm nộp bài) thì bỏ qua
+            if (isInternalActionRef.current) return;
+
+            if (!document.hidden) {
                 // Khi quay lại tab
                 setViolations(v => {
                     const newVal = v + 1;
@@ -71,14 +74,21 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             }
         };
 
+        const handleBlur = () => {
+            if (isInternalActionRef.current) return;
+            // Một số trình duyệt trigger blur khi chuyển tab
+            // Ta không increment ở đây để tránh bị đúp với visibilitychange
+            // Nhưng có thể dùng để phát hiện rời cửa sổ
+        };
+
         window.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('blur', handleVisibilityChange);
+        window.addEventListener('blur', handleBlur);
 
         return () => {
             window.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('blur', handleVisibilityChange);
+            window.removeEventListener('blur', handleBlur);
         };
-    }, [quiz.isMonitored]);
+    }, [quiz.isMonitored, isSubmitting]);
 
     const calculateScore = (answers: Record<string, any>) => {
         let score = 0;
@@ -103,11 +113,15 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     };
 
     const handleAutoSubmit = async () => {
+        isInternalActionRef.current = true;
         alert("BẠN ĐÃ VI PHẠM QUY CHẾ THI QUÁ 3 LẦN (CHUYỂN TAB/RỜI TRÌNH DUYỆT). HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI!");
         await finalizeSubmit(true);
     };
 
     const finalizeSubmit = async (isAuto = false) => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        
         const finalAnswers = currentAnswersRef.current;
         const finalSpent = spentRef.current;
         const finalViolations = violationsRef.current;
@@ -131,16 +145,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         try {
             await saveResult(result);
             await addPointsToUser(student.id, score);
-            if (!isAuto) alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
+            if (!isAuto) {
+                isInternalActionRef.current = true;
+                alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
+            }
             onExit();
         } catch (error) {
             console.error("Submission error:", error);
             alert("Có lỗi khi lưu kết quả!");
+            setIsSubmitting(false);
+            isInternalActionRef.current = false;
         }
     };
 
     const handleSubmit = async () => {
-        if (!confirm('Bạn có chắc chắn muốn nộp bài?')) return;
+        isInternalActionRef.current = true; // Chặn cảnh báo khi hiện confirm
+        if (!confirm('Bạn có chắc chắn muốn nộp bài?')) {
+            isInternalActionRef.current = false;
+            return;
+        }
         await finalizeSubmit(false);
     };
 
@@ -217,7 +240,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
             {/* Overlay Cảnh báo */}
-            {showWarning && (
+            {showWarning && !isSubmitting && (
                 <div className="fixed inset-0 z-[2000] bg-red-600/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white rounded-[3rem] p-12 max-w-lg text-center shadow-2xl space-y-6">
                         <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
@@ -232,7 +255,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                             Nếu vi phạm đủ 3 lần, bài làm của bạn sẽ bị hệ thống tự động nộp ngay lập tức.
                         </p>
                         <button 
-                            onClick={() => setShowWarning(false)}
+                            onClick={() => {
+                                setShowWarning(false);
+                                isInternalActionRef.current = false;
+                            }}
                             className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all"
                         >
                             TÔI ĐÃ HIỂU VÀ QUAY LẠI LÀM BÀI
@@ -261,7 +287,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                             {Math.floor(spent / 60)}:{(spent % 60).toString().padStart(2, '0')}
                         </span>
                     </div>
-                    <button onClick={() => confirm('Thoát bài thi? Kết quả sẽ không được lưu.') && onExit()} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><XCircle size={28}/></button>
+                    <button onClick={() => {
+                        isInternalActionRef.current = true;
+                        if (confirm('Thoát bài thi? Kết quả sẽ không được lưu.')) {
+                            onExit();
+                        } else {
+                            isInternalActionRef.current = false;
+                        }
+                    }} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><XCircle size={28}/></button>
                 </div>
             </header>
 
@@ -303,12 +336,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             <footer className="fixed bottom-0 left-0 right-0 p-8 bg-white/80 backdrop-blur-md border-t flex justify-center z-[60] shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
                 <button 
                     onClick={handleSubmit}
-                    className="group relative flex items-center gap-4 px-24 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black uppercase text-sm shadow-2xl hover:bg-black hover:scale-105 active:scale-95 transition-all overflow-hidden"
+                    disabled={isSubmitting}
+                    className="group relative flex items-center gap-4 px-24 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black uppercase text-sm shadow-2xl hover:bg-black hover:scale-105 active:scale-95 transition-all overflow-hidden disabled:opacity-50"
                 >
                     <div className="absolute inset-0 bg-blue-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                     <span className="relative z-10 flex items-center gap-4">
                         <Send size={20} className="group-hover:rotate-12 transition-transform"/>
-                        Nộp bài thi ngay
+                        {isSubmitting ? 'ĐANG NỘP BÀI...' : 'Nộp bài thi ngay'}
                     </span>
                 </button>
             </footer>
