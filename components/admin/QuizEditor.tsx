@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar, ImageMinus, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -15,6 +15,8 @@ interface QuizEditorProps {
     setQuizType: (val: QuizType) => void;
     isPublished: boolean;
     setIsPublished: (val: boolean) => void;
+    isMonitored?: boolean;
+    setIsMonitored: (val: boolean) => void;
     duration: number;
     setDuration: (val: number) => void;
     category: string;
@@ -71,6 +73,15 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
         setQuestions([...questions, newQ]);
     };
 
+    const handleRemoveImage = (qId: string) => {
+        const nl = [...questions];
+        const i = nl.findIndex(x => x.id === qId);
+        if (i !== -1) {
+            nl[i].imageUrl = undefined;
+            setQuestions(nl);
+        }
+    };
+
     return (
         <div className="space-y-6 mt-10">
             <div className="flex items-center justify-between bg-white p-6 rounded-3xl border shadow-sm">
@@ -103,7 +114,23 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
                     <div className="mb-6 flex items-center gap-6 p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                         <div className="shrink-0">{q.imageUrl ? <img src={q.imageUrl} className="w-20 h-20 object-cover rounded-xl border" alt="q" /> : <div className="w-20 h-20 bg-white border rounded-xl flex items-center justify-center text-slate-300">{uploadingId === q.id ? <Loader2 className="animate-spin" size={16}/> : <ImageIcon size={20}/>}</div>}</div>
-                        <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} /><label htmlFor={`img-${q.id}`} className="px-4 py-2 bg-white border rounded-xl text-[9px] font-black uppercase cursor-pointer hover:bg-slate-50">Tải ảnh</label>
+                        <div className="flex flex-col gap-2">
+                            <div className="flex gap-2">
+                                <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} />
+                                <label htmlFor={`img-${q.id}`} className="px-4 py-2 bg-white border rounded-xl text-[9px] font-black uppercase cursor-pointer hover:bg-slate-50 flex items-center gap-2">
+                                    <ImageIcon size={14}/> Tải ảnh
+                                </label>
+                                {q.imageUrl && (
+                                    <button 
+                                        onClick={() => handleRemoveImage(q.id)}
+                                        className="px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[9px] font-black uppercase hover:bg-red-600 hover:text-white transition-all flex items-center gap-2"
+                                    >
+                                        <ImageMinus size={14}/> Xóa ảnh
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase italic">Hỗ trợ định dạng .jpg, .png, .webp</p>
+                        </div>
                     </div>
 
                     {type === 'mcq' && q.options && (
@@ -207,10 +234,22 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {props.quizType === 'test' && (
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời gian mở đề (Kiểm tra)</label>
-                            <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.startTime} onChange={e => props.setStartTime(e.target.value)} />
-                        </div>
+                        <>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời gian mở đề (Kiểm tra)</label>
+                                <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.startTime} onChange={e => props.setStartTime(e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-red-600 uppercase ml-1 flex items-center gap-1"><ShieldAlert size={12}/> Giám sát (Chống gian lận)</label>
+                                <button 
+                                    onClick={() => props.setIsMonitored(!props.isMonitored)} 
+                                    className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all flex items-center justify-center gap-2 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                                >
+                                    {props.isMonitored ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
+                                    {props.isMonitored ? 'ĐANG BẬT GIÁM SÁT THI' : 'KHÔNG GIÁM SÁT (TỰ DO)'}
+                                </button>
+                            </div>
+                        </>
                     )}
                     {props.quizType === 'practice' && (
                         <div className="space-y-1">
