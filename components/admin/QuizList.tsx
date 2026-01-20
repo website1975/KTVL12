@@ -76,19 +76,13 @@ const QuizList: React.FC<QuizListProps> = ({
                         <div 
                             key={q.id} 
                             className={`rounded-[2.5rem] p-8 border transition-all flex flex-col group relative overflow-hidden border-b-4 ${q.isPublished 
-                                ? 'bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 border-b-blue-600 border-slate-100 opacity-100' 
-                                : 'bg-slate-100 border-dashed border-slate-300 opacity-60 grayscale-[0.2]'}`}
+                                ? 'bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 border-b-blue-600 border-slate-100' 
+                                : 'bg-slate-50 border-dashed border-slate-300 opacity-75'}`}
                         >
-                            {!q.isPublished && (
-                                <div className="absolute top-2 right-4 bg-slate-500 text-white text-[7px] font-black px-2 py-0.5 rounded-full z-10 tracking-widest uppercase">
-                                    Bản nháp
-                                </div>
-                            )}
-
                             <div className="flex justify-between items-start mb-6">
                                 <div className="flex flex-col gap-1">
-                                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest w-fit ${q.isPublished ? 'bg-blue-50 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
-                                        LỚP {q.grade}
+                                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-tight w-fit ${q.isPublished ? 'bg-blue-50 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
+                                        KHỐI {q.grade}
                                     </span>
                                     {q.category && <span className={`text-[8px] font-bold uppercase px-2 ${q.isPublished ? 'text-blue-500' : 'text-slate-400'}`}>{q.category}</span>}
                                 </div>
@@ -105,18 +99,18 @@ const QuizList: React.FC<QuizListProps> = ({
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div className={`${q.isPublished ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-200/50 border-slate-200'} rounded-2xl p-3 flex flex-col items-center justify-center border`}>
                                     <FileText size={14} className={q.isPublished ? "text-blue-500" : "text-slate-400"}/>
-                                    <span className={`text-[10px] font-black ${q.isPublished ? 'text-blue-700' : 'text-slate-500'}`}>{q.questions.length} câu hỏi</span>
+                                    <span className={`text-[10px] font-black ${q.isPublished ? 'text-blue-700' : 'text-slate-500'}`}>{q.questions.length} CÂU HỎI</span>
                                 </div>
                                 <div className="bg-slate-50 rounded-2xl p-3 flex flex-col items-center justify-center border border-slate-100">
                                     <Users size={14} className="text-slate-400"/>
-                                    <span className="text-[10px] font-black text-slate-700">{attempts} lượt làm</span>
+                                    <span className="text-[10px] font-black text-slate-700">{attempts} LƯỢT LÀM</span>
                                 </div>
                             </div>
 
                             <div className="mt-auto pt-4 border-t border-slate-100">
                                 <button 
                                     onClick={() => onPreview(q)} 
-                                    className={`w-full py-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all shadow-sm ${q.isPublished 
+                                    className={`w-full py-4 rounded-xl text-[10px] font-extrabold uppercase flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${q.isPublished 
                                         ? 'bg-blue-600 text-white hover:bg-blue-700' 
                                         : 'bg-slate-800 text-white hover:bg-black'}`}
                                 >
