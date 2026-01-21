@@ -16,6 +16,7 @@ import QuizList from './QuizList';
 import QuizEditor from './QuizEditor';
 import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
+import ExamMonitor from './ExamMonitor';
 import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
 import ResultHistoryModal from './ResultHistoryModal';
@@ -23,13 +24,13 @@ import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 import { 
     Users as UsersIcon, ClipboardList, Sparkles, FolderTree, 
-    Database, PlusCircle, LayoutDashboard
+    Database, PlusCircle, LayoutDashboard, ShieldAlert
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const AdminDashboard: React.FC = () => {
     // --- QUẢN LÝ MENU ---
-    const [activeMenu, setActiveMenu] = useState<'quizzes' | 'students' | 'results' | 'ai' | 'editor' | 'chapters' | 'bank'>('quizzes');
+    const [activeMenu, setActiveMenu] = useState<'quizzes' | 'students' | 'results' | 'ai' | 'editor' | 'chapters' | 'bank' | 'monitor'>('quizzes');
     
     // --- DỮ LIỆU TỔNG ---
     const [users, setUsers] = useState<User[]>([]);
@@ -172,6 +173,7 @@ const AdminDashboard: React.FC = () => {
                         { id: 'quizzes', icon: ClipboardList, label: 'QUẢN LÝ ĐỀ THI' },
                         { id: 'students', icon: UsersIcon, label: 'QUẢN LÝ HỌC SINH' },
                         { id: 'results', icon: LayoutDashboard, label: 'BẢNG ĐIỂM TỔNG' },
+                        { id: 'monitor', icon: ShieldAlert, label: 'KIỂM SOÁT THI' },
                         { id: 'ai', icon: Sparkles, label: 'SOẠN ĐỀ BẰNG AI' },
                         { id: 'chapters', icon: FolderTree, label: 'QUẢN LÝ CHƯƠNG' },
                         { id: 'bank', icon: Database, label: 'NGÂN HÀNG CÂU HỎI' }
@@ -207,6 +209,8 @@ const AdminDashboard: React.FC = () => {
                         onDeleteResult={h => confirm('Xóa?') && Promise.all(h.map(x => deleteResult(x.id))).then(refreshData)} 
                     />
                 )}
+
+                {activeMenu === 'monitor' && <ExamMonitor />}
 
                 {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions(prev => [...prev, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
                 {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={handleAiGenerate} hasQuestionsInEditor={questions.length > 0} />}
