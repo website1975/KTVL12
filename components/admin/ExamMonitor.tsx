@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult } from '../../types';
 import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession } from '../../services/storage';
-import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle } from 'lucide-react';
-import { format, addMinutes } from 'date-fns';
+import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi } from 'lucide-react';
+import { format, addMinutes, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
 const ExamMonitor: React.FC = () => {
@@ -13,10 +13,14 @@ const ExamMonitor: React.FC = () => {
     const [selectedQuizId, setSelectedQuizId] = useState<string>('all');
     const [searchCode, setSearchCode] = useState('');
     const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
+    const [now, setNow] = useState(new Date());
 
     useEffect(() => {
         refreshData();
-        const interval = setInterval(refreshData, 5000); 
+        const interval = setInterval(() => {
+            refreshData();
+            setNow(new Date());
+        }, 5000); 
         return () => clearInterval(interval);
     }, []);
 
@@ -24,12 +28,10 @@ const ExamMonitor: React.FC = () => {
         const [s, r, q] = await Promise.all([getExamSessions(), getResults(), getQuizzes()]);
         setSessions(s);
         setResults(r);
-        setQuizzes(q.filter(item => item.type === 'test'));
+        setQuizzes(q.filter(item => item.type === 'test' || item.type === 'practice'));
     };
 
     const activeSessions = useMemo(() => {
-        // Hiển thị tất cả các phiên đang có trong DB để Admin có thể dọn dẹp
-        // Kể cả khi đề thi đó đã bị chuyển sang luyện tập
         return sessions.filter(s => selectedQuizId === 'all' || s.quizId === selectedQuizId);
     }, [sessions, selectedQuizId]);
 
@@ -105,13 +107,13 @@ const ExamMonitor: React.FC = () => {
                 <div className="flex items-center gap-4 flex-1 w-full">
                     <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg"><ShieldAlert size={24}/></div>
                     <div className="flex-1">
-                        <h2 className="text-xl font-black uppercase tracking-tight">Kiểm soát đề kiểm tra</h2>
+                        <h2 className="text-xl font-black uppercase tracking-tight">Giám sát làm bài</h2>
                         <select 
                             className="mt-1 w-full max-w-xs bg-slate-50 border rounded-xl p-2 text-xs font-black uppercase outline-none"
                             value={selectedQuizId}
                             onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}
                         >
-                            <option value="all">Tất cả đề kiểm tra</option>
+                            <option value="all">Tất cả đề đang mở</option>
                             {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                         </select>
                     </div>
@@ -126,7 +128,7 @@ const ExamMonitor: React.FC = () => {
                 <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-blue-600 shadow-sm flex items-center gap-6">
                     <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Users size={32}/></div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thí sinh đang thi</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thí sinh đang Online</p>
                         <h3 className="text-3xl font-black text-slate-800">{activeSessions.length} <span className="text-sm text-slate-400 font-bold">HS</span></h3>
                     </div>
                 </div>
@@ -157,9 +159,9 @@ const ExamMonitor: React.FC = () => {
                             <tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400">
                                 <th className="p-6">STT</th>
                                 <th className="p-6">Học sinh</th>
-                                <th className="p-6 text-center">Thời gian vào</th>
-                                <th className="p-6 text-center">Tgian kết thúc</th>
+                                <th className="p-6 text-center">Bắt đầu lúc</th>
                                 <th className="p-6 text-center">Vi phạm</th>
+                                <th className="p-6 text-center">Kết nối</th>
                                 <th className="p-6 text-center">Trạng thái</th>
                                 <th className="p-6 text-center">Hành động</th>
                             </tr>
@@ -167,26 +169,41 @@ const ExamMonitor: React.FC = () => {
                         <tbody className="divide-y">
                             {activeSessions.map((s, idx) => {
                                 const quiz = quizzes.find(q => q.id === s.quizId);
-                                const deadline = quiz && quiz.startTime ? addMinutes(new Date(quiz.startTime), quiz.durationMinutes) : null;
+                                const lastUpdateDate = s.lastUpdate ? new Date(s.lastUpdate) : new Date();
+                                const diffSeconds = differenceInSeconds(now, lastUpdateDate);
+                                const isOffline = diffSeconds > 60; // Quá 1 phút không báo heartbeat là offline
+
                                 return (
-                                    <tr key={s.id} className="hover:bg-slate-50 transition-colors group">
+                                    <tr key={s.id} className={`hover:bg-slate-50 transition-colors group ${isOffline ? 'opacity-50' : ''}`}>
                                         <td className="p-6 font-black text-slate-300">{idx + 1}</td>
                                         <td className="p-6">
-                                            <p className="font-black text-slate-800 uppercase text-xs">{s.studentName}</p>
+                                            <p className={`font-black uppercase text-xs ${isOffline ? 'text-slate-400' : 'text-slate-800'}`}>{s.studentName}</p>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase">MS: {s.studentCode}</p>
                                         </td>
                                         <td className="p-6 text-center text-xs font-bold text-slate-500">
                                             {s.startTime ? format(new Date(s.startTime), 'HH:mm:ss') : 'N/A'}
                                         </td>
-                                        <td className="p-6 text-center text-xs font-bold text-orange-600">{deadline ? format(deadline, 'HH:mm:ss') : 'N/A'}</td>
                                         <td className="p-6 text-center">
                                             <span className={`px-4 py-1.5 rounded-xl font-black text-xs ${s.violationCount > 0 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-400'}`}>
                                                 {s.violationCount} / 3
                                             </span>
                                         </td>
                                         <td className="p-6 text-center">
-                                            <span className="text-[9px] font-black uppercase text-emerald-600 flex items-center justify-center gap-1">
-                                                <RefreshCw size={10} className="animate-spin"/> Đang thi
+                                            {isOffline ? (
+                                                <div className="flex flex-col items-center gap-1 text-red-500">
+                                                    <WifiOff size={16}/>
+                                                    <span className="text-[8px] font-black uppercase">Mất kết nối {Math.floor(diffSeconds/60)}p</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-1 text-emerald-500">
+                                                    <Wifi size={16} className="animate-pulse"/>
+                                                    <span className="text-[8px] font-black uppercase">Ổn định</span>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="p-6 text-center">
+                                            <span className={`text-[9px] font-black uppercase flex items-center justify-center gap-1 ${isOffline ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                                {!isOffline && <RefreshCw size={10} className="animate-spin"/>} {isOffline ? 'Đã thoát' : 'Đang thi'}
                                             </span>
                                         </td>
                                         <td className="p-6 text-center">
@@ -203,14 +220,15 @@ const ExamMonitor: React.FC = () => {
                             })}
                             {activeSessions.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có thí sinh nào đang thi</td>
+                                    <td colSpan={7} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có thí sinh nào đang làm bài</td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
-
+            
+            {/* Phần Công bố Bảng Vàng giữ nguyên bên dưới */}
             <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl space-y-8">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="flex items-center gap-4">
