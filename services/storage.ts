@@ -1,31 +1,18 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter, Question } from '../types';
+import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult } from '../types';
 
-const getEnv = (name: string): string | undefined => {
-  try {
-    const metaEnv = (import.meta as any).env;
-    if (metaEnv && metaEnv[name]) return metaEnv[name];
-  } catch (e) {}
-  try {
-    if (typeof process !== 'undefined' && process.env && process.env[name]) {
-      return (process.env as any)[name];
-    }
-  } catch (e) {}
-  return undefined;
-};
-
-const supabaseUrl = getEnv('VITE_SUPABASE_URL');
-const supabaseKey = getEnv('VITE_SUPABASE_KEY');
+const SUPABASE_URL = 'https://lchfhsioxvgkjfsikycl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjaGZoc2lveHZna2pmc2lreWNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NTI3MDksImV4cCI6MjA4MDUyODcwOX0.toOc2ytPzo_cqhpQyd0YOLq4Zvk3BtfdZSziXN__j8Q';
 
 let supabase: any = null;
 
-if (supabaseUrl && supabaseKey) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey);
-  } catch (e) {
-    console.error("Lỗi khởi tạo Supabase:", e);
+try {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
   }
+} catch (e) {
+  console.error("Lỗi khởi tạo Supabase:", e);
 }
 
 export const isDatabaseConnected = (): boolean => {
@@ -50,21 +37,8 @@ const saveLocalResults = (results: Result[]) => {
   localStorage.setItem('eduquiz_results_backup', JSON.stringify(results));
 };
 
-const saveLocalResult = (result: Result) => {
-  const local = getLocalResults();
-  const idx = local.findIndex(r => r.id === result.id);
-  if (idx >= 0) {
-    local[idx] = result;
-  } else {
-    local.push(result);
-  }
-  saveLocalResults(local);
-};
-
 export const clearLocalCache = () => {
-    localStorage.removeItem('eduquiz_results_backup');
-    localStorage.removeItem('eduquiz_users_offline');
-    localStorage.removeItem('eduquiz_current_user');
+    localStorage.clear();
     window.location.reload();
 };
 
@@ -98,186 +72,160 @@ export const saveUser = async (user: User): Promise<void> => {
   };
   if (!supabase) {
       const local = getLocalUsers();
-      const existingIdx = local.findIndex(u => u.id === normalizedUser.id || (normalizedUser.studentCode && u.studentCode === normalizedUser.studentCode));
-      if (existingIdx >= 0) local[existingIdx] = normalizedUser;
-      else local.push(normalizedUser);
+      const idx = local.findIndex(u => u.id === normalizedUser.id);
+      if (idx >= 0) local[idx] = normalizedUser; else local.push(normalizedUser);
       saveLocalUsers(local);
       return;
   }
-  const { error } = await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
-  if (error) throw error;
-};
-
-export const addPointsToUser = async (userId: string, pointsToAdd: number, studentCode?: string): Promise<void> => {
-  if (!supabase) return;
-  const normalizedCode = studentCode?.toUpperCase();
-  let query = supabase.from('users').select('id, data');
-  if (normalizedCode) query = query.filter('data->>studentCode', 'eq', normalizedCode);
-  else query = query.eq('id', userId);
-  const { data: rows } = await query;
-  if (rows && rows.length > 0) {
-    const targetRow = rows[0];
-    const userData = targetRow.data as User;
-    userData.points = (userData.points || 0) + pointsToAdd;
-    await supabase.from('users').update({ data: userData }).eq('id', targetRow.id);
-  }
-};
-
-export const findUser = async (username: string): Promise<User | undefined> => {
-  const searchUsername = username.trim().toLowerCase();
-  if (!supabase) return getLocalUsers().find(u => u.username === searchUsername);
-  const { data, error } = await supabase.from('users').select('data').eq('username', searchUsername).maybeSingle();
-  if (error || !data) return undefined;
-  return data.data as User;
+  await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
   const searchCode = code.trim().toUpperCase();
   if (!supabase) return getLocalUsers().find(u => u.studentCode === searchCode);
-  const { data, error } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', searchCode).maybeSingle();
-  if (error || !data) return undefined;
-  return data.data as User;
+  const { data } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', searchCode).maybeSingle();
+  return data?.data as User;
+};
+
+export const findUser = async (username: string): Promise<User | undefined> => {
+  const name = username.trim().toLowerCase();
+  if (!supabase) return getLocalUsers().find(u => u.username === name);
+  const { data } = await supabase.from('users').select('data').eq('username', name).maybeSingle();
+  return data?.data as User;
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  const localUsers = getLocalUsers();
-  const userToDelete = localUsers.find(u => u.id === id);
-  saveLocalUsers(localUsers.filter(u => u.id !== id));
-  if (!supabase) return;
-  try {
-    await supabase.from('results').delete().eq('student_id', id);
-    if (userToDelete?.studentCode) {
-      await supabase.from('results').delete().filter('data->>studentCode', 'eq', userToDelete.studentCode.toUpperCase());
-    }
-    await supabase.from('users').delete().eq('id', id);
-  } catch (error) {
-    console.error("Lỗi xóa triệt để:", error);
-    throw error;
-  }
+  if (supabase) await supabase.from('users').delete().eq('id', id);
+  const local = getLocalUsers();
+  saveLocalUsers(local.filter(u => u.id !== id));
 };
 
 export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
   if (!supabase) return false;
-  const { data: rows, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
-  if (fetchError || !rows) return false;
-  const updatedUser = { ...rows.data as User, password: newPass };
-  const { error: updateError } = await supabase.from('users').update({ data: updatedUser }).eq('id', userId);
-  return !updateError;
+  const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+  if (!data) return false;
+  const updated = { ...data.data as User, password: newPass };
+  const { error } = await supabase.from('users').update({ data: updated }).eq('id', userId);
+  return !error;
 };
 
 // --- Quizzes ---
 export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('quizzes').select('data');
-  return error ? [] : data.map((row: any) => row.data as Quiz).sort((a: Quiz, b: Quiz) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const { data } = await supabase.from('quizzes').select('data');
+  return data ? data.map((row: any) => row.data as Quiz) : [];
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
-  if (error) throw error;
+  await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
 };
 
-export const updateQuiz = async (updatedQuiz: Quiz): Promise<void> => {
+export const updateQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').update({ data: updatedQuiz, grade: updatedQuiz.grade }).eq('id', updatedQuiz.id);
-  if (error) throw error;
+  await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
-  if (!supabase) return;
-  await supabase.from('quizzes').delete().eq('id', id);
+  if (supabase) await supabase.from('quizzes').delete().eq('id', id);
 };
 
 // --- Results ---
 export const getResults = async (): Promise<Result[]> => {
   if (!supabase) return getLocalResults();
-  const { data, error } = await supabase.from('results').select('data');
-  if (error) return getLocalResults();
-  const dbResults = data.map((row: any) => row.data as Result);
-  saveLocalResults(dbResults);
-  return dbResults;
+  const { data } = await supabase.from('results').select('data');
+  return data ? data.map((row: any) => row.data as Result) : getLocalResults();
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
-  const normalizedResult = { ...result, studentCode: result.studentCode ? result.studentCode.toUpperCase() : undefined };
-  saveLocalResult(normalizedResult);
-  if (!supabase) return;
-  await supabase.from('results').insert({ id: normalizedResult.id, quiz_id: normalizedResult.quizId, student_id: normalizedResult.studentId, data: normalizedResult });
-};
-
-export const updateResultCode = async (resultId: string, newCode: string): Promise<void> => {
-    if (!supabase) return;
-    const { data: row } = await supabase.from('results').select('data').eq('id', resultId).single();
-    if (row) {
-        const resData = row.data as Result;
-        resData.studentCode = newCode.toUpperCase();
-        await supabase.from('results').update({ data: resData }).eq('id', resultId);
-    }
+  if (!supabase) {
+    const local = getLocalResults();
+    local.push(result);
+    saveLocalResults(local);
+    return;
+  }
+  await supabase.from('results').insert({ id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result });
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
-  if (!supabase) return;
-  await supabase.from('results').delete().eq('id', id);
+  if (supabase) await supabase.from('results').delete().eq('id', id);
 };
 
-export const getStudentStats = async (studentId: string, studentCode?: string) => {
-  const allResults = await getResults();
-  const userResults = allResults.filter(r => r.studentId === studentId || (studentCode && r.studentCode === studentCode.toUpperCase()));
-  const totalQuizzes = userResults.length;
-  return { 
-    totalQuizzes, 
-    avgScore: totalQuizzes > 0 ? (userResults.reduce((acc, curr) => acc + curr.score, 0) / totalQuizzes) : 0, 
-    totalSeconds: userResults.reduce((acc, curr) => acc + curr.durationSeconds, 0) 
-  };
+export const updateResultCode = async (id: string, code: string): Promise<void> => {
+    if (!supabase) return;
+    const { data } = await supabase.from('results').select('data').eq('id', id).single();
+    if (data) {
+        const d = data.data as Result;
+        d.studentCode = code.toUpperCase();
+        await supabase.from('results').update({ data: d }).eq('id', id);
+    }
+};
+
+export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
+  if (!supabase) return;
+  const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+  if (data) {
+    const d = data.data as User;
+    d.points = (d.points || 0) + points;
+    await supabase.from('users').update({ data: d }).eq('id', userId);
+  }
+};
+
+// --- Exam Sessions (Live Monitoring) ---
+export const getExamSessions = async (): Promise<ExamSession[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('exam_sessions').select('data');
+    return data ? data.map((row: any) => row.data as ExamSession) : [];
+};
+
+export const saveExamSession = async (session: ExamSession): Promise<void> => {
+    if (!supabase) return;
+    await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
+};
+
+export const deleteExamSession = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('exam_sessions').delete().eq('id', id);
+};
+
+// --- Published Results ---
+export const getPublishedResults = async (): Promise<PublishedResult[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('published_results').select('data');
+    return data ? data.map((row: any) => row.data as PublishedResult) : [];
+};
+
+export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
+    if (!supabase) return;
+    await supabase.from('published_results').upsert({ id: pub.id, data: pub });
 };
 
 // --- Chapters ---
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('chapters').select('data');
-  return error ? [] : data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order);
+  const { data } = await supabase.from('chapters').select('data');
+  return data ? data.map((row: any) => row.data as Chapter).sort((a,b) => a.order - b.order) : [];
 };
 
-export const saveChapter = async (chapter: Chapter): Promise<void> => {
-  if (!supabase) return;
-  await supabase.from('chapters').insert({ id: chapter.id, grade: chapter.grade, data: chapter });
+export const saveChapter = async (c: Chapter): Promise<void> => {
+  if (supabase) await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
 };
 
 export const deleteChapter = async (id: string): Promise<void> => {
-  if (!supabase) return;
-  await supabase.from('chapters').delete().eq('id', id);
+  if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
-// --- Standalone Bank Questions (Câu hỏi không thuộc đề nào) ---
+// --- Bank ---
 export const getBankQuestions = async (): Promise<Question[]> => {
-    if (!supabase) {
-        const stored = localStorage.getItem('eduquiz_standalone_bank');
-        return stored ? JSON.parse(stored) : [];
-    }
-    const { data, error } = await supabase.from('bank_questions').select('data');
-    return error ? [] : data.map((row: any) => row.data as Question);
+    if (!supabase) return [];
+    const { data } = await supabase.from('bank_questions').select('data');
+    return data ? data.map((row: any) => row.data as Question) : [];
 };
 
-export const saveBankQuestion = async (question: Question): Promise<void> => {
-    if (!supabase) {
-        const local = await getBankQuestions();
-        local.push(question);
-        localStorage.setItem('eduquiz_standalone_bank', JSON.stringify(local));
-        return;
-    }
-    await supabase.from('bank_questions').insert({ id: question.id, data: question });
-};
-
-export const deleteBankQuestion = async (id: string): Promise<void> => {
-    if (!supabase) {
-        const local = await getBankQuestions();
-        localStorage.setItem('eduquiz_standalone_bank', JSON.stringify(local.filter(q => q.id !== id)));
-        return;
-    }
-    await supabase.from('bank_questions').delete().eq('id', id);
+export const saveBankQuestion = async (q: Question): Promise<void> => {
+    if (!supabase) return;
+    await supabase.from('bank_questions').insert({ id: q.id, data: q });
 };
 
 export const initStorage = () => {
-  console.log(supabase ? "Database Connected" : "Running Offline");
+  console.log(supabase ? "Supabase Connected" : "Local Mode");
 };
