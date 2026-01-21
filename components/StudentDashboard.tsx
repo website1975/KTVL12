@@ -4,7 +4,9 @@ import { User, Quiz, Result, PublishedResult } from '../types';
 import { getQuizzes, getResults, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, AlertCircle, Sparkles, Star, Award } from 'lucide-react';
+// Added QuizPreviewModal import to support "Xem đề" functionality
+import QuizPreviewModal from './admin/QuizPreviewModal';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, AlertCircle, Sparkles, Star, Award, Users, X } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -18,8 +20,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [stats, setStats] = useState({ totalQuizzes: 0, avgScore: 0, totalSeconds: 0, accumulatedPoints: 0, bonusPoints: 0, effortPoints: 0 });
   const [results, setResults] = useState<Result[]>([]);
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
-  const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
+  const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
+  // Fix: Added missing state for quiz preview functionality
+  const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
 
   useEffect(() => {
     refreshData();
@@ -46,7 +50,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     
     setResults(userResults);
 
-    // Lấy Bảng Vàng: Chỉ những bản ghi mà mã học sinh nằm trong danh sách được công bố
     const userPubs = allPubs.filter(p => 
         user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
     ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
@@ -111,12 +114,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </header>
 
-      {/* BẢNG VÀNG KẾT QUẢ - ĐÍNH KÈM TRANG TRỌNG */}
+      {/* BẢNG VÀNG KẾT QUẢ - VINH DANH DANH SÁCH LỚP */}
       {publishedResults.length > 0 && (
           <section className="animate-fade-in-up">
               <div className="flex items-center gap-3 mb-6 px-4">
                   <Star className="text-yellow-500 fill-yellow-500" size={20}/>
-                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Bảng Vàng Vinh Danh Kết Quả</h2>
+                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Danh Sách Bảng Vàng Vinh Danh</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {publishedResults.map(pub => {
@@ -130,38 +133,29 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                           <div className="w-12 h-12 bg-yellow-500 text-slate-900 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-500/40">
                                               <Award size={24} />
                                           </div>
-                                          <div>
-                                              <p className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Kỳ thi đã công bố</p>
+                                          <div className="flex-1">
+                                              <p className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Bảng vàng vinh danh</p>
                                               <h3 className="text-white font-black uppercase text-sm leading-tight line-clamp-1">{pub.quizTitle}</h3>
                                           </div>
-                                      </div>
-                                      <div className="text-right">
-                                          <p className="text-[8px] font-bold text-slate-500 uppercase">{format(new Date(pub.publishedAt), 'HH:mm dd/MM')}</p>
                                       </div>
                                   </div>
 
                                   <div className="flex items-center justify-between bg-white/5 rounded-2xl p-5 border border-white/10 backdrop-blur-sm">
-                                      <div>
-                                          <p className="text-[9px] font-black text-slate-400 uppercase">Điểm số của bạn</p>
-                                          <div className="flex items-baseline gap-2">
-                                              <span className="text-4xl font-black text-emerald-400">{userResult?.score.toFixed(2)}</span>
-                                              <span className="text-xs text-slate-500 font-bold">/ 10.00</span>
+                                      <div className="flex items-center gap-4">
+                                          <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center font-black">{userResult?.score.toFixed(1)}</div>
+                                          <div>
+                                              <p className="text-[9px] font-black text-slate-400 uppercase">Hạng của bạn</p>
+                                              <p className="text-xs font-black text-white uppercase italic">Bạn đã lọt top xuất sắc!</p>
                                           </div>
                                       </div>
                                       <button 
-                                          onClick={() => {
-                                              const q = quizzes.find(item => item.id === pub.quizId);
-                                              if (userResult && q) setSelectedResult({ result: userResult, quiz: q });
-                                          }}
+                                          onClick={() => setViewingHonorees(pub)}
                                           className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-slate-900 rounded-xl text-[10px] font-black uppercase hover:bg-white transition-all shadow-lg active:scale-95"
                                       >
-                                          <Eye size={16}/> Xem chi tiết
+                                          <Users size={16}/> Xem danh sách lớp
                                       </button>
                                   </div>
                               </div>
-                              {/* Hiệu ứng lấp lánh */}
-                              <div className="absolute top-4 left-1/4 w-1 h-1 bg-white rounded-full animate-ping opacity-20"></div>
-                              <div className="absolute bottom-10 right-1/3 w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></div>
                           </div>
                       );
                   })}
@@ -169,6 +163,47 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </section>
       )}
 
+      {/* Modal hiển thị danh sách vinh danh (Honorees) */}
+      {viewingHonorees && (
+          <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+              <div className="bg-white rounded-[3rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white">
+                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-4">
+                          <div className="p-3 bg-yellow-500 text-slate-900 rounded-2xl"><Trophy size={24}/></div>
+                          <div>
+                              <h3 className="text-lg font-black uppercase tracking-tight italic">Bảng Vàng Vinh Danh</h3>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">{viewingHonorees.quizTitle}</p>
+                          </div>
+                      </div>
+                      <button onClick={() => setViewingHonorees(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
+                      {viewingHonorees.results.map((r, idx) => (
+                          <div key={r.id} className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${r.studentCode === user.studentCode ? 'border-yellow-500 bg-yellow-50/50' : 'border-slate-50 hover:border-slate-100'}`}>
+                              <div className="flex items-center gap-5">
+                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${idx === 0 ? 'bg-yellow-500 text-slate-900' : idx === 1 ? 'bg-slate-300 text-slate-700' : idx === 2 ? 'bg-orange-300 text-orange-800' : 'bg-slate-100 text-slate-400'}`}>
+                                      {idx + 1}
+                                  </div>
+                                  <div>
+                                      <p className="font-black text-slate-800 uppercase text-xs">{r.studentName}</p>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">MS: {r.studentCode}</p>
+                                  </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <span className="text-xl font-black text-blue-600">{r.score.toFixed(2)}</span>
+                                  <span className="text-[9px] font-black text-slate-300 uppercase">Điểm</span>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+                  <div className="p-6 bg-slate-50 text-center border-t">
+                      <p className="text-[10px] font-black text-slate-400 uppercase italic">Chúc mừng các bạn đã có kết quả xuất sắc!</p>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Các phần khác giữ nguyên... */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5">
             <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Trophy size={28} /></div>
@@ -321,6 +356,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             result={selectedResult.result} 
             quiz={selectedResult.quiz} 
             onClose={() => setSelectedResult(null)} 
+          />
+      )}
+
+      {/* Fix: Added missing QuizPreviewModal to support viewing quiz content */}
+      {previewQuiz && (
+          <QuizPreviewModal 
+            quiz={previewQuiz} 
+            onClose={() => setPreviewQuiz(null)} 
           />
       )}
     </div>
