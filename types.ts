@@ -38,7 +38,6 @@ export interface Question {
   options?: string[]; 
   correctAnswer?: string; 
   subQuestions?: SubQuestion[];
-  // Metadata để truy vết nguồn gốc câu hỏi trong ngân hàng
   quizTitle?: string;
   quizGrade?: Grade;
 }
@@ -56,7 +55,7 @@ export interface Quiz {
   questions: Question[];
   createdAt: string;
   isPublished: boolean;
-  isMonitored?: boolean; // Chế độ giám sát (chống gian lận)
+  isMonitored?: boolean;
 }
 
 export interface Result {
@@ -72,7 +71,28 @@ export interface Result {
   detailScores?: number[];
   pointsAwarded?: number;
   userAnswers?: Record<string, any>; 
-  violationCount?: number; // Số lần vi phạm chuyển tab
+  violationCount?: number;
+}
+
+export interface ExamSession {
+  id: string;
+  quizId: string;
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  startTime: string;
+  lastUpdate: string;
+  violationCount: number;
+  isFinished: boolean;
+}
+
+export interface PublishedResult {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  publishedAt: string;
+  studentCodes: string[];
+  results: Result[];
 }
 
 export interface AuthState {
