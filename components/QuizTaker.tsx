@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Quiz, User, Result, Question } from '../types';
-import { saveResult, addPointsToUser } from '../services/storage';
+import { Quiz, User, Result, Question, ExamSession } from '../types';
+import { saveResult, addPointsToUser, saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { Clock, Send, XCircle, Info, CheckCircle2, ShieldAlert } from 'lucide-react';
 import LatexText from './LatexText';
@@ -14,12 +14,13 @@ interface QuizTakerProps {
 }
 
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
+    const sessionIdRef = useRef(uuidv4());
+    
     // Tính toán thời gian kết thúc tuyệt đối cho đề Kiểm tra
     const deadline = useMemo(() => {
         if (quiz.type === 'test' && quiz.startTime) {
             return addMinutes(new Date(quiz.startTime), quiz.durationMinutes);
         }
-        // Với đề luyện tập, deadline tính từ lúc bắt đầu vào component
         return addMinutes(new Date(), quiz.durationMinutes);
     }, [quiz]);
 
@@ -29,7 +30,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     };
 
     const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
-    const [spent, setSpent] = useState(0); // Vẫn giữ để ghi nhận thời gian thực tế làm bài
+    const [spent, setSpent] = useState(0); 
     const [currentAnswers, setCurrentAnswers] = useState<Record<string, any>>({});
     const [violations, setViolations] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
@@ -45,6 +46,42 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         spentRef.current = spent;
         violationsRef.current = violations;
     }, [currentAnswers, spent, violations]);
+
+    // Đăng ký phiên thi lên hệ thống để Admin giám sát
+    useEffect(() => {
+        const session: ExamSession = {
+            id: sessionIdRef.current,
+            quizId: quiz.id,
+            studentId: student.id,
+            studentName: student.fullName,
+            studentCode: student.studentCode || 'N/A',
+            startTime: new Date().toISOString(),
+            lastUpdate: new Date().toISOString(),
+            violationCount: 0,
+            isFinished: false
+        };
+        saveExamSession(session);
+        return () => {
+            // Khi thoát ngang hoặc nộp bài, ta đánh dấu kết thúc hoặc xóa phiên giám sát
+            // Ở đây ta có thể để admin tự dọn dẹp hoặc xóa nếu không submmited
+        };
+    }, []);
+
+    // Cập nhật vi phạm lên DB thời gian thực
+    const updateSessionViolation = (newCount: number) => {
+        const session: ExamSession = {
+            id: sessionIdRef.current,
+            quizId: quiz.id,
+            studentId: student.id,
+            studentName: student.fullName,
+            studentCode: student.studentCode || 'N/A',
+            startTime: deadline.toISOString(), // Placeholder hoặc lưu chuẩn
+            lastUpdate: new Date().toISOString(),
+            violationCount: newCount,
+            isFinished: false
+        };
+        saveExamSession(session);
+    };
 
     // Sắp xếp câu hỏi theo thứ tự chuẩn
     const orderedQuestions = useMemo(() => {
@@ -79,6 +116,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             if (!document.hidden) {
                 setViolations(v => {
                     const newVal = v + 1;
+                    updateSessionViolation(newVal);
                     if (newVal >= 3) handleAutoSubmit("VI PHẠM QUY CHẾ");
                     else setShowWarning(true);
                     return newVal;
@@ -148,6 +186,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         try {
             await saveResult(result);
             await addPointsToUser(student.id, score);
+            await deleteExamSession(sessionIdRef.current); // Xóa giám sát khi đã nộp
             if (!isAuto) {
                 isInternalActionRef.current = true;
                 alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
