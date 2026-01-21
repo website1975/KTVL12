@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult } from '../../types';
 import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession } from '../../services/storage';
-import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi } from 'lucide-react';
+import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser } from 'lucide-react';
 import { format, addMinutes, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -14,25 +14,47 @@ const ExamMonitor: React.FC = () => {
     const [searchCode, setSearchCode] = useState('');
     const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
     const [now, setNow] = useState(new Date());
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    
+    // Lưu danh sách các ID đang trong quá trình xóa để tránh bị fetch đè lại
+    const deletingIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         refreshData();
         const interval = setInterval(() => {
-            refreshData();
+            refreshData(true); // âm thầm làm mới
             setNow(new Date());
         }, 5000); 
         return () => clearInterval(interval);
     }, []);
 
-    const refreshData = async () => {
-        const [s, r, q] = await Promise.all([getExamSessions(), getResults(), getQuizzes()]);
-        setSessions(s);
-        setResults(r);
-        setQuizzes(q.filter(item => item.type === 'test' || item.type === 'practice'));
+    const refreshData = async (silent = false) => {
+        if (!silent) setIsRefreshing(true);
+        try {
+            const [s, r, q] = await Promise.all([getExamSessions(), getResults(), getQuizzes()]);
+            
+            // Lọc bỏ những phiên đang bị xóa (tránh hiện tượng nhảy lại)
+            const validSessions = s.filter(session => !deletingIdsRef.current.has(session.id));
+            
+            setSessions(validSessions);
+            setResults(r);
+            setQuizzes(q.filter(item => item.type === 'test' || item.type === 'practice'));
+        } catch (error) {
+            console.error("Lỗi cập nhật giám sát:", error);
+        } finally {
+            if (!silent) setIsRefreshing(false);
+        }
     };
 
     const activeSessions = useMemo(() => {
-        return sessions.filter(s => selectedQuizId === 'all' || s.quizId === selectedQuizId);
+        return sessions
+            .filter(s => selectedQuizId === 'all' || s.quizId === selectedQuizId)
+            .sort((a, b) => {
+                // Sắp xếp cố định để danh sách không bị nhảy vị trí
+                const timeA = new Date(a.startTime || 0).getTime();
+                const timeB = new Date(b.startTime || 0).getTime();
+                return timeB - timeA; // Mới nhất lên đầu
+            });
     }, [sessions, selectedQuizId]);
 
     const totalViolations = activeSessions.reduce((acc, s) => acc + s.violationCount, 0);
@@ -89,37 +111,87 @@ const ExamMonitor: React.FC = () => {
 
     const handleClearSessions = async () => {
         if (!confirm("Dọn dẹp TOÀN BỘ dữ liệu giám sát hiện tại?")) return;
+        setIsRefreshing(true);
         for (const s of sessions) {
             await deleteExamSession(s.id);
         }
-        refreshData();
+        await refreshData();
+    };
+
+    const handleClearOffline = async () => {
+        const offlineSessions = sessions.filter(s => {
+            const lastUpdateDate = s.lastUpdate ? new Date(s.lastUpdate) : new Date();
+            return differenceInSeconds(now, lastUpdateDate) > 60;
+        });
+
+        if (offlineSessions.length === 0) return alert("Không có phiên thi nào đang ngoại tuyến.");
+        if (!confirm(`Xóa ${offlineSessions.length} phiên thi đã mất kết nối?`)) return;
+
+        setIsRefreshing(true);
+        for (const s of offlineSessions) {
+            deletingIdsRef.current.add(s.id);
+            await deleteExamSession(s.id);
+        }
+        await refreshData();
+        // Sau khi refresh xong, xóa khỏi blacklist
+        setTimeout(() => {
+            offlineSessions.forEach(s => deletingIdsRef.current.delete(s.id));
+        }, 2000);
     };
 
     const handleRemoveOneSession = async (id: string, name: string) => {
-        if (!confirm(`Xóa phiên thi của học sinh ${name}? (Dùng khi học sinh đã thoát hoặc lỗi treo)`)) return;
-        await deleteExamSession(id);
+        if (!confirm(`Xóa phiên thi của học sinh ${name}?`)) return;
+        
+        // Thêm vào blacklist tạm thời để tránh bị refresh đè lại
+        deletingIdsRef.current.add(id);
+        
+        // Cập nhật UI ngay lập tức để người dùng thấy mất luôn (Optimistic UI)
         setSessions(prev => prev.filter(s => s.id !== id));
+        
+        try {
+            await deleteExamSession(id);
+            // Đợi một chút để DB thực sự xóa xong rồi mới cho phép fetch lại dòng này
+            setTimeout(() => {
+                deletingIdsRef.current.delete(id);
+            }, 5000);
+        } catch (error) {
+            alert("Lỗi khi xóa phiên thi.");
+            deletingIdsRef.current.delete(id);
+            refreshData();
+        }
     };
 
     return (
         <div className="space-y-10 animate-fade-in pb-32">
             <div className="bg-white p-8 rounded-[3rem] border shadow-sm flex flex-col md:flex-row gap-6 items-center justify-between">
                 <div className="flex items-center gap-4 flex-1 w-full">
-                    <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg"><ShieldAlert size={24}/></div>
+                    <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg">
+                        <ShieldAlert size={24} className={isRefreshing ? 'animate-pulse' : ''}/>
+                    </div>
                     <div className="flex-1">
                         <h2 className="text-xl font-black uppercase tracking-tight">Giám sát làm bài</h2>
-                        <select 
-                            className="mt-1 w-full max-w-xs bg-slate-50 border rounded-xl p-2 text-xs font-black uppercase outline-none"
-                            value={selectedQuizId}
-                            onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}
-                        >
-                            <option value="all">Tất cả đề đang mở</option>
-                            {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
-                        </select>
+                        <div className="flex items-center gap-4 mt-1">
+                            <select 
+                                className="w-full max-w-xs bg-slate-50 border rounded-xl p-2 text-[10px] font-black uppercase outline-none"
+                                value={selectedQuizId}
+                                onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}
+                            >
+                                <option value="all">Tất cả đề đang mở</option>
+                                {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                            </select>
+                            {isRefreshing && <RefreshCw size={14} className="animate-spin text-blue-500"/>}
+                        </div>
                     </div>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={refreshData} className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all" title="Làm mới"><RefreshCw size={20}/></button>
+                    <button 
+                        onClick={handleClearOffline} 
+                        className="flex items-center gap-2 px-5 py-3 bg-orange-50 text-orange-600 rounded-2xl hover:bg-orange-600 hover:text-white transition-all text-[10px] font-black uppercase border border-orange-100"
+                        title="Xóa các máy đã thoát"
+                    >
+                        <Eraser size={18}/> Dọn Offline
+                    </button>
+                    <button onClick={() => refreshData()} className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all" title="Làm mới"><RefreshCw size={20}/></button>
                     <button onClick={handleClearSessions} className="p-4 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all" title="Dọn dẹp tất cả"><Trash2 size={20}/></button>
                 </div>
             </div>
@@ -129,7 +201,7 @@ const ExamMonitor: React.FC = () => {
                     <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Users size={32}/></div>
                     <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thí sinh đang Online</p>
-                        <h3 className="text-3xl font-black text-slate-800">{activeSessions.length} <span className="text-sm text-slate-400 font-bold">HS</span></h3>
+                        <h3 className="text-3xl font-black text-slate-800">{activeSessions.filter(s => differenceInSeconds(now, new Date(s.lastUpdate)) <= 60).length} <span className="text-sm text-slate-400 font-bold">HS</span></h3>
                     </div>
                 </div>
                 <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-red-600 shadow-sm flex items-center gap-6">
@@ -140,10 +212,10 @@ const ExamMonitor: React.FC = () => {
                     </div>
                 </div>
                 <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-orange-600 shadow-sm flex items-center gap-6">
-                    <div className="w-16 h-16 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0"><Clock size={32}/></div>
+                    <div className="w-16 h-16 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0"><WifiOff size={32}/></div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái thi</p>
-                        <h3 className="text-sm font-black text-orange-600 uppercase">Đang giám sát...</h3>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Máy đã thoát/treo</p>
+                        <h3 className="text-3xl font-black text-orange-600">{activeSessions.filter(s => differenceInSeconds(now, new Date(s.lastUpdate)) > 60).length} <span className="text-sm text-slate-400 font-bold">Máy</span></h3>
                     </div>
                 </div>
             </div>
@@ -168,13 +240,12 @@ const ExamMonitor: React.FC = () => {
                         </thead>
                         <tbody className="divide-y">
                             {activeSessions.map((s, idx) => {
-                                const quiz = quizzes.find(q => q.id === s.quizId);
                                 const lastUpdateDate = s.lastUpdate ? new Date(s.lastUpdate) : new Date();
                                 const diffSeconds = differenceInSeconds(now, lastUpdateDate);
-                                const isOffline = diffSeconds > 60; // Quá 1 phút không báo heartbeat là offline
+                                const isOffline = diffSeconds > 60;
 
                                 return (
-                                    <tr key={s.id} className={`hover:bg-slate-50 transition-colors group ${isOffline ? 'opacity-50' : ''}`}>
+                                    <tr key={s.id} className={`hover:bg-slate-50 transition-all group ${isOffline ? 'bg-slate-50/50' : ''}`}>
                                         <td className="p-6 font-black text-slate-300">{idx + 1}</td>
                                         <td className="p-6">
                                             <p className={`font-black uppercase text-xs ${isOffline ? 'text-slate-400' : 'text-slate-800'}`}>{s.studentName}</p>
@@ -190,29 +261,29 @@ const ExamMonitor: React.FC = () => {
                                         </td>
                                         <td className="p-6 text-center">
                                             {isOffline ? (
-                                                <div className="flex flex-col items-center gap-1 text-red-500">
+                                                <div className="flex flex-col items-center gap-1 text-red-400">
                                                     <WifiOff size={16}/>
-                                                    <span className="text-[8px] font-black uppercase">Mất kết nối {Math.floor(diffSeconds/60)}p</span>
+                                                    <span className="text-[8px] font-black uppercase whitespace-nowrap">OFF {Math.floor(diffSeconds/60)}p</span>
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col items-center gap-1 text-emerald-500">
                                                     <Wifi size={16} className="animate-pulse"/>
-                                                    <span className="text-[8px] font-black uppercase">Ổn định</span>
+                                                    <span className="text-[8px] font-black uppercase">Online</span>
                                                 </div>
                                             )}
                                         </td>
                                         <td className="p-6 text-center">
-                                            <span className={`text-[9px] font-black uppercase flex items-center justify-center gap-1 ${isOffline ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                            <span className={`text-[9px] font-black uppercase flex items-center justify-center gap-1 ${isOffline ? 'text-slate-300' : 'text-emerald-600'}`}>
                                                 {!isOffline && <RefreshCw size={10} className="animate-spin"/>} {isOffline ? 'Đã thoát' : 'Đang thi'}
                                             </span>
                                         </td>
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => handleRemoveOneSession(s.id, s.studentName)}
-                                                className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                                className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                                 title="Xóa phiên thi này"
                                             >
-                                                <XCircle size={18}/>
+                                                <XCircle size={20}/>
                                             </button>
                                         </td>
                                     </tr>
@@ -228,7 +299,6 @@ const ExamMonitor: React.FC = () => {
                 </div>
             </div>
             
-            {/* Phần Công bố Bảng Vàng giữ nguyên bên dưới */}
             <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl space-y-8">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="flex items-center gap-4">
