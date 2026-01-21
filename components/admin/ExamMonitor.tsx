@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult } from '../../types';
 import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession } from '../../services/storage';
-import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter } from 'lucide-react';
+import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square } from 'lucide-react';
 import { format, addMinutes } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -12,6 +12,7 @@ const ExamMonitor: React.FC = () => {
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
     const [selectedQuizId, setSelectedQuizId] = useState<string>('all');
     const [searchCode, setSearchCode] = useState('');
+    const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         refreshData();
@@ -39,29 +40,47 @@ const ExamMonitor: React.FC = () => {
             const matchQuiz = selectedQuizId === 'all' || r.quizId === selectedQuizId;
             const matchCode = !searchCode || r.studentCode?.toLowerCase().includes(searchCode.toLowerCase());
             return matchQuiz && matchCode;
-        }).sort((a, b) => b.score - a.score); // Sắp xếp điểm cao lên đầu cho Bảng vàng
+        }).sort((a, b) => b.score - a.score);
     }, [results, quizzes, selectedQuizId, searchCode]);
+
+    const toggleSelect = (id: string) => {
+        const newSet = new Set(selectedResultIds);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedResultIds(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedResultIds.size === filteredResults.length) {
+            setSelectedResultIds(new Set());
+        } else {
+            setSelectedResultIds(new Set(filteredResults.map(r => r.id)));
+        }
+    };
 
     const handlePublish = async () => {
         if (selectedQuizId === 'all') return alert("Vui lòng chọn 1 đề thi cụ thể để công bố!");
-        if (filteredResults.length === 0) return alert("Không có kết quả nào để công bố!");
+        if (selectedResultIds.size === 0) return alert("Vui lòng tích chọn ít nhất một học sinh để vinh danh!");
         
         const quiz = quizzes.find(q => q.id === selectedQuizId);
         if (!quiz) return;
 
-        if (!confirm(`Xác nhận CÔNG BỐ BẢNG VÀNG cho ${filteredResults.length} học sinh đang hiển thị? Học sinh sẽ nhận được vinh danh ngay lập tức.`)) return;
+        const resultsToPublish = filteredResults.filter(r => selectedResultIds.has(r.id));
+
+        if (!confirm(`Xác nhận CÔNG BỐ BẢNG VÀNG cho ${resultsToPublish.length} học sinh đã chọn?`)) return;
 
         const pub: PublishedResult = {
             id: uuidv4(),
             quizId: selectedQuizId,
             quizTitle: quiz.title,
             publishedAt: new Date().toISOString(),
-            studentCodes: filteredResults.map(r => r.studentCode || ''),
-            results: filteredResults
+            studentCodes: resultsToPublish.map(r => r.studentCode || ''),
+            results: resultsToPublish
         };
 
         await savePublishedResult(pub);
         alert("🎉 ĐÃ CÔNG BỐ BẢNG VÀNG THÀNH CÔNG!");
+        setSelectedResultIds(new Set());
     };
 
     const handleClearSessions = async () => {
@@ -82,7 +101,7 @@ const ExamMonitor: React.FC = () => {
                         <select 
                             className="mt-1 w-full max-w-xs bg-slate-50 border rounded-xl p-2 text-xs font-black uppercase outline-none"
                             value={selectedQuizId}
-                            onChange={e => setSelectedQuizId(e.target.value)}
+                            onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}
                         >
                             <option value="all">Tất cả đề kiểm tra</option>
                             {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
@@ -173,26 +192,28 @@ const ExamMonitor: React.FC = () => {
                         <div className="p-3 bg-yellow-500 text-slate-900 rounded-2xl shadow-lg shadow-yellow-500/20"><Trophy size={24}/></div>
                         <div>
                             <h3 className="text-xl font-black text-white uppercase tracking-tight italic">Công bố kết quả - Bảng Vàng</h3>
-                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Lọc học sinh để vinh danh lên màn hình Dashboard</p>
+                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Tích chọn học sinh tiêu biểu để vinh danh</p>
                         </div>
                     </div>
                     <button 
                         onClick={handlePublish}
-                        disabled={filteredResults.length === 0}
+                        disabled={selectedResultIds.size === 0}
                         className="flex items-center gap-3 px-10 py-5 bg-yellow-500 text-slate-900 rounded-[2rem] font-black uppercase text-xs hover:bg-white transition-all shadow-xl active:scale-95 disabled:opacity-50"
                     >
-                        <Send size={18}/> CÔNG BỐ BẢNG VÀNG
+                        <Send size={18}/> CÔNG BỐ CHO {selectedResultIds.size} EM ĐÃ CHỌN
                     </button>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-4 bg-slate-800 p-4 rounded-[2rem] border border-slate-700">
                     <div className="flex-1 flex items-center gap-3 bg-slate-900 px-6 py-4 rounded-2xl border border-slate-700 focus-within:border-yellow-500 transition-all">
                         <Search size={18} className="text-slate-500"/>
-                        <input className="bg-transparent text-white outline-none w-full font-bold text-sm" placeholder="Tìm theo MAHS (để lọc theo lớp)..." value={searchCode} onChange={e => setSearchCode(e.target.value)} />
+                        <input className="bg-transparent text-white outline-none w-full font-bold text-sm uppercase" placeholder="Lọc theo MAHS (để chọn theo lớp)..." value={searchCode} onChange={e => setSearchCode(e.target.value)} />
                     </div>
-                    <div className="px-6 py-4 bg-slate-900 rounded-2xl border border-slate-700 flex items-center gap-2">
-                        <Filter size={16} className="text-slate-500"/>
-                        <span className="text-[10px] font-black text-slate-400 uppercase">Tìm thấy: <span className="text-yellow-500">{filteredResults.length}</span> thí sinh</span>
+                    <div className="px-6 py-4 bg-slate-900 rounded-2xl border border-slate-700 flex items-center gap-4">
+                        <button onClick={toggleSelectAll} className="flex items-center gap-2 text-[10px] font-black text-yellow-500 uppercase">
+                            {selectedResultIds.size === filteredResults.length && filteredResults.length > 0 ? <CheckSquare size={16}/> : <Square size={16}/>}
+                            Chọn tất cả
+                        </button>
                     </div>
                 </div>
 
@@ -205,11 +226,12 @@ const ExamMonitor: React.FC = () => {
                                 <th className="p-6">Học sinh</th>
                                 <th className="p-6 text-center">Điểm số</th>
                                 <th className="p-6 text-center">Thời gian nộp</th>
+                                <th className="p-6 text-center">Chọn lọc</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800">
                             {filteredResults.map((r, idx) => (
-                                <tr key={r.id} className="hover:bg-slate-800/50 transition-colors group">
+                                <tr key={r.id} onClick={() => toggleSelect(r.id)} className={`hover:bg-slate-800/50 transition-colors group cursor-pointer ${selectedResultIds.has(r.id) ? 'bg-yellow-500/5' : ''}`}>
                                     <td className="p-6 font-black text-slate-600">{idx + 1}</td>
                                     <td className="p-6 font-black text-yellow-500 uppercase text-xs">{r.studentCode}</td>
                                     <td className="p-6 font-black text-white uppercase text-xs">{r.studentName}</td>
@@ -219,6 +241,11 @@ const ExamMonitor: React.FC = () => {
                                         </span>
                                     </td>
                                     <td className="p-6 text-center text-[10px] font-bold text-slate-500">{format(new Date(r.submittedAt), 'HH:mm dd/MM')}</td>
+                                    <td className="p-6 text-center">
+                                        <div className={`mx-auto w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${selectedResultIds.has(r.id) ? 'bg-yellow-500 border-yellow-500 text-slate-900' : 'border-slate-700 text-transparent'}`}>
+                                            <CheckSquare size={14}/>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
