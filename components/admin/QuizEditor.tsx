@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar, ImageMinus, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar, ImageMinus, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -33,6 +33,7 @@ interface QuizEditorProps {
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onUploadImage: (qId: string, file: File) => void;
     uploadingId: string | null;
+    isAiLoading?: boolean;
 }
 
 const safeParseScore = (val: any): number => {
@@ -188,16 +189,35 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
     const relevantChapters = props.chapters.filter(c => c.grade === props.grade);
 
     return (
-        <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in">
+        <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in relative">
+            {/* Loading Overlay khi trích xuất PDF hoặc AI đang chạy */}
+            {props.isAiLoading && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[2000] flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white p-10 rounded-[3rem] shadow-2xl text-center space-y-6 max-w-sm w-full border-4 border-blue-600/20">
+                        <div className="relative w-20 h-20 mx-auto">
+                            <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                            <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Sparkles className="text-blue-600 animate-pulse" size={24}/>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-black uppercase text-slate-800 tracking-tight">Hệ thống đang xử lý...</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Đang trích xuất dữ liệu thông minh bằng AI. Vui lòng đợi trong giây lát.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-8 relative overflow-hidden">
                 <div className={`absolute top-0 right-10 px-6 py-2 rounded-b-2xl font-black text-[10px] uppercase shadow-lg z-10 ${totalPoints === 10 ? 'bg-emerald-600' : 'bg-orange-500'} text-white`}>
                     Tổng điểm đề: {totalPoints.toFixed(2)}đ
                 </div>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b pb-8">
                     <input type="text" className="text-3xl font-black outline-none bg-transparent w-full uppercase" placeholder="Tên đề thi..." value={props.title} onChange={e => props.setTitle(e.target.value)} />
-                    <label className="flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all">
-                        <FileUp size={16}/> NHẬP TỪ PDF
-                        <input type="file" accept="application/pdf" className="hidden" onChange={props.onPdfExtract}/>
+                    <label className={`flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <FileUp size={16}/> {props.isAiLoading ? 'ĐANG XỬ LÝ...' : 'NHẬP TỪ PDF'}
+                        <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
                     </label>
                 </div>
                 
