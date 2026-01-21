@@ -203,7 +203,7 @@ export const savePublishedResult = async (pub: PublishedResult): Promise<void> =
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
   const { data } = await supabase.from('chapters').select('data');
-  return data ? data.map((row: any) => row.data as Chapter).sort((a,b) => a.order - b.order) : [];
+  return data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
 };
 
 export const saveChapter = async (c: Chapter): Promise<void> => {
