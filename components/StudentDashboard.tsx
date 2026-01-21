@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Quiz, Result } from '../types';
-import { getQuizzes, getResults, getUsers } from '../services/storage';
+import { User, Quiz, Result, PublishedResult } from '../types';
+import { getQuizzes, getResults, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
-import { Clock, CheckCircle, Trophy, BookOpen, Eye, FileText, Medal, Download, XCircle, History, ChevronRight, AlertCircle } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, AlertCircle, Sparkles, Star, Award } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -17,23 +17,26 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [stats, setStats] = useState({ totalQuizzes: 0, avgScore: 0, totalSeconds: 0, accumulatedPoints: 0, bonusPoints: 0, effortPoints: 0 });
   const [results, setResults] = useState<Result[]>([]);
+  const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
 
   useEffect(() => {
     refreshData();
-    // Refresh định kỳ để cập nhật trạng thái đề thi (mở/đóng)
     const interval = setInterval(refreshData, 30000);
     return () => clearInterval(interval);
   }, [user.grade, activeQuiz]);
 
   const refreshData = async () => {
-    const [allQuizzes, allResults] = await Promise.all([getQuizzes(), getResults()]);
+    const [allQuizzes, allResults, allPubs] = await Promise.all([
+        getQuizzes(), 
+        getResults(), 
+        getPublishedResults()
+    ]);
     
     const relevantQuizzes = allQuizzes.filter(q => {
         const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
-        const isPub = q.isPublished === true;
-        return isCorrectGrade && isPub;
+        return isCorrectGrade && q.isPublished;
     });
     setQuizzes(relevantQuizzes);
 
@@ -42,6 +45,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
     
     setResults(userResults);
+
+    // Lấy Bảng Vàng: Chỉ những bản ghi mà mã học sinh nằm trong danh sách được công bố
+    const userPubs = allPubs.filter(p => 
+        user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
+    ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    setPublishedResults(userPubs);
 
     const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
     const effortPoints = totalSeconds / 2700; 
@@ -67,13 +76,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         bonusPoints,
         accumulatedPoints: effortPoints + bonusPoints
     });
-  };
-
-  const getPracticeStats = (quizId: string) => {
-      const attempts = results.filter(r => r.quizId === quizId);
-      if (attempts.length === 0) return null;
-      const scores = attempts.map(r => r.score);
-      return { count: attempts.length, max: Math.max(...scores) };
   };
 
   const formatStudyTime = (seconds: number) => {
@@ -108,6 +110,64 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             </div>
         </div>
       </header>
+
+      {/* BẢNG VÀNG KẾT QUẢ - ĐÍNH KÈM TRANG TRỌNG */}
+      {publishedResults.length > 0 && (
+          <section className="animate-fade-in-up">
+              <div className="flex items-center gap-3 mb-6 px-4">
+                  <Star className="text-yellow-500 fill-yellow-500" size={20}/>
+                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Bảng Vàng Vinh Danh Kết Quả</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {publishedResults.map(pub => {
+                      const userResult = pub.results.find(r => r.studentCode?.toUpperCase() === user.studentCode?.toUpperCase());
+                      return (
+                          <div key={pub.id} className="relative group overflow-hidden bg-slate-900 rounded-[3rem] p-8 shadow-2xl border-4 border-yellow-500/30 hover:border-yellow-500 transition-all">
+                              <div className="absolute top-0 right-0 w-48 h-48 bg-yellow-500/10 rounded-full blur-3xl -mr-24 -mt-24 group-hover:bg-yellow-500/20 transition-all"></div>
+                              <div className="relative z-10 space-y-6">
+                                  <div className="flex justify-between items-start">
+                                      <div className="flex items-center gap-3">
+                                          <div className="w-12 h-12 bg-yellow-500 text-slate-900 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-500/40">
+                                              <Award size={24} />
+                                          </div>
+                                          <div>
+                                              <p className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Kỳ thi đã công bố</p>
+                                              <h3 className="text-white font-black uppercase text-sm leading-tight line-clamp-1">{pub.quizTitle}</h3>
+                                          </div>
+                                      </div>
+                                      <div className="text-right">
+                                          <p className="text-[8px] font-bold text-slate-500 uppercase">{format(new Date(pub.publishedAt), 'HH:mm dd/MM')}</p>
+                                      </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between bg-white/5 rounded-2xl p-5 border border-white/10 backdrop-blur-sm">
+                                      <div>
+                                          <p className="text-[9px] font-black text-slate-400 uppercase">Điểm số của bạn</p>
+                                          <div className="flex items-baseline gap-2">
+                                              <span className="text-4xl font-black text-emerald-400">{userResult?.score.toFixed(2)}</span>
+                                              <span className="text-xs text-slate-500 font-bold">/ 10.00</span>
+                                          </div>
+                                      </div>
+                                      <button 
+                                          onClick={() => {
+                                              const q = quizzes.find(item => item.id === pub.quizId);
+                                              if (userResult && q) setSelectedResult({ result: userResult, quiz: q });
+                                          }}
+                                          className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-slate-900 rounded-xl text-[10px] font-black uppercase hover:bg-white transition-all shadow-lg active:scale-95"
+                                      >
+                                          <Eye size={16}/> Xem chi tiết
+                                      </button>
+                                  </div>
+                              </div>
+                              {/* Hiệu ứng lấp lánh */}
+                              <div className="absolute top-4 left-1/4 w-1 h-1 bg-white rounded-full animate-ping opacity-20"></div>
+                              <div className="absolute bottom-10 right-1/3 w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></div>
+                          </div>
+                      );
+                  })}
+              </div>
+          </section>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5">
@@ -148,14 +208,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                       <span className="text-[10px] font-black text-slate-300 uppercase">{q.durationMinutes}p</span>
                                   </div>
                                   <h3 className="font-black text-slate-800 text-[16px] leading-tight mb-4 uppercase">{q.title}</h3>
-                                  
-                                  {isStarted && !isEnded && !alreadyDone && (
-                                      <div className="flex items-center gap-2 mb-4 text-red-600 bg-red-50 p-3 rounded-xl">
-                                          <AlertCircle size={14}/>
-                                          <p className="text-[9px] font-black uppercase">Kết thúc lúc: {format(endTime, 'HH:mm')}</p>
-                                      </div>
-                                  )}
-
                                   <div className="mt-auto">
                                       {alreadyDone ? (
                                           <button onClick={() => {
@@ -186,7 +238,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {practiceQuizzes.map(q => {
-                    const qStats = getPracticeStats(q.id);
+                    const qStats = (qid: string) => {
+                      const attempts = results.filter(r => r.quizId === qid);
+                      if (attempts.length === 0) return null;
+                      return { count: attempts.length, max: Math.max(...attempts.map(r => r.score)) };
+                    };
+                    const qs = qStats(q.id);
                     return (
                       <div key={q.id} className="bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col hover:shadow-2xl hover:-translate-y-2 transition-all group border-b-8 border-b-slate-50 hover:border-b-blue-600">
                         <div className="flex justify-between items-start mb-6">
@@ -195,8 +252,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         </div>
                         <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 uppercase">{q.title}</h3>
                         <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
-                            <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Đã làm</p><p className="text-sm font-black text-slate-700">{qStats?.count || 0} lần</p></div>
-                            <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qStats ? qStats.max.toFixed(2) : '-'}</p></div>
+                            <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Đã làm</p><p className="text-sm font-black text-slate-700">{qs?.count || 0} lần</p></div>
+                            <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 mt-auto">
                           <button onClick={() => setPreviewQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-100 text-slate-600 py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all"><Eye size={16}/> Xem đề</button>
@@ -220,7 +277,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                       <tr className="bg-slate-50 border-b text-[9px] font-black uppercase tracking-widest text-slate-400">
                           <th className="p-6">Đề thi</th>
                           <th className="p-6 text-center">Thời gian nộp</th>
-                          <th className="p-6 text-center">Thời lượng</th>
                           <th className="p-6 text-center">Điểm số</th>
                           <th className="p-6 text-center">Hành động</th>
                       </tr>
@@ -233,14 +289,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                   <td className="p-6">
                                       <div className="flex flex-col">
                                           <span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span>
-                                          <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Loại: {quiz?.type === 'test' ? 'Kiểm tra' : 'Luyện tập'}</span>
                                       </div>
                                   </td>
                                   <td className="p-6 text-center text-xs font-bold text-slate-500">
                                       {format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}
-                                  </td>
-                                  <td className="p-6 text-center text-xs font-bold text-slate-400">
-                                      {Math.floor((r.durationSeconds || 0) / 60)}p {(r.durationSeconds || 0) % 60}s
                                   </td>
                                   <td className="p-6 text-center">
                                       <span className={`text-sm font-black ${r.score >= 8 ? 'text-emerald-600' : r.score >= 5 ? 'text-blue-600' : 'text-orange-600'}`}>
