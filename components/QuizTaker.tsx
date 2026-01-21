@@ -14,9 +14,10 @@ interface QuizTakerProps {
 }
 
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
-    const sessionIdRef = useRef(uuidv4());
+    // FIX: Cố định Session ID theo cặp Student + Quiz để tránh bị lặp dòng khi F5
+    const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}`);
+    const initialStartTimeRef = useRef(new Date().toISOString());
     
-    // Tính toán thời gian kết thúc tuyệt đối cho đề Kiểm tra
     const deadline = useMemo(() => {
         if (quiz.type === 'test' && quiz.startTime) {
             return addMinutes(new Date(quiz.startTime), quiz.durationMinutes);
@@ -47,43 +48,34 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         violationsRef.current = violations;
     }, [currentAnswers, spent, violations]);
 
-    // Đăng ký phiên thi lên hệ thống để Admin giám sát
-    useEffect(() => {
+    // Đăng ký/Cập nhật phiên thi lên hệ thống
+    const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
         const session: ExamSession = {
             id: sessionIdRef.current,
             quizId: quiz.id,
             studentId: student.id,
             studentName: student.fullName,
             studentCode: student.studentCode || 'N/A',
-            startTime: new Date().toISOString(),
-            lastUpdate: new Date().toISOString(),
-            violationCount: 0,
-            isFinished: false
+            startTime: initialStartTimeRef.current,
+            lastUpdate: new Date().toISOString(), // Heartbeat
+            violationCount: violationCount,
+            isFinished: isFinished
         };
-        saveExamSession(session);
+        await saveExamSession(session);
+    };
+
+    useEffect(() => {
+        updateMonitorStatus(0);
+        // Cơ chế Heartbeat: Cứ 10 giây cập nhật "lastUpdate" một lần để Admin biết HS còn Online
+        const heartbeat = setInterval(() => {
+            if (!isSubmitting) updateMonitorStatus(violationsRef.current);
+        }, 10000);
+        
         return () => {
-            // Khi thoát ngang hoặc nộp bài, ta đánh dấu kết thúc hoặc xóa phiên giám sát
-            // Ở đây ta có thể để admin tự dọn dẹp hoặc xóa nếu không submmited
+            clearInterval(heartbeat);
         };
     }, []);
 
-    // Cập nhật vi phạm lên DB thời gian thực
-    const updateSessionViolation = (newCount: number) => {
-        const session: ExamSession = {
-            id: sessionIdRef.current,
-            quizId: quiz.id,
-            studentId: student.id,
-            studentName: student.fullName,
-            studentCode: student.studentCode || 'N/A',
-            startTime: deadline.toISOString(), // Placeholder hoặc lưu chuẩn
-            lastUpdate: new Date().toISOString(),
-            violationCount: newCount,
-            isFinished: false
-        };
-        saveExamSession(session);
-    };
-
-    // Sắp xếp câu hỏi theo thứ tự chuẩn
     const orderedQuestions = useMemo(() => {
         const parts = {
             mcq: quiz.questions.filter(q => q.type === 'mcq'),
@@ -93,7 +85,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return [...parts.mcq, ...parts['group-tf'], ...parts.short];
     }, [quiz.questions]);
 
-    // Timer đếm ngược
     useEffect(() => {
         const timer = setInterval(() => {
             const remaining = calculateTimeLeft();
@@ -108,7 +99,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return () => clearInterval(timer);
     }, [deadline]);
 
-    // Giám sát thi
     useEffect(() => {
         if (!quiz.isMonitored || isSubmitting) return;
         const handleVisibilityChange = () => {
@@ -116,7 +106,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             if (!document.hidden) {
                 setViolations(v => {
                     const newVal = v + 1;
-                    updateSessionViolation(newVal);
+                    updateMonitorStatus(newVal);
                     if (newVal >= 3) handleAutoSubmit("VI PHẠM QUY CHẾ");
                     else setShowWarning(true);
                     return newVal;
@@ -186,7 +176,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         try {
             await saveResult(result);
             await addPointsToUser(student.id, score);
-            await deleteExamSession(sessionIdRef.current); // Xóa giám sát khi đã nộp
+            await deleteExamSession(sessionIdRef.current); 
             if (!isAuto) {
                 isInternalActionRef.current = true;
                 alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
