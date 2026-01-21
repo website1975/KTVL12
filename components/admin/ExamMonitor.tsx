@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult } from '../../types';
 import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession } from '../../services/storage';
-import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square } from 'lucide-react';
+import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle } from 'lucide-react';
 import { format, addMinutes } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -28,6 +28,8 @@ const ExamMonitor: React.FC = () => {
     };
 
     const activeSessions = useMemo(() => {
+        // Hiển thị tất cả các phiên đang có trong DB để Admin có thể dọn dẹp
+        // Kể cả khi đề thi đó đã bị chuyển sang luyện tập
         return sessions.filter(s => selectedQuizId === 'all' || s.quizId === selectedQuizId);
     }, [sessions, selectedQuizId]);
 
@@ -84,11 +86,17 @@ const ExamMonitor: React.FC = () => {
     };
 
     const handleClearSessions = async () => {
-        if (!confirm("Dọn dẹp toàn bộ dữ liệu giám sát hiện tại?")) return;
+        if (!confirm("Dọn dẹp TOÀN BỘ dữ liệu giám sát hiện tại?")) return;
         for (const s of sessions) {
             await deleteExamSession(s.id);
         }
         refreshData();
+    };
+
+    const handleRemoveOneSession = async (id: string, name: string) => {
+        if (!confirm(`Xóa phiên thi của học sinh ${name}? (Dùng khi học sinh đã thoát hoặc lỗi treo)`)) return;
+        await deleteExamSession(id);
+        setSessions(prev => prev.filter(s => s.id !== id));
     };
 
     return (
@@ -109,8 +117,8 @@ const ExamMonitor: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={refreshData} className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all"><RefreshCw size={20}/></button>
-                    <button onClick={handleClearSessions} className="p-4 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all" title="Dọn dẹp phiên thi"><Trash2 size={20}/></button>
+                    <button onClick={refreshData} className="p-4 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all" title="Làm mới"><RefreshCw size={20}/></button>
+                    <button onClick={handleClearSessions} className="p-4 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all" title="Dọn dẹp tất cả"><Trash2 size={20}/></button>
                 </div>
             </div>
 
@@ -153,6 +161,7 @@ const ExamMonitor: React.FC = () => {
                                 <th className="p-6 text-center">Tgian kết thúc</th>
                                 <th className="p-6 text-center">Vi phạm</th>
                                 <th className="p-6 text-center">Trạng thái</th>
+                                <th className="p-6 text-center">Hành động</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -160,13 +169,15 @@ const ExamMonitor: React.FC = () => {
                                 const quiz = quizzes.find(q => q.id === s.quizId);
                                 const deadline = quiz && quiz.startTime ? addMinutes(new Date(quiz.startTime), quiz.durationMinutes) : null;
                                 return (
-                                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                                    <tr key={s.id} className="hover:bg-slate-50 transition-colors group">
                                         <td className="p-6 font-black text-slate-300">{idx + 1}</td>
                                         <td className="p-6">
                                             <p className="font-black text-slate-800 uppercase text-xs">{s.studentName}</p>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase">MS: {s.studentCode}</p>
                                         </td>
-                                        <td className="p-6 text-center text-xs font-bold text-slate-500">{format(new Date(s.startTime), 'HH:mm:ss')}</td>
+                                        <td className="p-6 text-center text-xs font-bold text-slate-500">
+                                            {s.startTime ? format(new Date(s.startTime), 'HH:mm:ss') : 'N/A'}
+                                        </td>
                                         <td className="p-6 text-center text-xs font-bold text-orange-600">{deadline ? format(deadline, 'HH:mm:ss') : 'N/A'}</td>
                                         <td className="p-6 text-center">
                                             <span className={`px-4 py-1.5 rounded-xl font-black text-xs ${s.violationCount > 0 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-400'}`}>
@@ -178,9 +189,23 @@ const ExamMonitor: React.FC = () => {
                                                 <RefreshCw size={10} className="animate-spin"/> Đang thi
                                             </span>
                                         </td>
+                                        <td className="p-6 text-center">
+                                            <button 
+                                                onClick={() => handleRemoveOneSession(s.id, s.studentName)}
+                                                className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                                title="Xóa phiên thi này"
+                                            >
+                                                <XCircle size={18}/>
+                                            </button>
+                                        </td>
                                     </tr>
                                 );
                             })}
+                            {activeSessions.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có thí sinh nào đang thi</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
