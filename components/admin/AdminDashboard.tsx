@@ -212,7 +212,23 @@ const AdminDashboard: React.FC = () => {
 
                 {activeMenu === 'monitor' && <ExamMonitor />}
 
-                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { const f = e.target.files?.[0]; if(!f) return; setIsAiLoading(true); const r = new FileReader(); r.onload = async () => { const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); setQuestions(prev => [...prev, ...qs]); setIsAiLoading(false); }; r.readAsDataURL(f); }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} />}
+                {activeMenu === 'editor' && <QuizEditor editingId={editingId} title={title} setTitle={setTitle} grade={grade} setGrade={setGrade} quizType={quizType} setQuizType={setQuizType} isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored} duration={duration} setDuration={setDuration} category={category} setCategory={setCategory} startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime} questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz} onOpenBank={t => { setBGradeFilter(grade); setBTypeFilter(t); setActiveMenu('bank'); }} onPdfExtract={async e => { 
+                    const f = e.target.files?.[0]; 
+                    if(!f) return; 
+                    setIsAiLoading(true); 
+                    const r = new FileReader(); 
+                    r.onload = async () => { 
+                        try {
+                            const qs = await parseQuestionsFromPDF((r.result as string).split(',')[1]); 
+                            setQuestions(prev => [...prev, ...qs]); 
+                        } catch (err: any) {
+                            alert("Lỗi khi trích xuất PDF: " + err.message);
+                        } finally {
+                            setIsAiLoading(false); 
+                        }
+                    }; 
+                    r.readAsDataURL(f); 
+                }} onUploadImage={async (id, f) => { setUploadingId(id); const url = await uploadQuizImage(f); setQuestions(questions.map(q => q.id === id ? {...q, imageUrl: url} : q)); setUploadingId(null); }} uploadingId={uploadingId} isAiLoading={isAiLoading} />}
                 {activeMenu === 'ai' && <AIRenderer grade={grade} setGrade={setGrade} isLoading={isAiLoading} onGenerate={handleAiGenerate} hasQuestionsInEditor={questions.length > 0} />}
                 {activeMenu === 'chapters' && <ChapterManager chapters={chapters} onSave={c => saveChapter(c).then(refreshData)} onDelete={id => deleteChapter(id).then(refreshData)} />}
                 {activeMenu === 'bank' && (
