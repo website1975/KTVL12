@@ -190,7 +190,6 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
 
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in relative">
-            {/* Loading Overlay khi trích xuất PDF hoặc AI đang chạy */}
             {props.isAiLoading && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[2000] flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white p-10 rounded-[3rem] shadow-2xl text-center space-y-6 max-w-sm w-full border-4 border-blue-600/20">
@@ -203,7 +202,7 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         </div>
                         <div className="space-y-2">
                             <h3 className="text-lg font-black uppercase text-slate-800 tracking-tight">Hệ thống đang xử lý...</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Đang trích xuất dữ liệu thông minh bằng AI. Vui lòng đợi trong giây lát.</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Đang trích xuất dữ liệu bằng AI. Vui lòng đợi...</p>
                         </div>
                     </div>
                 </div>
@@ -216,7 +215,7 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b pb-8">
                     <input type="text" className="text-3xl font-black outline-none bg-transparent w-full uppercase" placeholder="Tên đề thi..." value={props.title} onChange={e => props.setTitle(e.target.value)} />
                     <label className={`flex items-center gap-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        <FileUp size={16}/> {props.isAiLoading ? 'ĐANG XỬ LÝ...' : 'NHẬP TỪ PDF'}
+                        <FileUp size={16}/> NHẬP TỪ PDF
                         <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
                     </label>
                 </div>
@@ -234,87 +233,54 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Chương học</label>
                         <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.category} onChange={e => props.setCategory(e.target.value)}>
                             <option value="">Chọn chương...</option>
-                            {relevantChapters.map(c => (
-                                <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
+                            {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                         </select>
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Hình thức</label>
                         <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => props.setQuizType(e.target.value as any)}>
-                            <option value="practice">Luyện tập</option>
-                            <option value="test">Kiểm tra</option>
+                            <option value="practice">Luyện tập (Tự do)</option>
+                            <option value="test">Kiểm tra (Định giờ)</option>
                         </select>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Thời gian (p)</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Thời gian (phút)</label>
                         <input type="number" className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value))} />
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {props.quizType === 'test' && (
-                        <>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời gian mở đề (Kiểm tra)</label>
-                                <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.startTime} onChange={e => props.setStartTime(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-red-600 uppercase ml-1 flex items-center gap-1"><ShieldAlert size={12}/> Giám sát (Chống gian lận)</label>
-                                <button 
-                                    onClick={() => props.setIsMonitored(!props.isMonitored)} 
-                                    className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all flex items-center justify-center gap-2 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
-                                >
-                                    {props.isMonitored ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
-                                    {props.isMonitored ? 'ĐANG BẬT GIÁM SÁT THI' : 'KHÔNG GIÁM SÁT (TỰ DO)'}
-                                </button>
-                            </div>
-                        </>
-                    )}
-                    {props.quizType === 'practice' && (
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-red-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Hạn chót đóng đề (Luyện tập)</label>
-                            <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-red-50/30 border-red-100" value={props.endTime} onChange={e => props.setEndTime(e.target.value)} />
-                        </div>
-                    )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Trạng thái phát hành</label>
+                        <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời điểm mở / Hạn chót</label>
+                        <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.quizType === 'test' ? props.startTime : props.endTime} onChange={e => props.quizType === 'test' ? props.setStartTime(e.target.value) : props.setEndTime(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-red-600 uppercase ml-1 flex items-center gap-1"><ShieldAlert size={12}/> Chống gian lận (Giám sát)</label>
+                        <button 
+                            onClick={() => props.setIsMonitored(!props.isMonitored)} 
+                            className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all flex items-center justify-center gap-2 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                        >
+                            {props.isMonitored ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
+                            {props.isMonitored ? 'ĐÃ BẬT CHỐNG GIAN LẬN' : 'KHÔNG GIÁM SÁT (TỰ DO)'}
+                        </button>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Công bố đề</label>
                         <button onClick={() => props.setIsPublished(!props.isPublished)} className={`w-full p-4 rounded-2xl font-black text-[10px] border transition-all ${props.isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
                             {props.isPublished ? 'CÔNG KHAI CHO HỌC SINH' : 'LƯU BẢN NHÁP (ẨN)'}
                         </button>
                     </div>
                 </div>
+                <div className="bg-slate-50 p-4 rounded-2xl text-[9px] text-slate-500 font-bold leading-tight">
+                    <span className="text-red-500">* Ghi chú:</span> Khi bật <span className="text-red-600">Giám sát</span>, học sinh sẽ bị cảnh báo nếu thoát tab hoặc chuyển cửa sổ khi đang làm bài.
+                </div>
 
                 <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> LƯU ĐỀ THI</button>
             </div>
 
-            <QuestionSection 
-                sectionTitle="PHẦN I. TRẮC NGHIỆM" 
-                type="mcq" 
-                questions={props.questions} 
-                setQuestions={props.setQuestions} 
-                onUploadImage={props.onUploadImage} 
-                uploadingId={props.uploadingId} 
-                onOpenBank={props.onOpenBank} 
-            />
-            <QuestionSection 
-                sectionTitle="PHẦN II. ĐÚNG/SAI" 
-                type="group-tf" 
-                questions={props.questions} 
-                setQuestions={props.setQuestions} 
-                onUploadImage={props.onUploadImage} 
-                uploadingId={props.uploadingId} 
-                onOpenBank={props.onOpenBank} 
-            />
-            <QuestionSection 
-                sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
-                type="short" 
-                questions={props.questions} 
-                setQuestions={props.setQuestions} 
-                onUploadImage={props.onUploadImage} 
-                uploadingId={props.uploadingId} 
-                onOpenBank={props.onOpenBank} 
-            />
+            <QuestionSection sectionTitle="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
+            <QuestionSection sectionTitle="PHẦN II. ĐÚNG/SAI" type="group-tf" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
+            <QuestionSection sectionTitle="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
         </div>
     );
 };
