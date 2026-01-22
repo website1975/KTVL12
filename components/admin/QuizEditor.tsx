@@ -170,12 +170,12 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
                     <div className="pt-6 border-t border-slate-100 grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="space-y-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2"><Lightbulb size={14}/> Hướng dẫn giải</label>
-                            <textarea className="w-full p-4 bg-yellow-50/20 border border-yellow-100 rounded-2xl text-sm outline-none min-h-[80px]" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Giải chi tiết..." />
+                            <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2\"><Lightbulb size={14}/> Hướng dẫn giải</label>
+                            <textarea className="w-full p-4 bg-yellow-50/20 border border-yellow-100 rounded-2xl text-sm outline-none min-h-[80px]\" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Giải chi tiết..." />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[9px] font-black text-yellow-600 uppercase flex items-center gap-2"><Eye size={14}/> Xem trước giải</label>
-                            <div className="w-full p-4 bg-yellow-50/10 rounded-2xl border border-yellow-100/50 min-h-[80px] text-sm italic text-slate-500 overflow-auto"><LatexText text={q.solution || '*Chưa có lời giải*'} /></div>
+                            <label className="text-[9px] font-black text-yellow-600 uppercase flex items-center gap-2\"><Eye size={14}/> Xem trước giải</label>
+                            <div className="w-full p-4 bg-yellow-50/10 rounded-2xl border border-yellow-100/50 min-h-[80px] text-sm italic text-slate-500 overflow-auto\"><LatexText text={q.solution || '*Chưa có lời giải*'} /></div>
                         </div>
                     </div>
                 </div>
@@ -238,7 +238,12 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Hình thức</label>
-                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => props.setQuizType(e.target.value as any)}>
+                        <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => {
+                            const val = e.target.value as any;
+                            props.setQuizType(val);
+                            // TỰ ĐỘNG TẮT GIÁM SÁT NẾU CHUYỂN SANG LUYỆN TẬP
+                            if (val === 'practice') props.setIsMonitored(false);
+                        }}>
                             <option value="practice">Luyện tập (Tự do)</option>
                             <option value="test">Kiểm tra (Định giờ)</option>
                         </select>
@@ -275,7 +280,7 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                     <span className="text-red-500">* Ghi chú:</span> Khi bật <span className="text-red-600">Giám sát</span>, học sinh sẽ bị cảnh báo nếu thoát tab hoặc chuyển cửa sổ khi đang làm bài.
                 </div>
 
-                <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> LƯU ĐỀ THI</button>
+                <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl\"><Save size={20}/> LƯU ĐỀ THI</button>
             </div>
 
             <QuestionSection sectionTitle="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
