@@ -51,9 +51,12 @@ const ExamMonitor: React.FC = () => {
         return sessions
             .filter(s => {
                 const quiz = quizzes.find(q => q.id === s.quizId);
+                // CHỈ GIÁM SÁT CÁC ĐỀ ĐANG CÔNG BỐ
+                if (!quiz || !quiz.isPublished) return false;
+                
                 const matchQuiz = selectedQuizId === 'all' || s.quizId === selectedQuizId;
-                const matchGrade = filterGrade === 'all' || (quiz && quiz.grade === filterGrade);
-                const matchType = filterType === 'all' || (quiz && quiz.type === filterType);
+                const matchGrade = filterGrade === 'all' || quiz.grade === filterGrade;
+                const matchType = filterType === 'all' || quiz.type === filterType;
                 return matchQuiz && matchGrade && matchType;
             })
             .sort((a, b) => {
@@ -65,11 +68,13 @@ const ExamMonitor: React.FC = () => {
 
     const totalViolations = activeSessions.reduce((acc, s) => acc + s.violationCount, 0);
 
-    // Lọc danh sách kết quả để công bộ bảng vàng
+    // Lọc danh sách kết quả để công bố bảng vàng
     const filteredResults = useMemo(() => {
         return results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
-            if (!quiz) return false;
+            // CHỈ HIỂN THỊ KẾT QUẢ CỦA CÁC ĐỀ ĐANG CÔNG BỐ
+            if (!quiz || !quiz.isPublished) return false;
+            
             const matchQuiz = selectedQuizId === 'all' || r.quizId === selectedQuizId;
             const matchGrade = filterGrade === 'all' || quiz.grade === filterGrade;
             const matchType = filterType === 'all' || quiz.type === filterType;
@@ -158,10 +163,11 @@ const ExamMonitor: React.FC = () => {
                         </select>
                     </div>
                     <div className="col-span-1 md:col-span-2 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><FileText size={10}/> Tên đề thi</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><FileText size={10}/> Tên đề thi (Đang công bố)</label>
                         <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
                             <option value="all">Tất cả đề đang mở</option>
-                            {quizzes.filter(q => (filterGrade === 'all' || q.grade === filterGrade) && (filterType === 'all' || q.type === filterType)).map(q => (
+                            {/* LỌC: CHỈ HIỂN THỊ ĐỀ ĐANG CÔNG BỐ (isPublished === true) */}
+                            {quizzes.filter(q => q.isPublished && (filterGrade === 'all' || q.grade === filterGrade) && (filterType === 'all' || q.type === filterType)).map(q => (
                                 <option key={q.id} value={q.id}>{q.title}</option>
                             ))}
                         </select>
@@ -234,12 +240,16 @@ const ExamMonitor: React.FC = () => {
                                         {isOffline ? <WifiOff size={16} className="mx-auto text-red-400"/> : <Wifi size={16} className="mx-auto text-emerald-500 animate-pulse"/>}
                                     </td>
                                     <td className="p-6 text-center">
-                                        {/* Fix: Replaced .then(refreshData) with .then(() => refreshData()) to resolve TypeScript parameter mismatch error */}
                                         <button onClick={() => { if(confirm(`Xóa phiên thi của ${s.studentName}?`)) { deletingIdsRef.current.add(s.id); deleteExamSession(s.id).then(() => refreshData()); } }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><XCircle size={18}/></button>
                                     </td>
                                 </tr>
                             );
                         })}
+                        {activeSessions.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có phiên thi nào đang được công bố và hoạt động</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -251,7 +261,7 @@ const ExamMonitor: React.FC = () => {
                         <Trophy className="text-yellow-500" size={32}/>
                         <div>
                             <h3 className="text-xl font-black uppercase italic">Công bố Bảng Vàng</h3>
-                            <p className="text-slate-400 text-[9px] font-bold uppercase">Tích chọn để vinh danh HS tiêu biểu</p>
+                            <p className="text-slate-400 text-[9px] font-bold uppercase">Tích chọn để vinh danh HS tiêu biểu (Chỉ lọc các đề đang công bố)</p>
                         </div>
                     </div>
                     <button onClick={handlePublish} disabled={selectedResultIds.size === 0} className="px-10 py-5 bg-yellow-500 text-slate-900 rounded-[2rem] font-black uppercase text-xs hover:bg-white transition-all disabled:opacity-50 shadow-xl">
@@ -270,6 +280,11 @@ const ExamMonitor: React.FC = () => {
                                     <td className="py-4"><div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedResultIds.has(r.id) ? 'bg-yellow-500 border-yellow-500 text-slate-900' : 'border-slate-600'}`}>{selectedResultIds.has(r.id) && <CheckSquare size={12}/>}</div></td>
                                 </tr>
                             ))}
+                            {filteredResults.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="p-10 text-center text-[10px] font-black text-slate-600 uppercase italic">Không tìm thấy kết quả phù hợp từ các đề đang công bố</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
