@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Question, QuestionType, Grade } from '../../types';
-import { Database, Search, CheckCircle2, PlusCircle, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Database, Search, CheckCircle2, PlusCircle, Trash2, CheckSquare, Square, ChevronDown } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,10 +16,18 @@ interface QuestionBankProps {
     onAddMultiple: (qs: Question[]) => void;
 }
 
+const PAGE_SIZE = 20;
+
 const QuestionBank: React.FC<QuestionBankProps> = ({ 
     questions, bGradeFilter, setBGradeFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple 
 }) => {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+    // Reset phân trang mỗi khi người dùng thay đổi bộ lọc hoặc tìm kiếm
+    useEffect(() => {
+        setVisibleCount(PAGE_SIZE);
+    }, [bGradeFilter, bTypeFilter, bSearch]);
 
     const toggleSelect = (id: string) => {
         const newIds = new Set(selectedIds);
@@ -45,6 +53,11 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
         onAddMultiple(selectedQuestions);
         setSelectedIds(new Set());
     };
+
+    // Chỉ lấy số lượng câu hỏi cần hiển thị
+    const visibleQuestions = useMemo(() => {
+        return questions.slice(0, visibleCount);
+    }, [questions, visibleCount]);
 
     return (
         <div className="space-y-6 animate-fade-in pb-20">
@@ -106,9 +119,9 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                 </div>
             </div>
 
-            {/* Danh sách câu hỏi */}
+            {/* Danh sách câu hỏi hiển thị từng phần */}
             <div className="grid grid-cols-1 gap-4">
-                {questions.map((bq, idx) => {
+                {visibleQuestions.map((bq, idx) => {
                     const isSelected = selectedIds.has(bq.id);
                     return (
                         <div 
@@ -150,6 +163,18 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                         </div>
                     );
                 })}
+
+                {/* Nút Xem thêm */}
+                {visibleCount < questions.length && (
+                    <div className="p-8 text-center">
+                        <button 
+                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+                            className="inline-flex items-center gap-2 px-12 py-4 bg-white border-2 border-slate-200 rounded-3xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-xl"
+                        >
+                            <ChevronDown size={16}/> Tải thêm câu hỏi (Còn {questions.length - visibleCount})
+                        </button>
+                    </div>
+                )}
 
                 {questions.length === 0 && (
                     <div className="py-20 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
