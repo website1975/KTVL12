@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Grade, Result, Quiz } from '../../types';
-import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal } from 'lucide-react';
+import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown } from 'lucide-react';
 
 interface StudentManagerProps {
     students: User[];
@@ -19,14 +19,25 @@ interface StudentManagerProps {
     onResetPassword: (user: User) => void;
 }
 
+const PAGE_SIZE = 20;
+
 const StudentManager: React.FC<StudentManagerProps> = ({ 
     students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
     onAdd, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword 
 }) => {
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+    // Reset phân trang khi thay đổi bộ lọc
+    useEffect(() => {
+        setVisibleCount(PAGE_SIZE);
+    }, [sSearch, sGradeFilter]);
+
     const filtered = students.filter(u => 
         (sGradeFilter === 'all' || u.grade === sGradeFilter) &&
         (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())))
     );
+
+    const visibleStudents = filtered.slice(0, visibleCount);
 
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -42,20 +53,22 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                     <input className="bg-transparent outline-none text-xs font-black w-full py-2" placeholder="Tìm tên hoặc MAHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
                 </div>
                 
-                <div className="flex gap-3 w-full lg:w-auto">
-                    <select className="px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
-                        <option value="all">TẤT CẢ KHỐI</option>
-                        <option value="12">KHỐI 12</option>
-                        <option value="11">KHỐI 11</option>
-                        <option value="10">KHỐI 10</option>
-                    </select>
-                    <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all">
-                        <FileSpreadsheet size={16}/> NHẬP CSV
-                        <input type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
-                    </label>
-                    <button onClick={onAdd} className="bg-slate-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-black shadow-xl transition-all">
-                        <UserPlus size={16}/> THÊM MỚI
-                    </button>
+                <div className="flex flex-col gap-2 w-full lg:w-auto">
+                    <div className="flex gap-3">
+                        <select className="px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
+                            <option value="all">TẤT CẢ KHỐI</option>
+                            <option value="12">KHỐI 12</option>
+                            <option value="11">KHỐI 11</option>
+                            <option value="10">KHỐI 10</option>
+                        </select>
+                        <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all" title="Cấu trúc CSV: [0: MAHS], [1: Họ và tên], [2: Khối], [3: Mật khẩu]">
+                            <FileSpreadsheet size={16}/> NHẬP CSV
+                            <input type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
+                        </label>
+                        <button onClick={onAdd} className="bg-slate-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-black shadow-xl transition-all">
+                            <UserPlus size={16}/> THÊM MỚI
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -72,17 +85,15 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {filtered.map(u => {
+                        {visibleStudents.map(u => {
                             const userResults = results.filter(r => 
                                 r.studentId === u.id || 
                                 (u.studentCode && r.studentCode === u.studentCode.toUpperCase())
                             );
                             
-                            // 1. Điểm thời gian: 45p = 1đ
                             const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
                             const timePoints = totalSeconds / 2700;
 
-                            // 2. Điểm thưởng: Mỗi đề TEST >= 8 thì +1đ (tính trên điểm cao nhất của đề đó)
                             const testBestScores: Record<string, number> = {};
                             userResults.forEach(r => {
                                 const quiz = quizzes.find(q => q.id === r.quizId);
@@ -139,6 +150,21 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         })}
                     </tbody>
                 </table>
+                {visibleCount < filtered.length && (
+                    <div className="p-8 text-center bg-slate-50/50">
+                        <button 
+                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+                            className="inline-flex items-center gap-2 px-8 py-3 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
+                        >
+                            <ChevronDown size={14}/> Xem thêm học sinh (Còn {filtered.length - visibleCount})
+                        </button>
+                    </div>
+                )}
+                {filtered.length === 0 && (
+                    <div className="p-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest italic">
+                        Không tìm thấy học sinh nào phù hợp
+                    </div>
+                )}
             </div>
         </div>
     );
