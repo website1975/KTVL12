@@ -53,7 +53,7 @@ const AdminDashboard: React.FC = () => {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-    // --- TRẠNG THÁI BỘ LỌC ---
+    // --- TRẠNG THÁI BỘ LỌC - MẶC ĐỊNH LÀ 'TẤT CẢ' ---
     const [sSearch, setSSearch] = useState('');
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
     const [qSearch, setQSearch] = useState('');
