@@ -199,6 +199,10 @@ export const savePublishedResult = async (pub: PublishedResult): Promise<void> =
     await supabase.from('published_results').upsert({ id: pub.id, data: pub });
 };
 
+export const deletePublishedResult = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('published_results').delete().eq('id', id);
+};
+
 // --- Chapters ---
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
