@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, Info, ShieldAlert } from 'lucide-react';
+import { Clock, Send, XCircle, Info, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
 import LatexText from './LatexText';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
@@ -15,9 +15,19 @@ interface QuizTakerProps {
 
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}`);
+    const backupKey = `quiz_backup_${student.id}_${quiz.id}`;
     const initialStartTimeRef = useRef(new Date().toISOString());
     const isInternalActionRef = useRef(false);
     
+    // Khôi phục đáp án từ backup nếu có
+    const getInitialAnswers = () => {
+        const saved = localStorage.getItem(backupKey);
+        if (saved) {
+            try { return JSON.parse(saved); } catch (e) { return {}; }
+        }
+        return {};
+    };
+
     const deadline = useMemo(() => {
         if (quiz.type === 'test' && quiz.startTime) {
             return addMinutes(new Date(quiz.startTime), quiz.durationMinutes);
@@ -32,10 +42,11 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
     const [spent, setSpent] = useState(0); 
-    const [currentAnswers, setCurrentAnswers] = useState<Record<string, any>>({});
+    const [currentAnswers, setCurrentAnswers] = useState<Record<string, any>>(getInitialAnswers);
     const [violations, setViolations] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'done' | 'error'>('idle');
     
     const currentAnswersRef = useRef(currentAnswers);
     const spentRef = useRef(spent);
@@ -45,6 +56,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         currentAnswersRef.current = currentAnswers;
         spentRef.current = spent;
         violationsRef.current = violations;
+        // Lưu backup vào máy học sinh mỗi khi có thay đổi
+        localStorage.setItem(backupKey, JSON.stringify(currentAnswers));
     }, [currentAnswers, spent, violations]);
 
     const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
@@ -61,18 +74,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 isFinished: isFinished
             };
             await saveExamSession(session);
-        } catch (e) {
-            console.warn("Lỗi cập nhật giám sát (không nghiêm trọng):", e);
-        }
+        } catch (e) {}
     };
 
     useEffect(() => {
         updateMonitorStatus(0);
-        // Giảm tần suất heartbeat xuống 20s để giảm tải DB
         const heartbeat = setInterval(() => {
             if (!isSubmitting) updateMonitorStatus(violationsRef.current);
-        }, 20000);
-        
+        }, 30000); // Giãn cách heartbeat lên 30s để cực nhẹ database
         return () => clearInterval(heartbeat);
     }, []);
 
@@ -90,7 +99,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             const remaining = calculateTimeLeft();
             setTimeLeft(remaining);
             setSpent(s => s + 1);
-
             if (remaining <= 0 && !isSubmitting) {
                 clearInterval(timer);
                 handleTimeUp();
@@ -119,11 +127,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     const handleTimeUp = async () => {
         isInternalActionRef.current = true;
-        // Jitter: Đợi ngẫu nhiên 0-3 giây trước khi nộp để tránh dồn toa yêu cầu
-        const delay = Math.random() * 3000;
-        console.log(`Nộp bài tự động sau ${delay.toFixed(0)}ms...`);
+        setSubmitStatus('queuing');
+        const delay = Math.random() * 5000; // Tăng jitter lên 5s cho 100 em nộp
         setTimeout(async () => {
-            alert("HẾT GIỜ LÀM BÀI! HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI.");
             await finalizeSubmit(true);
         }, delay);
     };
@@ -137,6 +143,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const finalizeSubmit = async (isAuto = false) => {
         if (isSubmitting) return;
         setIsSubmitting(true);
+        setSubmitStatus('saving');
         
         const finalAnswers = currentAnswersRef.current;
         const finalSpent = spentRef.current;
@@ -178,15 +185,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             await saveResult(result);
             await addPointsToUser(student.id, score);
             await deleteExamSession(sessionIdRef.current); 
-            if (!isAuto) {
-                alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
-            }
-            onExit();
+            // Xóa backup sau khi nộp thành công
+            localStorage.removeItem(backupKey);
+            setSubmitStatus('done');
+            setTimeout(() => onExit(), 1500);
         } catch (error) {
-            console.error("Lỗi nộp bài:", error);
-            alert("Hệ thống đang quá tải, bài làm đã được lưu vào bộ nhớ đệm. Vui lòng không đóng trình duyệt và nhấn nộp lại sau 1 phút.");
+            setSubmitStatus('error');
+            alert("Hệ thống đang quá tải, bài làm đã được lưu tạm vào máy của bạn. ĐỪNG ĐÓNG TRÌNH DUYỆT, hãy nhấn Nộp lại sau vài giây.");
             setIsSubmitting(false);
-            isInternalActionRef.current = false;
         }
     };
 
@@ -205,48 +211,52 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
-    const renderQuestion = (q: Question, globalIdx: number) => (
-        <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
-            <div className="flex items-start gap-4 mb-6">
-                <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {globalIdx + 1}.</span>
-                <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
-            </div>
-            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
-            {q.type === 'mcq' && q.options && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
-                    {q.options.map((opt, oi) => (
-                        <button key={oi} onClick={() => setCurrentAnswers({ ...currentAnswers, [q.id]: opt })} className={`p-5 rounded-2xl border-2 text-left text-sm font-bold transition-all flex items-center gap-3 ${currentAnswers[q.id] === opt ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-[1.02]' : 'bg-slate-50 hover:bg-slate-100 border-slate-100'}`}>
-                            <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${currentAnswers[q.id] === opt ? 'bg-white/20 border-white/40' : 'bg-white border-slate-200'}`}>{String.fromCharCode(65+oi)}</span>
-                            <LatexText text={opt}/>
-                        </button>
-                    ))}
-                </div>
-            )}
-            {q.type === 'group-tf' && q.subQuestions && (
-                <div className="space-y-4 pl-0 md:pl-10">
-                    {q.subQuestions.map((sq, si) => (
-                        <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                            <span className="text-xs font-black text-blue-600 w-6">{String.fromCharCode(97+si)})</span>
-                            <div className="flex-1 text-sm font-bold"><LatexText text={sq.text}/></div>
-                            <div className="flex bg-white rounded-xl p-1 border border-slate-200">
-                                {['True', 'False'].map(v => (
-                                    <button key={v} onClick={() => { const qAns = currentAnswers[q.id] || {}; setCurrentAnswers({ ...currentAnswers, [q.id]: { ...qAns, [si]: v } }); }} className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${currentAnswers[q.id]?.[si] === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-            {q.type === 'short' && (
-                <div className="pl-0 md:pl-10">
-                    <input type="text" className="w-full max-w-md p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-blue-600 focus:border-blue-500 focus:bg-white transition-all" placeholder="Nhập đáp số..." value={currentAnswers[q.id] || ''} onChange={e => setCurrentAnswers({ ...currentAnswers, [q.id]: e.target.value })} />
-                </div>
-            )}
-        </div>
-    );
-
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
+            {/* Lớp phủ trạng thái nộp bài */}
+            {submitStatus !== 'idle' && (
+                <div className="fixed inset-0 z-[3000] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center space-y-8 shadow-2xl">
+                        {submitStatus === 'queuing' && (
+                            <>
+                                <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto animate-pulse"><Clock size={40}/></div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black uppercase text-slate-800">Đang xếp hàng...</h3>
+                                    <p className="text-sm font-bold text-slate-400">Vui lòng đợi giây lát, hệ thống đang nhận bài của cả lớp.</p>
+                                </div>
+                            </>
+                        )}
+                        {submitStatus === 'saving' && (
+                            <>
+                                <div className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto animate-spin-slow"><Loader2 size={40}/></div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black uppercase text-slate-800">Đang lưu bài...</h3>
+                                    <p className="text-sm font-bold text-slate-400">Tuyệt đối không đóng trình duyệt lúc này.</p>
+                                </div>
+                            </>
+                        )}
+                        {submitStatus === 'done' && (
+                            <>
+                                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><CheckCircle2 size={40}/></div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black uppercase text-emerald-600">Nộp bài thành công!</h3>
+                                    <p className="text-sm font-bold text-slate-400">Kết quả của bạn đã được ghi nhận.</p>
+                                </div>
+                            </>
+                        )}
+                        {submitStatus === 'error' && (
+                            <>
+                                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto"><XCircle size={40}/></div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black uppercase text-red-600">Lỗi kết nối</h3>
+                                    <button onClick={() => finalizeSubmit(false)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs">THỬ NỘP LẠI NGAY</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {showWarning && !isSubmitting && (
                 <div className="fixed inset-0 z-[2000] bg-red-600/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white rounded-[3rem] p-12 max-w-lg text-center shadow-2xl space-y-6">
@@ -275,24 +285,45 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             </header>
 
             <div className="max-w-5xl w-full mx-auto space-y-12 pb-48 px-4">
-                {orderedQuestions.some(q => q.type === 'mcq') && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN I. TRẮC NGHIỆM</h2></div>
-                        {orderedQuestions.filter(q => q.type === 'mcq').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
+                {orderedQuestions.map((q, idx) => (
+                    <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
+                        <div className="flex items-start gap-4 mb-6">
+                            <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {idx + 1}.</span>
+                            <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
+                        </div>
+                        {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
+                        {q.type === 'mcq' && q.options && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
+                                {q.options.map((opt, oi) => (
+                                    <button key={oi} onClick={() => setCurrentAnswers({ ...currentAnswers, [q.id]: opt })} className={`p-5 rounded-2xl border-2 text-left text-sm font-bold transition-all flex items-center gap-3 ${currentAnswers[q.id] === opt ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-[1.02]' : 'bg-slate-50 hover:bg-slate-100 border-slate-100'}`}>
+                                        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${currentAnswers[q.id] === opt ? 'bg-white/20 border-white/40' : 'bg-white border-slate-200'}`}>{String.fromCharCode(65+oi)}</span>
+                                        <LatexText text={opt}/>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {q.type === 'group-tf' && q.subQuestions && (
+                            <div className="space-y-4 pl-0 md:pl-10">
+                                {q.subQuestions.map((sq, si) => (
+                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                        <span className="text-xs font-black text-blue-600 w-6">{String.fromCharCode(97+si)})</span>
+                                        <div className="flex-1 text-sm font-bold"><LatexText text={sq.text}/></div>
+                                        <div className="flex bg-white rounded-xl p-1 border border-slate-200">
+                                            {['True', 'False'].map(v => (
+                                                <button key={v} onClick={() => { const qAns = currentAnswers[q.id] || {}; setCurrentAnswers({ ...currentAnswers, [q.id]: { ...qAns, [si]: v } }); }} className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${currentAnswers[q.id]?.[si] === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {q.type === 'short' && (
+                            <div className="pl-0 md:pl-10">
+                                <input type="text" className="w-full max-w-md p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-blue-600 focus:border-blue-500 focus:bg-white transition-all" placeholder="Nhập đáp số..." value={currentAnswers[q.id] || ''} onChange={e => setCurrentAnswers({ ...currentAnswers, [q.id]: e.target.value })} />
+                            </div>
+                        )}
                     </div>
-                )}
-                {orderedQuestions.some(q => q.type === 'group-tf') && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN II. ĐÚNG/SAI</h2></div>
-                        {orderedQuestions.filter(q => q.type === 'group-tf').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
-                    </div>
-                )}
-                {orderedQuestions.some(q => q.type === 'short') && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN III. TRẢ LỜI NGẮN</h2></div>
-                        {orderedQuestions.filter(q => q.type === 'short').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
-                    </div>
-                )}
+                ))}
             </div>
 
             <footer className="fixed bottom-0 left-0 right-0 p-8 bg-white/80 backdrop-blur-md border-t flex justify-center z-[60] shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
