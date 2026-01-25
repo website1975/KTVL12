@@ -11,11 +11,12 @@ const ExamMonitor: React.FC = () => {
     const [results, setResults] = useState<Result[]>([]);
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
     
-    // Bộ lọc giám sát
+    // Bộ lọc giám sát tổng thể
     const [selectedQuizId, setSelectedQuizId] = useState<string>('all');
     const [filterGrade, setFilterGrade] = useState<Grade | 'all'>('all');
     const [filterType, setFilterType] = useState<QuizType | 'all'>('all');
     
+    // Bộ lọc vinh danh (Bảng Vàng)
     const [searchCode, setSearchCode] = useState('');
     const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
     const [now, setNow] = useState(new Date());
@@ -51,7 +52,6 @@ const ExamMonitor: React.FC = () => {
         return sessions
             .filter(s => {
                 const quiz = quizzes.find(q => q.id === s.quizId);
-                // CHỈ GIÁM SÁT CÁC ĐỀ ĐANG CÔNG BỐ
                 if (!quiz || !quiz.isPublished) return false;
                 
                 const matchQuiz = selectedQuizId === 'all' || s.quizId === selectedQuizId;
@@ -66,22 +66,36 @@ const ExamMonitor: React.FC = () => {
             });
     }, [sessions, quizzes, selectedQuizId, filterGrade, filterType]);
 
-    const totalViolations = activeSessions.reduce((acc, s) => acc + s.violationCount, 0);
+    // Xử lý danh sách kết quả cho Bảng Vàng: Lấy ĐIỂM CAO NHẤT của mỗi học sinh
+    const bestResultsForBoard = useMemo(() => {
+        if (selectedQuizId === 'all') return [];
 
-    // Lọc danh sách kết quả để công bố bảng vàng
-    const filteredResults = useMemo(() => {
-        return results.filter(r => {
-            const quiz = quizzes.find(q => q.id === r.quizId);
-            // CHỈ HIỂN THỊ KẾT QUẢ CỦA CÁC ĐỀ ĐANG CÔNG BỐ
-            if (!quiz || !quiz.isPublished) return false;
-            
-            const matchQuiz = selectedQuizId === 'all' || r.quizId === selectedQuizId;
-            const matchGrade = filterGrade === 'all' || quiz.grade === filterGrade;
-            const matchType = filterType === 'all' || quiz.type === filterType;
-            const matchCode = !searchCode || r.studentCode?.toLowerCase().includes(searchCode.toLowerCase());
-            return matchQuiz && matchGrade && matchType && matchCode;
-        }).sort((a, b) => b.score - a.score);
-    }, [results, quizzes, selectedQuizId, filterGrade, filterType, searchCode]);
+        const quizResults = results.filter(r => r.quizId === selectedQuizId);
+        
+        // Group theo studentCode để lấy điểm cao nhất
+        const grouped: Record<string, Result> = {};
+        quizResults.forEach(r => {
+            const code = r.studentCode?.toUpperCase() || `ID_${r.studentId}`;
+            if (!grouped[code] || r.score > grouped[code].score) {
+                grouped[code] = r;
+            }
+        });
+
+        const list = Object.values(grouped);
+
+        // Lọc theo tìm kiếm MAHS (dùng để lọc lớp nhanh)
+        return list.filter(r => 
+            !searchCode || r.studentCode?.toUpperCase().includes(searchCode.toUpperCase())
+        ).sort((a, b) => b.score - a.score);
+    }, [results, selectedQuizId, searchCode]);
+
+    const handleSelectAllVisible = () => {
+        if (selectedResultIds.size === bestResultsForBoard.length) {
+            setSelectedResultIds(new Set());
+        } else {
+            setSelectedResultIds(new Set(bestResultsForBoard.map(r => r.id)));
+        }
+    };
 
     const handlePublish = async () => {
         if (selectedQuizId === 'all') return alert("Vui lòng chọn 1 đề thi cụ thể để công bố!");
@@ -90,8 +104,8 @@ const ExamMonitor: React.FC = () => {
         const quiz = quizzes.find(q => q.id === selectedQuizId);
         if (!quiz) return;
 
-        const resultsToPublish = filteredResults.filter(r => selectedResultIds.has(r.id));
-        if (!confirm(`Xác nhận CÔNG BỐ BẢNG VÀNG cho ${resultsToPublish.length} em?`)) return;
+        const resultsToPublish = bestResultsForBoard.filter(r => selectedResultIds.has(r.id));
+        if (!confirm(`Xác nhận CÔNG BỐ BẢNG VÀNG cho ${resultsToPublish.length} em đang chọn?`)) return;
 
         const pub: PublishedResult = {
             id: uuidv4(),
@@ -134,7 +148,7 @@ const ExamMonitor: React.FC = () => {
                         <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg">
                             <ShieldAlert size={24} className={isRefreshing ? 'animate-pulse' : ''}/>
                         </div>
-                        <h2 className="text-xl font-black uppercase tracking-tight">Hệ thống Giám sát thi</h2>
+                        <h2 className="text-xl font-black uppercase tracking-tight">Giám sát & Vinh danh</h2>
                     </div>
                     <div className="flex gap-2">
                         <button onClick={handleClearOffline} className="flex items-center gap-2 px-5 py-3 bg-orange-50 text-orange-600 rounded-2xl hover:bg-orange-600 hover:text-white transition-all text-[10px] font-black uppercase border border-orange-100">
@@ -163,10 +177,9 @@ const ExamMonitor: React.FC = () => {
                         </select>
                     </div>
                     <div className="col-span-1 md:col-span-2 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><FileText size={10}/> Tên đề thi (Đang công bố)</label>
-                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
-                            <option value="all">Tất cả đề đang mở</option>
-                            {/* LỌC: CHỈ HIỂN THỊ ĐỀ ĐANG CÔNG BỐ (isPublished === true) */}
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><FileText size={10}/> Chọn đề vinh danh</label>
+                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none border-blue-100" value={selectedQuizId} onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}>
+                            <option value="all">Chọn 1 đề cụ thể để hiện Bảng Vàng</option>
                             {quizzes.filter(q => q.isPublished && (filterGrade === 'all' || q.grade === filterGrade) && (filterType === 'all' || q.type === filterType)).map(q => (
                                 <option key={q.id} value={q.id}>{q.title}</option>
                             ))}
@@ -175,36 +188,15 @@ const ExamMonitor: React.FC = () => {
                 </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-blue-600 shadow-sm flex items-center gap-6">
-                    <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Users size={32}/></div>
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đang Online</p>
-                        <h3 className="text-3xl font-black text-slate-800">{activeSessions.filter(s => differenceInSeconds(now, new Date(s.lastUpdate)) <= 60).length}</h3>
-                    </div>
-                </div>
-                <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-red-600 shadow-sm flex items-center gap-6">
-                    <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shrink-0"><ShieldAlert size={32}/></div>
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tổng vi phạm</p>
-                        <h3 className="text-3xl font-black text-red-600">{totalViolations}</h3>
-                    </div>
-                </div>
-                <div className="bg-white p-8 rounded-[2.5rem] border-b-8 border-orange-600 shadow-sm flex items-center gap-6">
-                    <div className="w-16 h-16 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0"><WifiOff size={32}/></div>
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Máy đã thoát</p>
-                        <h3 className="text-3xl font-black text-orange-600">{activeSessions.filter(s => differenceInSeconds(now, new Date(s.lastUpdate)) > 60).length}</h3>
-                    </div>
-                </div>
-            </div>
-
-            {/* Live Table */}
+            {/* Live Monitor Table */}
             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
+                <div className="p-6 border-b bg-slate-50 flex items-center gap-3">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                    <h3 className="text-[11px] font-black uppercase text-slate-500">Đang trong phòng thi ({activeSessions.filter(s => differenceInSeconds(now, new Date(s.lastUpdate)) <= 60).length})</h3>
+                </div>
                 <table className="w-full text-left">
                     <thead>
-                        <tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        <tr className="bg-white border-b text-[10px] font-black uppercase tracking-widest text-slate-400">
                             <th className="p-6">Học sinh</th>
                             <th className="p-6">Tên đề</th>
                             <th className="p-6 text-center">Bắt đầu</th>
@@ -214,11 +206,10 @@ const ExamMonitor: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {activeSessions.map((s, idx) => {
+                        {activeSessions.map((s) => {
                             const quiz = quizzes.find(q => q.id === s.quizId);
                             const lastUpdateDate = s.lastUpdate ? new Date(s.lastUpdate) : new Date();
-                            const diffSeconds = differenceInSeconds(now, lastUpdateDate);
-                            const isOffline = diffSeconds > 60;
+                            const isOffline = differenceInSeconds(now, lastUpdateDate) > 60;
                             return (
                                 <tr key={s.id} className={`hover:bg-slate-50 transition-all ${isOffline ? 'bg-slate-50/50' : ''}`}>
                                     <td className="p-6">
@@ -247,47 +238,112 @@ const ExamMonitor: React.FC = () => {
                         })}
                         {activeSessions.length === 0 && (
                             <tr>
-                                <td colSpan={6} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có phiên thi nào đang được công bố và hoạt động</td>
+                                <td colSpan={6} className="p-10 text-center text-[10px] font-black text-slate-300 uppercase italic">Không có phiên thi nào đang hoạt động</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
 
-            {/* Vinh danh Bảng Vàng */}
-            <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl space-y-6">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-4 text-white">
-                        <Trophy className="text-yellow-500" size={32}/>
+            {/* Vinh danh Bảng Vàng - NÂNG CẤP BỘ LỌC LỚP */}
+            <div className="bg-slate-900 p-8 md:p-12 rounded-[3.5rem] shadow-2xl space-y-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-[100px] pointer-events-none"></div>
+                
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 relative z-10">
+                    <div className="flex items-center gap-6 text-white">
+                        <div className="w-16 h-16 bg-yellow-500 text-slate-900 rounded-[1.5rem] flex items-center justify-center shadow-xl animate-bounce-slow"><Trophy size={32}/></div>
                         <div>
-                            <h3 className="text-xl font-black uppercase italic">Công bố Bảng Vàng</h3>
-                            <p className="text-slate-400 text-[9px] font-bold uppercase">Tích chọn để vinh danh HS tiêu biểu (Chỉ lọc các đề đang công bố)</p>
+                            <h3 className="text-2xl font-black uppercase italic tracking-tight">Công bố Bảng Vàng</h3>
+                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Vinh danh sự nỗ lực của các em</p>
                         </div>
                     </div>
-                    <button onClick={handlePublish} disabled={selectedResultIds.size === 0} className="px-10 py-5 bg-yellow-500 text-slate-900 rounded-[2rem] font-black uppercase text-xs hover:bg-white transition-all disabled:opacity-50 shadow-xl">
-                        CÔNG BỐ CHO {selectedResultIds.size} EM
-                    </button>
+                    
+                    <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+                        <div className="flex-1 min-w-[200px] relative group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-yellow-500 transition-colors" size={18}/>
+                            <input 
+                                className="w-full bg-slate-800 text-white pl-12 pr-4 py-4 rounded-2xl text-xs font-black uppercase outline-none border-2 border-transparent focus:border-yellow-500/50 transition-all" 
+                                placeholder="Lọc MAHS (Lớp)..." 
+                                value={searchCode} 
+                                onChange={e => { setSearchCode(e.target.value); setSelectedResultIds(new Set()); }}
+                            />
+                            {searchCode && <button onClick={() => setSearchCode('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><XCircle size={14}/></button>}
+                        </div>
+                        <button 
+                            onClick={handlePublish} 
+                            disabled={selectedResultIds.size === 0} 
+                            className="px-10 py-4 bg-yellow-500 text-slate-900 rounded-2xl font-black uppercase text-[11px] hover:bg-white hover:scale-105 transition-all disabled:opacity-30 shadow-xl shadow-yellow-500/20"
+                        >
+                            CÔNG BỐ ({selectedResultIds.size})
+                        </button>
+                    </div>
                 </div>
-                <div className="bg-slate-800 p-6 rounded-[2rem] overflow-x-auto max-h-[400px]">
-                    <table className="w-full text-left">
-                        <thead className="text-[9px] font-black text-slate-500 uppercase border-b border-slate-700"><tr className="p-4"><th>STT</th><th>Họ tên</th><th>Điểm</th><th>Chọn</th></tr></thead>
-                        <tbody className="divide-y divide-slate-700/50">
-                            {filteredResults.map((r, idx) => (
-                                <tr key={r.id} onClick={() => { const s = new Set(selectedResultIds); if(s.has(r.id)) s.delete(r.id); else s.add(r.id); setSelectedResultIds(s); }} className="hover:bg-slate-700/50 cursor-pointer text-white">
-                                    <td className="py-4 text-slate-500 font-black">{idx + 1}</td>
-                                    <td className="py-4 font-black uppercase text-xs">{r.studentName} <span className="block text-[8px] text-slate-500">{r.studentCode}</span></td>
-                                    <td className="py-4 text-emerald-400 font-black text-lg">{r.score.toFixed(2)}</td>
-                                    <td className="py-4"><div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedResultIds.has(r.id) ? 'bg-yellow-500 border-yellow-500 text-slate-900' : 'border-slate-600'}`}>{selectedResultIds.has(r.id) && <CheckSquare size={12}/>}</div></td>
-                                </tr>
-                            ))}
-                            {filteredResults.length === 0 && (
-                                <tr>
-                                    <td colSpan={4} className="p-10 text-center text-[10px] font-black text-slate-600 uppercase italic">Không tìm thấy kết quả phù hợp từ các đề đang công bố</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+
+                {selectedQuizId === 'all' ? (
+                    <div className="bg-slate-800/50 p-20 rounded-[2.5rem] border-2 border-dashed border-slate-700 text-center">
+                        <FileText className="mx-auto text-slate-700 mb-4" size={48}/>
+                        <p className="text-slate-500 font-black uppercase text-xs tracking-[0.2em]">Vui lòng chọn 1 đề thi cụ thể ở bộ lọc phía trên để hiện danh sách điểm</p>
+                    </div>
+                ) : (
+                    <div className="bg-slate-800/80 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/5 overflow-hidden">
+                        <div className="flex justify-between items-center mb-6 px-4">
+                            <div className="flex items-center gap-4">
+                                <button 
+                                    onClick={handleSelectAllVisible}
+                                    className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-yellow-500 transition-colors"
+                                >
+                                    {selectedResultIds.size === bestResultsForBoard.length && bestResultsForBoard.length > 0 ? <CheckSquare size={16}/> : <Square size={16}/>}
+                                    Chọn tất cả kết quả đang lọc
+                                </button>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">Tìm thấy {bestResultsForBoard.length} thí sinh</span>
+                            </div>
+                            <div className="text-[9px] text-yellow-500 font-black uppercase italic">* Chỉ hiển thị điểm cao nhất của mỗi em</div>
+                        </div>
+                        
+                        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                            <table className="w-full text-left">
+                                <thead className="text-[9px] font-black text-slate-500 uppercase border-b border-slate-700 sticky top-0 bg-slate-800 z-10"><tr className="p-4"><th className="pb-4 pl-4">Thứ hạng</th><th className="pb-4">Học sinh</th><th className="pb-4 text-center">Điểm số</th><th className="pb-4 text-center">Chọn</th></tr></thead>
+                                <tbody className="divide-y divide-slate-700/50">
+                                    {bestResultsForBoard.map((r, idx) => {
+                                        const isSelected = selectedResultIds.has(r.id);
+                                        return (
+                                            <tr 
+                                                key={r.id} 
+                                                onClick={() => { const s = new Set(selectedResultIds); if(isSelected) s.delete(r.id); else s.add(r.id); setSelectedResultIds(s); }} 
+                                                className={`hover:bg-yellow-500/5 cursor-pointer transition-all group ${isSelected ? 'bg-yellow-500/10' : ''}`}
+                                            >
+                                                <td className="py-5 pl-4">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${idx === 0 ? 'bg-yellow-500 text-slate-900 shadow-lg' : idx === 1 ? 'bg-slate-300 text-slate-700' : idx === 2 ? 'bg-orange-300 text-orange-800' : 'text-slate-500'}`}>
+                                                        {idx + 1}
+                                                    </div>
+                                                </td>
+                                                <td className="py-5">
+                                                    <p className="font-black uppercase text-xs text-white group-hover:text-yellow-500 transition-colors">{r.studentName}</p>
+                                                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">MS: {r.studentCode}</p>
+                                                </td>
+                                                <td className="py-5 text-center">
+                                                    <span className={`text-xl font-black ${r.score >= 8 ? 'text-emerald-400' : r.score >= 5 ? 'text-blue-400' : 'text-slate-400'}`}>
+                                                        {r.score.toFixed(2)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-5 text-center">
+                                                    <div className={`w-6 h-6 rounded-lg border-2 mx-auto flex items-center justify-center transition-all ${isSelected ? 'bg-yellow-500 border-yellow-500 text-slate-900' : 'border-slate-600 group-hover:border-slate-500'}`}>
+                                                        {isSelected && <CheckSquare size={14}/>}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {bestResultsForBoard.length === 0 && (
+                                        <tr>
+                                            <td colSpan={4} className="p-20 text-center text-[10px] font-black text-slate-600 uppercase italic tracking-widest">Không có dữ liệu cho bộ lọc này</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
