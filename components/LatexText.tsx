@@ -29,7 +29,8 @@ const LatexText: React.FC<LatexTextProps> = ({ text }) => {
                        output: 'html', // Generate HTML for rendering
                        displayMode: false // Inline math
                    });
-                   return <span key={i} dangerouslySetInnerHTML={{ __html: html }} className="mx-1 font-serif text-lg" />;
+                   // Thêm data-latex để lưu lại mã gốc cho việc xuất Word
+                   return <span key={i} dangerouslySetInnerHTML={{ __html: html }} data-latex={latex} className="latex-item mx-1 font-serif text-lg" />;
                }
                return <code key={i} className="bg-gray-100 p-1 rounded text-red-500 font-mono">{latex}</code>
              } catch (e) {
