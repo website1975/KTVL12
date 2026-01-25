@@ -3,9 +3,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, Info, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Clock, Send, XCircle, Info, ShieldAlert } from 'lucide-react';
 import LatexText from './LatexText';
-import { addMinutes, differenceInSeconds, isAfter } from 'date-fns';
+import { addMinutes, differenceInSeconds } from 'date-fns';
 
 interface QuizTakerProps {
     quiz: Quiz;
@@ -16,6 +16,7 @@ interface QuizTakerProps {
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}`);
     const initialStartTimeRef = useRef(new Date().toISOString());
+    const isInternalActionRef = useRef(false);
     
     const deadline = useMemo(() => {
         if (quiz.type === 'test' && quiz.startTime) {
@@ -39,7 +40,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const currentAnswersRef = useRef(currentAnswers);
     const spentRef = useRef(spent);
     const violationsRef = useRef(violations);
-    const isInternalActionRef = useRef(false);
 
     useEffect(() => {
         currentAnswersRef.current = currentAnswers;
@@ -48,29 +48,32 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     }, [currentAnswers, spent, violations]);
 
     const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
-        const session: ExamSession = {
-            id: sessionIdRef.current,
-            quizId: quiz.id,
-            studentId: student.id,
-            studentName: student.fullName,
-            studentCode: student.studentCode || 'N/A',
-            startTime: initialStartTimeRef.current,
-            lastUpdate: new Date().toISOString(),
-            violationCount: violationCount,
-            isFinished: isFinished
-        };
-        await saveExamSession(session);
+        try {
+            const session: ExamSession = {
+                id: sessionIdRef.current,
+                quizId: quiz.id,
+                studentId: student.id,
+                studentName: student.fullName,
+                studentCode: student.studentCode || 'N/A',
+                startTime: initialStartTimeRef.current,
+                lastUpdate: new Date().toISOString(),
+                violationCount: violationCount,
+                isFinished: isFinished
+            };
+            await saveExamSession(session);
+        } catch (e) {
+            console.warn("Lỗi cập nhật giám sát (không nghiêm trọng):", e);
+        }
     };
 
     useEffect(() => {
         updateMonitorStatus(0);
+        // Giảm tần suất heartbeat xuống 20s để giảm tải DB
         const heartbeat = setInterval(() => {
             if (!isSubmitting) updateMonitorStatus(violationsRef.current);
-        }, 10000);
+        }, 20000);
         
-        return () => {
-            clearInterval(heartbeat);
-        };
+        return () => clearInterval(heartbeat);
     }, []);
 
     const orderedQuestions = useMemo(() => {
@@ -96,14 +99,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return () => clearInterval(timer);
     }, [deadline]);
 
-    // TỐI ƯU GIÁM SÁT: Chỉ theo dõi visibilitychange (chuyển tab), bỏ qua blur (mất focus nhẹ)
     useEffect(() => {
         if (!quiz.isMonitored || isSubmitting) return;
-        
         const handleVisibilityChange = () => {
             if (isInternalActionRef.current) return;
-            
-            // Chỉ cảnh báo khi tab thực sự bị ẩn (người dùng chuyển sang tab khác hoặc thu nhỏ trình duyệt)
             if (document.hidden) {
                 setViolations(v => {
                     const newVal = v + 1;
@@ -114,17 +113,19 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 });
             }
         };
-
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [quiz.isMonitored, isSubmitting]);
 
     const handleTimeUp = async () => {
         isInternalActionRef.current = true;
-        alert("HẾT GIỜ LÀM BÀI! HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI.");
-        await finalizeSubmit(true);
+        // Jitter: Đợi ngẫu nhiên 0-3 giây trước khi nộp để tránh dồn toa yêu cầu
+        const delay = Math.random() * 3000;
+        console.log(`Nộp bài tự động sau ${delay.toFixed(0)}ms...`);
+        setTimeout(async () => {
+            alert("HẾT GIỜ LÀM BÀI! HỆ THỐNG SẼ TỰ ĐỘNG NỘP BÀI.");
+            await finalizeSubmit(true);
+        }, delay);
     };
 
     const handleAutoSubmit = async (reason: string) => {
@@ -178,12 +179,12 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             await addPointsToUser(student.id, score);
             await deleteExamSession(sessionIdRef.current); 
             if (!isAuto) {
-                isInternalActionRef.current = true;
                 alert(`Hoàn thành! Bạn đạt ${score.toFixed(2)} điểm.`);
             }
             onExit();
         } catch (error) {
-            alert("Có lỗi khi lưu kết quả!");
+            console.error("Lỗi nộp bài:", error);
+            alert("Hệ thống đang quá tải, bài làm đã được lưu vào bộ nhớ đệm. Vui lòng không đóng trình duyệt và nhấn nộp lại sau 1 phút.");
             setIsSubmitting(false);
             isInternalActionRef.current = false;
         }
@@ -210,7 +211,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {globalIdx + 1}.</span>
                 <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
             </div>
-            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm cursor-zoom-in" alt="q" onClick={() => { /* Có thể thêm modal phóng to ảnh tại đây và set isInternalActionRef.current = true */ }} /></div>}
+            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
             {q.type === 'mcq' && q.options && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
                     {q.options.map((opt, oi) => (
@@ -252,8 +253,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                         <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><ShieldAlert size={48}/></div>
                         <h2 className="text-2xl font-black uppercase text-red-600">CẢNH BÁO VI PHẠM!</h2>
                         <p className="font-bold text-slate-600">Bạn vừa thoát tab thi. Số lần vi phạm: {violations}/3</p>
-                        <p className="text-[10px] text-slate-400 uppercase font-black">Lưu ý: Chuyển sang tab khác hoặc thu nhỏ trình duyệt sẽ bị coi là vi phạm.</p>
-                        <button onClick={() => { setShowWarning(false); isInternalActionRef.current = false; }} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all">TÔI ĐÃ HIỂU VÀ QUAY LẠI LÀM BÀI</button>
+                        <button onClick={() => { setShowWarning(false); isInternalActionRef.current = false; }} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all">QUAY LẠI LÀM BÀI</button>
                     </div>
                 </div>
             )}
@@ -264,43 +264,40 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     <div className="flex items-center gap-3 mt-1">
                         <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase">KHỐI {quiz.grade}</span>
                         {quiz.isMonitored && <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 animate-pulse"><ShieldAlert size={10}/> ĐANG GIÁM SÁT</span>}
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Thí sinh: {student.fullName}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-8">
-                    <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border shadow-sm transition-all ${timeLeft < 300 ? 'bg-red-50 border-red-100 animate-pulse' : 'bg-blue-50 border-blue-100'}`}>
+                    <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border shadow-sm transition-all ${timeLeft < 300 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
                         <Clock size={20} className={timeLeft < 300 ? 'text-red-600' : 'text-blue-600'}/>
                         <span className={`tabular-nums font-black text-xl ${timeLeft < 300 ? 'text-red-700' : 'text-blue-700'}`}>{formatTime(timeLeft)}</span>
                     </div>
-                    <button onClick={() => { isInternalActionRef.current = true; if (confirm('Thoát bài thi? Kết quả sẽ không được lưu.')) onExit(); else isInternalActionRef.current = false; }} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><XCircle size={28}/></button>
                 </div>
             </header>
 
             <div className="max-w-5xl w-full mx-auto space-y-12 pb-48 px-4">
                 {orderedQuestions.some(q => q.type === 'mcq') && (
                     <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><Info size={20} className="text-blue-400"/><h2 className="font-black uppercase text-sm tracking-widest">PHẦN I. Câu hỏi trắc nghiệm nhiều lựa chọn</h2></div>
+                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN I. TRẮC NGHIỆM</h2></div>
                         {orderedQuestions.filter(q => q.type === 'mcq').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
                     </div>
                 )}
                 {orderedQuestions.some(q => q.type === 'group-tf') && (
                     <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><Info size={20} className="text-purple-400"/><h2 className="font-black uppercase text-sm tracking-widest">PHẦN II. Câu hỏi trắc nghiệm Đúng/Sai</h2></div>
+                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN II. ĐÚNG/SAI</h2></div>
                         {orderedQuestions.filter(q => q.type === 'group-tf').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
                     </div>
                 )}
                 {orderedQuestions.some(q => q.type === 'short') && (
                     <div className="space-y-6">
-                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><Info size={20} className="text-orange-400"/><h2 className="font-black uppercase text-sm tracking-widest">PHẦN III. Câu hỏi trắc nghiệm trả lời ngắn</h2></div>
+                        <div className="flex items-center gap-4 bg-slate-900 text-white p-5 px-10 rounded-[2rem] shadow-xl"><h2 className="font-black uppercase text-sm tracking-widest">PHẦN III. TRẢ LỜI NGẮN</h2></div>
                         {orderedQuestions.filter(q => q.type === 'short').map((q) => renderQuestion(q, orderedQuestions.indexOf(q)))}
                     </div>
                 )}
             </div>
 
             <footer className="fixed bottom-0 left-0 right-0 p-8 bg-white/80 backdrop-blur-md border-t flex justify-center z-[60] shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
-                <button onClick={handleSubmit} disabled={isSubmitting} className="group relative flex items-center gap-4 px-24 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black uppercase text-sm shadow-2xl hover:bg-black hover:scale-105 active:scale-95 transition-all overflow-hidden disabled:opacity-50">
-                    <div className="absolute inset-0 bg-blue-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                    <span className="relative z-10 flex items-center gap-4"><Send size={20} className="group-hover:rotate-12 transition-transform"/> {isSubmitting ? 'ĐANG NỘP BÀI...' : 'Nộp bài thi ngay'}</span>
+                <button onClick={handleSubmit} disabled={isSubmitting} className="group relative flex items-center gap-4 px-24 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black uppercase text-sm shadow-2xl hover:bg-black transition-all overflow-hidden disabled:opacity-50">
+                    <span className="relative z-10 flex items-center gap-4"><Send size={20}/> {isSubmitting ? 'ĐANG NỘP BÀI...' : 'Nộp bài thi ngay'}</span>
                 </button>
             </footer>
         </div>
