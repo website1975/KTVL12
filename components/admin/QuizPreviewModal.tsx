@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Download, FileType } from 'lucide-react';
+import { X, Download, FileType, CheckCircle } from 'lucide-react';
 import { Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
 
@@ -19,7 +19,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
         return 4;
     };
 
-    // Render các phương án theo dạng bảng để đảm bảo căn lề chuẩn
+    // Render các phương án theo dạng bảng
     const renderOptionsTable = (q: Question) => {
         if (!q.options) return null;
         const cols = getColumnCount(q.options);
@@ -33,24 +33,31 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                 <tbody>
                     {rows.map((row, rIdx) => (
                         <tr key={rIdx}>
-                            {row.map((opt, cIdx) => (
-                                <td 
-                                    key={cIdx} 
-                                    style={{ 
-                                        width: `${100 / cols}%`, 
-                                        textAlign: 'left', 
-                                        padding: '4px 8px 4px 0',
-                                        verticalAlign: 'top',
-                                        wordBreak: 'break-word'
-                                    }} 
-                                    className="option-cell"
-                                >
-                                    <span style={{ fontWeight: 'bold', marginRight: '4px', whiteSpace: 'nowrap' }}>
-                                        {String.fromCharCode(65 + (rIdx * cols + cIdx))}.
-                                    </span>
-                                    <LatexText text={opt} />
-                                </td>
-                            ))}
+                            {row.map((opt, cIdx) => {
+                                const isCorrect = q.correctAnswer === opt;
+                                return (
+                                    <td 
+                                        key={cIdx} 
+                                        style={{ 
+                                            width: `${100 / cols}%`, 
+                                            textAlign: 'left', 
+                                            padding: '4px 8px 4px 0',
+                                            verticalAlign: 'top',
+                                            wordBreak: 'break-word',
+                                            // Đánh dấu đáp án đúng cho GV
+                                            backgroundColor: isCorrect ? '#f0fdf4' : 'transparent',
+                                            borderRadius: '4px'
+                                        }} 
+                                        className={`option-cell ${isCorrect ? 'text-emerald-700 font-bold' : ''}`}
+                                    >
+                                        <span style={{ fontWeight: 'bold', marginRight: '4px', whiteSpace: 'nowrap' }}>
+                                            {String.fromCharCode(65 + (rIdx * cols + cIdx))}.
+                                        </span>
+                                        <LatexText text={opt} />
+                                        {isCorrect && <span className="ml-1 text-[10px] opacity-40">(Đúng)</span>}
+                                    </td>
+                                );
+                            })}
                             {row.length < cols && Array(cols - row.length).fill(0).map((_, i) => (
                                 <td key={`empty-${i}`} style={{ width: `${100 / cols}%` }}></td>
                             ))}
@@ -58,6 +65,69 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                     ))}
                 </tbody>
             </table>
+        );
+    };
+
+    // Tạo nội dung bảng đáp án tổng hợp
+    const renderAnswerKey = (isForExport: boolean = false) => {
+        const mcqQs = quiz.questions.filter(q => q.type === 'mcq');
+        const groupTfQs = quiz.questions.filter(q => q.type === 'group-tf');
+        const shortQs = quiz.questions.filter(q => q.type === 'short');
+
+        const sectionStyle = { fontWeight: 'bold', textTransform: 'uppercase' as const, marginTop: '20px', marginBottom: '10px' };
+        const containerStyle = isForExport 
+            ? { marginTop: '50px', borderTop: '2pt solid black', paddingTop: '20px' } 
+            : { marginTop: '50px', borderTop: '2px solid #e2e8f0', paddingTop: '30px' };
+
+        return (
+            <div id="answer-key-section" style={containerStyle}>
+                <h3 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', textTransform: 'uppercase' }}>Bảng Đáp Án</h3>
+                
+                {mcqQs.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <p style={sectionStyle}>PHẦN I. (Trắc nghiệm nhiều lựa chọn)</p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                            {mcqQs.map((q, i) => {
+                                const correctIdx = q.options?.indexOf(q.correctAnswer || '') ?? -1;
+                                const label = correctIdx !== -1 ? String.fromCharCode(65 + correctIdx) : '?';
+                                return (
+                                    <span key={q.id} style={{ minWidth: '50px' }}>
+                                        <span style={{ fontWeight: 'bold' }}>{i + 1}</span>{label}
+                                        {i < mcqQs.length - 1 ? '; ' : ''}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {groupTfQs.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <p style={sectionStyle}>PHẦN II. (Trắc nghiệm Đúng/Sai)</p>
+                        {groupTfQs.map((q, i) => {
+                            const answers = q.subQuestions?.map(sq => sq.correctAnswer === 'True' ? 'Đ' : 'S').join(', ') || '';
+                            return (
+                                <p key={q.id} style={{ margin: '5px 0' }}>
+                                    <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {answers}
+                                </p>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {shortQs.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <p style={sectionStyle}>PHẦN III. (Trắc nghiệm trả lời ngắn)</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '5px' }}>
+                            {shortQs.map((q, i) => (
+                                <p key={q.id} style={{ margin: '5px 0' }}>
+                                    <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {q.correctAnswer}
+                                </p>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
         );
     };
 
@@ -85,6 +155,8 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                     .footer { text-align: center; margin-top: 40pt; border-top: 1pt solid black; padding-top: 10pt; font-weight: bold; }
                     table { border-collapse: collapse; width: 100%; text-align: left; }
                     td { vertical-align: top; text-align: left; }
+                    /* CSS cho đáp án đúng trong đề */
+                    .option-correct { font-weight: bold; text-decoration: underline; background-color: #f0f0f0; }
                 </style>
             </head>
             <body>
@@ -116,7 +188,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                         <div>
                             <h3 className="text-lg font-black uppercase tracking-tight leading-tight">{quiz.title}</h3>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                XEM TRƯỚC VÀ XUẤT ĐỀ THI CHUẨN CẤU TRÚC
+                                CHẾ ĐỘ GIÁO VIÊN: ĐÃ HIỆN ĐÁP ÁN ĐỂ KIỂM TRA
                             </p>
                         </div>
                     </div>
@@ -125,7 +197,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                             onClick={handleExportWord}
                             className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase hover:bg-blue-700 transition-all shadow-xl active:scale-95"
                         >
-                            <Download size={16}/> Xuất file Word
+                            <Download size={16}/> Xuất file Word (Full đáp án)
                         </button>
                         <button 
                             onClick={onClose} 
@@ -136,7 +208,7 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                     </div>
                 </div>
 
-                {/* Nội dung đề thi - Sử dụng font không chân (Sans-serif) cho web để tránh lỗi font tiếng Việt */}
+                {/* Nội dung đề thi */}
                 <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-white custom-scrollbar">
                     <div 
                         id="quiz-export-content" 
@@ -196,7 +268,6 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                                                     </div>
                                                 </div>
 
-                                                {/* Ảnh đề thi - Căn giữa tuyệt đối */}
                                                 {q.imageUrl && (
                                                     <div className="q-image-container" style={{ textAlign: 'center', margin: '20px auto', width: '100%', display: 'flex', justifyContent: 'center' }}>
                                                         <img 
@@ -219,20 +290,29 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                                                 {/* Phần II: Đúng/Sai */}
                                                 {q.type === 'group-tf' && q.subQuestions && (
                                                     <div style={{ marginLeft: '40px', marginTop: '8px', textAlign: 'left' }}>
-                                                        {q.subQuestions.map((sq, si) => (
-                                                            <div key={si} style={{ display: 'flex', width: '100%', marginBottom: '6px', textAlign: 'left', gap: '10px' }}>
-                                                                <div style={{ fontWeight: 'bold', textAlign: 'left', minWidth: '25px' }}>{String.fromCharCode(97 + si)})</div>
-                                                                <div style={{ textAlign: 'left' }}><LatexText text={sq.text}/></div>
-                                                            </div>
-                                                        ))}
+                                                        {q.subQuestions.map((sq, si) => {
+                                                            const isTrue = sq.correctAnswer === 'True';
+                                                            return (
+                                                                <div key={si} style={{ display: 'flex', width: '100%', marginBottom: '6px', textAlign: 'left', gap: '10px' }}>
+                                                                    <div style={{ fontWeight: 'bold', textAlign: 'left', minWidth: '25px' }}>{String.fromCharCode(97 + si)})</div>
+                                                                    <div style={{ textAlign: 'left', flex: 1 }}><LatexText text={sq.text}/></div>
+                                                                    <div style={{ fontWeight: 'bold', color: isTrue ? '#059669' : '#dc2626' }} className="teacher-note">
+                                                                        [{isTrue ? 'Đ' : 'S'}]
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
 
                                                 {/* Phần III: Trả lời ngắn */}
                                                 {q.type === 'short' && (
-                                                    <div style={{ marginLeft: '40px', marginTop: '15px', textAlign: 'left' }}>
+                                                    <div style={{ marginLeft: '40px', marginTop: '15px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                         <div style={{ border: '1.5pt solid black', width: '180px', height: '40px', textAlign: 'center', lineHeight: '40px', color: '#999', fontStyle: 'italic', fontSize: '10pt', borderRadius: '4px' }}>
                                                             Đáp số: .........
+                                                        </div>
+                                                        <div style={{ fontWeight: 'bold', color: '#2563eb' }} className="teacher-note">
+                                                            [Đáp án GV: {q.correctAnswer}]
                                                         </div>
                                                     </div>
                                                 )}
@@ -242,6 +322,9 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                                 </div>
                             );
                         })}
+
+                        {/* Bảng Đáp Án Tổng Hợp */}
+                        {renderAnswerKey(true)}
 
                         <div className="footer" style={{ textAlign: 'center', marginTop: '60px', borderTop: '1pt solid #eee', paddingTop: '20px', fontWeight: 'bold' }}>
                             <p style={{ fontSize: '12pt', margin: '10px 0' }}>--- HẾT ---</p>
