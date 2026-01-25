@@ -16,14 +16,15 @@ try {
   console.error("Lỗi khởi tạo Supabase:", e);
 }
 
-// Hàm hỗ trợ thử lại khi lỗi kết nối hoặc quá tải
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 1000): Promise<T> => {
     try {
         return await fn();
     } catch (error) {
         if (retries <= 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, delay + Math.random() * 1000));
-        return withRetry(fn, retries - 1, delay * 2);
+        // Tăng độ trễ ngẫu nhiên để tránh dồn toa
+        const jitter = Math.random() * 2000;
+        await new Promise(resolve => setTimeout(resolve, delay + jitter));
+        return withRetry(fn, retries - 1, delay * 1.5);
     }
 };
 
@@ -31,10 +32,14 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- Results ---
-export const getResults = async (): Promise<Result[]> => {
+// --- Results (Tối ưu: Chỉ lấy theo Quiz ID nếu có) ---
+export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
-  const { data } = await supabase.from('results').select('data');
+  let query = supabase.from('results').select('data');
+  if (quizId && quizId !== 'all') {
+    query = query.eq('quiz_id', quizId);
+  }
+  const { data } = await query;
   return data ? data.map((row: any) => row.data as Result) : [];
 };
 
@@ -48,7 +53,6 @@ export const saveResult = async (result: Result): Promise<void> => {
   }));
 };
 
-// Fix: Added missing updateResultCode function for fixing results with missing student codes
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
   if (!supabase) return;
   const { data } = await supabase.from('results').select('data').eq('id', id).single();
@@ -62,17 +66,21 @@ export const deleteResult = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('results').delete().eq('id', id);
 };
 
-// --- Exam Sessions (Live Monitoring) ---
-export const getExamSessions = async (): Promise<ExamSession[]> => {
+// --- Exam Sessions ---
+export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> => {
     if (!supabase) return [];
-    const { data } = await supabase.from('exam_sessions').select('data');
+    let query = supabase.from('exam_sessions').select('data');
+    if (quizId && quizId !== 'all') {
+        query = query.filter('data->>quizId', 'eq', quizId);
+    }
+    const { data } = await query;
     return data ? data.map((row: any) => row.data as ExamSession) : [];
 };
 
 export const saveExamSession = async (session: ExamSession): Promise<void> => {
     if (!supabase) return;
-    // Dùng upsert với retry để đảm bảo trạng thái luôn được cập nhật
-    await withRetry(() => supabase.from('exam_sessions').upsert({ id: session.id, data: session }));
+    // Sử dụng retry ngắn cho heartbeat
+    await withRetry(() => supabase.from('exam_sessions').upsert({ id: session.id, data: session }), 2, 500);
 };
 
 export const deleteExamSession = async (id: string): Promise<void> => {
@@ -81,12 +89,11 @@ export const deleteExamSession = async (id: string): Promise<void> => {
 
 export const clearAllSessions = async (): Promise<void> => {
     if (supabase) {
-        // Xóa sạch toàn bộ phiên thi để "giải cứu" hệ thống khi bị treo
         await supabase.from('exam_sessions').delete().neq('id', 'null');
     }
 };
 
-// --- Các hàm khác giữ nguyên (Quizzes, Users, Chapters...) ---
+// --- Các hàm khác ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
@@ -130,7 +137,6 @@ export const changePassword = async (userId: string, newPass: string): Promise<b
   return !error;
 };
 
-// Fix: Added missing clearLocalCache function to reset application state
 export const clearLocalCache = () => {
     localStorage.clear();
     window.location.reload();
@@ -154,27 +160,17 @@ export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('quizzes').delete().eq('id', id);
 };
 
-// Fix: Added missing uploadQuizImage function to handle image uploads to Supabase storage
 export const uploadQuizImage = async (file: File): Promise<string> => {
   if (!supabase) return '';
   try {
     const fileExt = file.name.split('.').pop();
     const fileName = `${uuidv4()}.${fileExt}`;
     const filePath = `quiz-images/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('images')
-      .upload(filePath, file);
-
-    if (uploadError) {
-      console.error('Lỗi upload ảnh:', uploadError);
-      return '';
-    }
-
+    const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
+    if (uploadError) return '';
     const { data } = supabase.storage.from('images').getPublicUrl(filePath);
     return data.publicUrl;
   } catch (err) {
-    console.error('Lỗi upload ảnh:', err);
     return '';
   }
 };
