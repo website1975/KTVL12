@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult, Grade, QuizType } from '../../types';
 import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult, clearAllSessions, isDatabaseConnected } from '../../services/storage';
-import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History, Trophy, Search, Trash2, Database } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History, Trophy, Search, Trash2, Database, UserCheck, UserX } from 'lucide-react';
 import { format, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -26,14 +26,13 @@ const ExamMonitor: React.FC = () => {
         const interval = setInterval(() => {
             refreshData(true);
             setNow(new Date());
-        }, 15000); // Tăng lên 15s để giảm tải tối đa
+        }, 15000); 
         return () => clearInterval(interval);
-    }, [selectedQuizId]); // Refresh khi đổi đề
+    }, [selectedQuizId]);
 
     const refreshData = async (silent = false) => {
         if (!silent) setIsRefreshing(true);
         try {
-            // Tối ưu: Chỉ fetch kết quả và session của đề đang chọn
             const [s, r, q, p] = await Promise.all([
                 getExamSessions(selectedQuizId), 
                 getResults(selectedQuizId), 
@@ -66,33 +65,71 @@ const ExamMonitor: React.FC = () => {
         });
     }, [sessions, quizzes, filterGrade]);
 
+    // Lọc danh sách đề thi theo khối lớp đã chọn
+    const filteredQuizzes = useMemo(() => {
+        return quizzes.filter(q => q.isPublished && (filterGrade === 'all' || q.grade === filterGrade));
+    }, [quizzes, filterGrade]);
+
+    // Lấy tất cả MAHS đã được vinh danh trong đề này
+    const honoredStudentCodes = useMemo(() => {
+        const codes = new Set<string>();
+        publishedHistory
+            .filter(p => p.quizId === selectedQuizId)
+            .forEach(p => p.studentCodes.forEach(c => codes.add(c.toUpperCase())));
+        return codes;
+    }, [publishedHistory, selectedQuizId]);
+
     const bestResultsForBoard = useMemo(() => {
         if (selectedQuizId === 'all') return [];
         const grouped: Record<string, Result> = {};
+        
+        // Chỉ lấy kết quả từ đề hình thức "Kiểm tra" (test) nếu cần, hoặc đề đang chọn
         results.forEach(r => {
             const code = r.studentCode?.toUpperCase() || `ID_${r.studentId}`;
-            if (!grouped[code] || r.score > grouped[code].score) grouped[code] = r;
+            if (!grouped[code] || r.score > grouped[code].score) {
+                grouped[code] = r;
+            }
         });
-        return Object.values(grouped).filter(r => !searchCode || r.studentCode?.toUpperCase().includes(searchCode.toUpperCase())).sort((a, b) => b.score - a.score);
-    }, [results, selectedQuizId, searchCode]);
+
+        return Object.values(grouped)
+            .filter(r => {
+                const matchCode = !searchCode || r.studentCode?.toUpperCase().includes(searchCode.toUpperCase());
+                // Không hiển thị những bạn đã được vinh danh trong danh sách chọn (tránh trùng)
+                const notHonored = !honoredStudentCodes.has(r.studentCode?.toUpperCase() || '');
+                return matchCode && notHonored;
+            })
+            .sort((a, b) => b.score - a.score);
+    }, [results, selectedQuizId, searchCode, honoredStudentCodes]);
 
     const handlePublish = async () => {
         if (selectedQuizId === 'all') return;
         const resultsToPublish = bestResultsForBoard.filter(r => selectedResultIds.has(r.id));
+        if (resultsToPublish.length === 0) return alert("Vui lòng chọn ít nhất 1 học sinh.");
+
         const quiz = quizzes.find(q => q.id === selectedQuizId);
         const pub: PublishedResult = {
-            id: uuidv4(), quizId: selectedQuizId, quizTitle: quiz?.title || '',
+            id: uuidv4(), 
+            quizId: selectedQuizId, 
+            quizTitle: quiz?.title || '',
             publishedAt: new Date().toISOString(),
             studentCodes: resultsToPublish.map(r => r.studentCode || ''),
             results: resultsToPublish
         };
         await savePublishedResult(pub);
         setSelectedResultIds(new Set());
+        alert("Đã vinh danh thành công!");
         refreshData();
     };
 
+    const handleRevokeHonors = async (pubId: string) => {
+        if (confirm("Bạn có chắc chắn muốn thu hồi vinh danh này?")) {
+            await deletePublishedResult(pubId);
+            refreshData();
+        }
+    };
+
     return (
-        <div className="space-y-8 pb-32">
+        <div className="space-y-8 pb-32 animate-fade-in">
             <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -101,83 +138,202 @@ const ExamMonitor: React.FC = () => {
                             <h2 className="text-xl font-black uppercase tracking-tight leading-none">Kiểm soát phòng thi</h2>
                             <div className="flex items-center gap-2 mt-2">
                                 <div className={`w-2 h-2 rounded-full ${dbStatus ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
-                                <span className="text-[10px] font-black uppercase text-slate-400">Database: {dbStatus ? 'Ổn định' : 'Mất kết nối'}</span>
+                                <span className="text-[10px] font-black uppercase text-slate-400">Trạng thái: {dbStatus ? 'Trực tuyến' : 'Ngoại tuyến'}</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={handleHardReset} className="px-5 py-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase border border-red-100">
-                            Giải cứu treo
+                        <button onClick={handleHardReset} className="px-5 py-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase border border-red-100 flex items-center gap-2">
+                            <Eraser size={14}/> Giải cứu treo
                         </button>
-                        <button onClick={() => refreshData()} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all"><RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''}/></button>
+                        <button onClick={() => refreshData()} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all shadow-sm">
+                            <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''}/>
+                        </button>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase">Khối lớp</label>
-                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none" value={filterGrade} onChange={e => setFilterGrade(e.target.value as any)}>
-                            <option value="all">Tất cả</option>
-                            <option value="12">Khối 12</option><option value="11">Khối 11</option><option value="10">Khối 10</option>
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2">1. Chọn Khối</label>
+                        <select 
+                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none focus:border-blue-400" 
+                            value={filterGrade} 
+                            onChange={e => {
+                                setFilterGrade(e.target.value as any);
+                                setSelectedQuizId('all'); // Reset đề khi đổi khối
+                            }}
+                        >
+                            <option value="all">Tất cả Khối</option>
+                            <option value="12">Khối 12</option>
+                            <option value="11">Khối 11</option>
+                            <option value="10">Khối 10</option>
                         </select>
                     </div>
                     <div className="col-span-1 md:col-span-3 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo đề đang thi</label>
-                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
-                            <option value="all">Xem tất cả (Nặng database)</option>
-                            {quizzes.filter(q => q.isPublished).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2">2. Chọn Đề thi</label>
+                        <select 
+                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none focus:border-blue-400" 
+                            value={selectedQuizId} 
+                            onChange={e => setSelectedQuizId(e.target.value)}
+                        >
+                            <option value="all">-- Chọn đề thi để quản lý vinh danh --</option>
+                            {filteredQuizzes.map(q => <option key={q.id} value={q.id}>[{q.grade}] {q.title}</option>)}
                         </select>
                     </div>
                 </div>
             </div>
 
             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                <div className="p-6 border-b bg-slate-50 flex items-center gap-3">
-                    <h3 className="text-[11px] font-black uppercase text-slate-500">Đang trực tuyến ({activeSessions.length})</h3>
+                <div className="p-6 border-b bg-slate-50 flex items-center justify-between">
+                    <h3 className="text-[11px] font-black uppercase text-slate-500 flex items-center gap-2">
+                        <Wifi size={14} className="text-emerald-500"/> Thí sinh đang thi ({activeSessions.length})
+                    </h3>
                 </div>
                 <table className="w-full text-left">
                     <thead>
-                        <tr className="bg-white border-b text-[10px] font-black uppercase text-slate-400"><th className="p-6">Thí sinh</th><th className="p-6 text-center">Vi phạm</th><th className="p-6 text-center">Kết nối</th><th className="p-6 text-center">Xóa</th></tr>
+                        <tr className="bg-white border-b text-[10px] font-black uppercase text-slate-400">
+                            <th className="p-6">Thí sinh</th>
+                            <th className="p-6 text-center">Vi phạm</th>
+                            <th className="p-6 text-center">Kết nối</th>
+                            <th className="p-6 text-center">Thao tác</th>
+                        </tr>
                     </thead>
                     <tbody className="divide-y">
                         {activeSessions.map((s) => (
                             <tr key={s.id} className="hover:bg-slate-50 transition-all">
-                                <td className="p-6"><p className="font-black uppercase text-xs">{s.studentName}</p><p className="text-[9px] text-slate-400 uppercase">MS: {s.studentCode}</p></td>
-                                <td className="p-6 text-center"><span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black">{s.violationCount}/3</span></td>
-                                <td className="p-6 text-center">{differenceInSeconds(now, new Date(s.lastUpdate)) > 60 ? <WifiOff size={16} className="mx-auto text-red-400"/> : <Wifi size={16} className="mx-auto text-emerald-500"/>}</td>
-                                <td className="p-6 text-center"><button onClick={() => deleteExamSession(s.id).then(() => refreshData())} className="text-slate-300 hover:text-red-500"><XCircle size={18}/></button></td>
+                                <td className="p-6">
+                                    <p className="font-black uppercase text-xs text-slate-700">{s.studentName}</p>
+                                    <p className="text-[9px] text-slate-400 font-bold">MSHS: {s.studentCode}</p>
+                                </td>
+                                <td className="p-6 text-center">
+                                    <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${s.violationCount > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-300'}`}>
+                                        {s.violationCount}/3
+                                    </span>
+                                </td>
+                                <td className="p-6 text-center">
+                                    {differenceInSeconds(now, new Date(s.lastUpdate)) > 60 ? 
+                                        <div className="flex flex-col items-center gap-1 text-red-400"><WifiOff size={16}/><span className="text-[8px] font-bold">Mất mạng</span></div> : 
+                                        <div className="flex flex-col items-center gap-1 text-emerald-500"><Wifi size={16}/><span className="text-[8px] font-bold">Ổn định</span></div>
+                                    }
+                                </td>
+                                <td className="p-6 text-center">
+                                    <button onClick={() => deleteExamSession(s.id).then(() => refreshData())} className="p-2 text-slate-300 hover:text-red-500 transition-colors" title="Buộc dừng thi">
+                                        <XCircle size={20}/>
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+                {activeSessions.length === 0 && (
+                    <div className="p-12 text-center text-slate-300 font-black uppercase text-[10px] italic">Hiện không có thí sinh nào đang làm bài</div>
+                )}
             </div>
 
             {selectedQuizId !== 'all' && (
-                <div className="bg-slate-900 p-8 rounded-[3.5rem] shadow-2xl space-y-8">
-                    <div className="flex justify-between items-center text-white">
-                        <div className="flex items-center gap-4">
-                            <Trophy size={24} className="text-yellow-500"/>
-                            <h3 className="text-xl font-black uppercase italic">Bảng Vàng Vinh Danh</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* CỘT 1: CHỌN VINH DANH MỚI */}
+                    <div className="bg-slate-900 p-8 rounded-[3.5rem] shadow-2xl space-y-8 h-fit">
+                        <div className="flex justify-between items-center text-white border-b border-white/10 pb-6">
+                            <div className="flex items-center gap-4">
+                                <Trophy size={28} className="text-yellow-500 drop-shadow-lg"/>
+                                <h3 className="text-xl font-black uppercase italic tracking-tight text-white">Bảng Vàng Đề Thi</h3>
+                            </div>
                         </div>
-                        <button onClick={handlePublish} disabled={selectedResultIds.size === 0} className="px-8 py-3 bg-yellow-500 text-slate-900 rounded-2xl font-black text-[11px] uppercase disabled:opacity-30">CÔNG BỐ ({selectedResultIds.size})</button>
+
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                className="w-full bg-slate-800 border-none rounded-2xl p-4 pl-12 text-xs font-bold text-white outline-none focus:ring-2 focus:ring-yellow-500 transition-all" 
+                                placeholder="Tìm MAHS để vinh danh..." 
+                                value={searchCode}
+                                onChange={e => setSearchCode(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="bg-slate-800/40 rounded-[2rem] overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5">
+                            <table className="w-full text-left text-white">
+                                <thead>
+                                    <tr className="text-[9px] uppercase text-slate-500 border-b border-white/10 bg-black/20">
+                                        <th className="p-5">Thí sinh</th>
+                                        <th className="p-5 text-center">Điểm số</th>
+                                        <th className="p-5 text-center">Chọn</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {bestResultsForBoard.map((r) => {
+                                        const isSelected = selectedResultIds.has(r.id);
+                                        return (
+                                            <tr key={r.id} onClick={() => { const s = new Set(selectedResultIds); isSelected ? s.delete(r.id) : s.add(r.id); setSelectedResultIds(s); }} className="cursor-pointer hover:bg-white/5 transition-colors group">
+                                                <td className="p-5">
+                                                    <p className="font-black uppercase text-[11px] group-hover:text-yellow-400 transition-colors">{r.studentName}</p>
+                                                    <p className="text-[9px] font-bold text-slate-500">MSHS: {r.studentCode}</p>
+                                                </td>
+                                                <td className="p-5 text-center">
+                                                    <span className="text-lg font-black text-yellow-500">{r.score.toFixed(2)}</span>
+                                                </td>
+                                                <td className="p-5 text-center">
+                                                    {isSelected ? <CheckSquare className="mx-auto text-yellow-500 scale-110" /> : <Square className="mx-auto text-slate-700" />}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                            {bestResultsForBoard.length === 0 && (
+                                <div className="p-10 text-center text-slate-600 font-bold uppercase text-[9px]">Không tìm thấy kết quả phù hợp hoặc tất cả đã được vinh danh</div>
+                            )}
+                        </div>
+
+                        <button 
+                            onClick={handlePublish} 
+                            disabled={selectedResultIds.size === 0} 
+                            className="w-full py-5 bg-yellow-500 text-slate-900 rounded-[2rem] font-black text-xs uppercase shadow-[0_10px_30px_rgba(234,179,8,0.3)] hover:bg-white transition-all disabled:opacity-20 flex items-center justify-center gap-3"
+                        >
+                            <Medal size={20}/> CÔNG BỐ VINH DANH ({selectedResultIds.size})
+                        </button>
                     </div>
-                    <div className="bg-slate-800/50 p-6 rounded-[2rem] overflow-x-auto">
-                        <table className="w-full text-left text-white">
-                            <thead><tr className="text-[10px] uppercase text-slate-500 border-b border-slate-700"><th className="p-4">Hạng</th><th className="p-4">Tên</th><th className="p-4 text-center">Điểm</th><th className="p-4 text-center">Chọn</th></tr></thead>
-                            <tbody className="divide-y divide-slate-700">
-                                {bestResultsForBoard.map((r, idx) => {
-                                    const isSelected = selectedResultIds.has(r.id);
-                                    return (
-                                        <tr key={r.id} onClick={() => { const s = new Set(selectedResultIds); isSelected ? s.delete(r.id) : s.add(r.id); setSelectedResultIds(s); }} className="cursor-pointer hover:bg-white/5">
-                                            <td className="p-4 text-xs font-black">{idx + 1}</td>
-                                            <td className="p-4 text-xs font-bold uppercase">{r.studentName}</td>
-                                            <td className="p-4 text-center text-xl font-black text-yellow-500">{r.score.toFixed(2)}</td>
-                                            <td className="p-4 text-center">{isSelected ? <CheckSquare className="mx-auto text-yellow-500" /> : <Square className="mx-auto text-slate-600" />}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+
+                    {/* CỘT 2: DANH SÁCH ĐÃ VINH DANH */}
+                    <div className="bg-white p-8 rounded-[3.5rem] border shadow-sm space-y-8 flex flex-col">
+                        <div className="flex items-center gap-4 border-b pb-6">
+                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl shadow-sm"><UserCheck size={24}/></div>
+                            <h3 className="text-xl font-black uppercase tracking-tight text-slate-800 leading-none">Lịch sử Vinh danh</h3>
+                        </div>
+
+                        <div className="flex-1 space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                            {publishedHistory.filter(p => p.quizId === selectedQuizId).map((pub) => (
+                                <div key={pub.id} className="bg-slate-50 rounded-[2rem] p-6 border-2 border-transparent hover:border-emerald-100 transition-all space-y-4 group">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{format(new Date(pub.publishedAt), 'HH:mm • dd/MM/yyyy')}</p>
+                                            <h4 className="font-black text-emerald-600 text-[11px] uppercase mt-1">Gói vinh danh {pub.results.length} học sinh</h4>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleRevokeHonors(pub.id)} 
+                                            className="p-3 bg-white text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all shadow-sm"
+                                            title="Thu hồi vinh danh"
+                                        >
+                                            <UserX size={16}/>
+                                        </button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {pub.results.map(r => (
+                                            <div key={r.id} className="bg-white px-3 py-1.5 rounded-lg border flex items-center gap-2 shadow-sm">
+                                                <span className="text-[9px] font-black text-slate-700 uppercase">{r.studentName}</span>
+                                                <span className="text-[9px] font-black text-emerald-600">{r.score.toFixed(1)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                            {publishedHistory.filter(p => p.quizId === selectedQuizId).length === 0 && (
+                                <div className="py-20 text-center space-y-4">
+                                    <History size={48} className="mx-auto text-slate-100"/>
+                                    <p className="text-slate-300 font-black uppercase text-[10px] italic">Chưa có ai được vinh danh trong đề này</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
