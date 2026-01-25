@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult, Grade, QuizType } from '../../types';
-import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult, clearAllSessions } from '../../services/storage';
-import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History, Trophy, Search, Trash2 } from 'lucide-react';
+import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult, clearAllSessions, isDatabaseConnected } from '../../services/storage';
+import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History, Trophy, Search, Trash2, Database } from 'lucide-react';
 import { format, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -14,98 +14,71 @@ const ExamMonitor: React.FC = () => {
     
     const [selectedQuizId, setSelectedQuizId] = useState<string>('all');
     const [filterGrade, setFilterGrade] = useState<Grade | 'all'>('all');
-    const [filterType, setFilterType] = useState<QuizType | 'all'>('all');
     
     const [searchCode, setSearchCode] = useState('');
     const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
     const [now, setNow] = useState(new Date());
     const [isRefreshing, setIsRefreshing] = useState(false);
-    
-    const deletingIdsRef = useRef<Set<string>>(new Set());
+    const dbStatus = isDatabaseConnected();
 
     useEffect(() => {
         refreshData();
-        // Tăng thời gian làm mới lên 10s để giảm tải
         const interval = setInterval(() => {
             refreshData(true);
             setNow(new Date());
-        }, 10000); 
+        }, 15000); // Tăng lên 15s để giảm tải tối đa
         return () => clearInterval(interval);
-    }, []);
+    }, [selectedQuizId]); // Refresh khi đổi đề
 
     const refreshData = async (silent = false) => {
         if (!silent) setIsRefreshing(true);
         try {
+            // Tối ưu: Chỉ fetch kết quả và session của đề đang chọn
             const [s, r, q, p] = await Promise.all([
-                getExamSessions(), 
-                getResults(), 
+                getExamSessions(selectedQuizId), 
+                getResults(selectedQuizId), 
                 getQuizzes(),
                 getPublishedResults()
             ]);
-            const validSessions = s.filter(session => !deletingIdsRef.current.has(session.id));
-            setSessions(validSessions);
+            setSessions(s);
             setResults(r);
             setQuizzes(q);
             setPublishedHistory(p.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()));
         } catch (error) {
-            console.error("Lỗi cập nhật giám sát:", error);
+            console.error("Lỗi giám sát:", error);
         } finally {
             if (!silent) setIsRefreshing(false);
         }
     };
 
     const handleHardReset = async () => {
-        if (!confirm("CẢNH BÁO: Hành động này sẽ xóa sạch toàn bộ phiên thi hiện tại để giải cứu hệ thống bị treo. Việc này không ảnh hưởng đến điểm đã nộp. Tiếp tục?")) return;
+        if (!confirm("CẢNH BÁO: Xóa sạch toàn bộ phiên thi ảo để giải cứu database?")) return;
         setIsRefreshing(true);
-        try {
-            await clearAllSessions();
-            alert("Đã dọn dẹp hệ thống! Vui lòng tải lại trang.");
-            refreshData();
-        } catch (e) {
-            alert("Lỗi khi dọn dẹp.");
-        }
+        await clearAllSessions();
+        refreshData();
     };
 
     const activeSessions = useMemo(() => {
-        return sessions
-            .filter(s => {
-                const quiz = quizzes.find(q => q.id === s.quizId);
-                if (!quiz || !quiz.isPublished) return false;
-                const matchQuiz = selectedQuizId === 'all' || s.quizId === selectedQuizId;
-                const matchGrade = filterGrade === 'all' || quiz.grade === filterGrade;
-                const matchType = filterType === 'all' || quiz.type === filterType;
-                return matchQuiz && matchGrade && matchType;
-            });
-    }, [sessions, quizzes, selectedQuizId, filterGrade, filterType]);
-
-    const alreadyPublishedCodes = useMemo(() => {
-        if (selectedQuizId === 'all') return new Set<string>();
-        const codes = new Set<string>();
-        publishedHistory.filter(p => p.quizId === selectedQuizId).forEach(p => p.studentCodes.forEach(c => codes.add(c.toUpperCase())));
-        return codes;
-    }, [publishedHistory, selectedQuizId]);
+        return sessions.filter(s => {
+            const quiz = quizzes.find(q => q.id === s.quizId);
+            if (!quiz) return false;
+            return filterGrade === 'all' || quiz.grade === filterGrade;
+        });
+    }, [sessions, quizzes, filterGrade]);
 
     const bestResultsForBoard = useMemo(() => {
         if (selectedQuizId === 'all') return [];
-        const quizResults = results.filter(r => r.quizId === selectedQuizId);
         const grouped: Record<string, Result> = {};
-        quizResults.forEach(r => {
+        results.forEach(r => {
             const code = r.studentCode?.toUpperCase() || `ID_${r.studentId}`;
             if (!grouped[code] || r.score > grouped[code].score) grouped[code] = r;
         });
         return Object.values(grouped).filter(r => !searchCode || r.studentCode?.toUpperCase().includes(searchCode.toUpperCase())).sort((a, b) => b.score - a.score);
     }, [results, selectedQuizId, searchCode]);
 
-    const handleSelectAllVisible = () => {
-        if (selectedResultIds.size === bestResultsForBoard.length) setSelectedResultIds(new Set());
-        else setSelectedResultIds(new Set(bestResultsForBoard.map(r => r.id)));
-    };
-
     const handlePublish = async () => {
-        if (selectedQuizId === 'all') return alert("Vui lòng chọn 1 đề thi!");
+        if (selectedQuizId === 'all') return;
         const resultsToPublish = bestResultsForBoard.filter(r => selectedResultIds.has(r.id));
-        if (resultsToPublish.length === 0) return alert("Chọn ít nhất 1 em!");
-        
         const quiz = quizzes.find(q => q.id === selectedQuizId);
         const pub: PublishedResult = {
             id: uuidv4(), quizId: selectedQuizId, quizTitle: quiz?.title || '',
@@ -114,13 +87,8 @@ const ExamMonitor: React.FC = () => {
             results: resultsToPublish
         };
         await savePublishedResult(pub);
-        alert("Thành công!");
         setSelectedResultIds(new Set());
         refreshData();
-    };
-
-    const handleDeletePublished = async (id: string) => {
-        if (confirm("Thu hồi?")) { await deletePublishedResult(id); refreshData(); }
     };
 
     return (
@@ -129,11 +97,17 @@ const ExamMonitor: React.FC = () => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg"><ShieldAlert size={24}/></div>
-                        <h2 className="text-xl font-black uppercase tracking-tight">Kiểm soát phòng thi</h2>
+                        <div>
+                            <h2 className="text-xl font-black uppercase tracking-tight leading-none">Kiểm soát phòng thi</h2>
+                            <div className="flex items-center gap-2 mt-2">
+                                <div className={`w-2 h-2 rounded-full ${dbStatus ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                <span className="text-[10px] font-black uppercase text-slate-400">Database: {dbStatus ? 'Ổn định' : 'Mất kết nối'}</span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex gap-2">
                         <button onClick={handleHardReset} className="px-5 py-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase border border-red-100">
-                            <Trash2 size={16} className="inline mr-2"/> Cứu treo (Xóa hết session)
+                            Giải cứu treo
                         </button>
                         <button onClick={() => refreshData()} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all"><RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''}/></button>
                     </div>
@@ -148,9 +122,9 @@ const ExamMonitor: React.FC = () => {
                         </select>
                     </div>
                     <div className="col-span-1 md:col-span-3 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase">Chọn đề vinh danh</label>
-                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none" value={selectedQuizId} onChange={e => { setSelectedQuizId(e.target.value); setSelectedResultIds(new Set()); }}>
-                            <option value="all">Chọn đề cụ thể để hiện điểm</option>
+                        <label className="text-[9px] font-black text-slate-400 uppercase">Lọc theo đề đang thi</label>
+                        <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none" value={selectedQuizId} onChange={e => setSelectedQuizId(e.target.value)}>
+                            <option value="all">Xem tất cả (Nặng database)</option>
                             {quizzes.filter(q => q.isPublished).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                         </select>
                     </div>
@@ -159,8 +133,7 @@ const ExamMonitor: React.FC = () => {
 
             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
                 <div className="p-6 border-b bg-slate-50 flex items-center gap-3">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <h3 className="text-[11px] font-black uppercase text-slate-500">Đang thi ({activeSessions.length})</h3>
+                    <h3 className="text-[11px] font-black uppercase text-slate-500">Đang trực tuyến ({activeSessions.length})</h3>
                 </div>
                 <table className="w-full text-left">
                     <thead>
