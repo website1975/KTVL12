@@ -14,7 +14,6 @@ interface QuizTakerProps {
 }
 
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
-    // FIX: Cố định Session ID theo cặp Student + Quiz để tránh bị lặp dòng khi F5
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}`);
     const initialStartTimeRef = useRef(new Date().toISOString());
     
@@ -48,7 +47,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         violationsRef.current = violations;
     }, [currentAnswers, spent, violations]);
 
-    // Đăng ký/Cập nhật phiên thi lên hệ thống
     const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
         const session: ExamSession = {
             id: sessionIdRef.current,
@@ -57,7 +55,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             studentName: student.fullName,
             studentCode: student.studentCode || 'N/A',
             startTime: initialStartTimeRef.current,
-            lastUpdate: new Date().toISOString(), // Heartbeat
+            lastUpdate: new Date().toISOString(),
             violationCount: violationCount,
             isFinished: isFinished
         };
@@ -66,7 +64,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     useEffect(() => {
         updateMonitorStatus(0);
-        // Cơ chế Heartbeat: Cứ 10 giây cập nhật "lastUpdate" một lần để Admin biết HS còn Online
         const heartbeat = setInterval(() => {
             if (!isSubmitting) updateMonitorStatus(violationsRef.current);
         }, 10000);
@@ -99,25 +96,28 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return () => clearInterval(timer);
     }, [deadline]);
 
+    // TỐI ƯU GIÁM SÁT: Chỉ theo dõi visibilitychange (chuyển tab), bỏ qua blur (mất focus nhẹ)
     useEffect(() => {
         if (!quiz.isMonitored || isSubmitting) return;
+        
         const handleVisibilityChange = () => {
             if (isInternalActionRef.current) return;
-            if (!document.hidden) {
+            
+            // Chỉ cảnh báo khi tab thực sự bị ẩn (người dùng chuyển sang tab khác hoặc thu nhỏ trình duyệt)
+            if (document.hidden) {
                 setViolations(v => {
                     const newVal = v + 1;
                     updateMonitorStatus(newVal);
-                    if (newVal >= 3) handleAutoSubmit("VI PHẠM QUY CHẾ");
+                    if (newVal >= 3) handleAutoSubmit("VI PHẠM QUY CHẾ (CHUYỂN TAB)");
                     else setShowWarning(true);
                     return newVal;
                 });
             }
         };
-        window.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('blur', handleVisibilityChange);
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => {
-            window.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('blur', handleVisibilityChange);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [quiz.isMonitored, isSubmitting]);
 
@@ -210,7 +210,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {globalIdx + 1}.</span>
                 <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
             </div>
-            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
+            {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm cursor-zoom-in" alt="q" onClick={() => { /* Có thể thêm modal phóng to ảnh tại đây và set isInternalActionRef.current = true */ }} /></div>}
             {q.type === 'mcq' && q.options && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
                     {q.options.map((opt, oi) => (
@@ -251,7 +251,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     <div className="bg-white rounded-[3rem] p-12 max-w-lg text-center shadow-2xl space-y-6">
                         <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><ShieldAlert size={48}/></div>
                         <h2 className="text-2xl font-black uppercase text-red-600">CẢNH BÁO VI PHẠM!</h2>
-                        <p className="font-bold text-slate-600">Số lần vi phạm: {violations}/3</p>
+                        <p className="font-bold text-slate-600">Bạn vừa thoát tab thi. Số lần vi phạm: {violations}/3</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-black">Lưu ý: Chuyển sang tab khác hoặc thu nhỏ trình duyệt sẽ bị coi là vi phạm.</p>
                         <button onClick={() => { setShowWarning(false); isInternalActionRef.current = false; }} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all">TÔI ĐÃ HIỂU VÀ QUAY LẠI LÀM BÀI</button>
                     </div>
                 </div>
