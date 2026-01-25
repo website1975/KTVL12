@@ -81,19 +81,19 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
 
         return (
             <div id="answer-key-section" style={containerStyle}>
-                <h3 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', textTransform: 'uppercase' }}>Bảng Đáp Án</h3>
+                <h3 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', textTransform: 'uppercase' }}>Đáp án</h3>
                 
                 {mcqQs.length > 0 && (
                     <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN I. (Trắc nghiệm nhiều lựa chọn)</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                        <p style={sectionStyle}>PHẦN I</p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                             {mcqQs.map((q, i) => {
                                 const correctIdx = q.options?.indexOf(q.correctAnswer || '') ?? -1;
                                 const label = correctIdx !== -1 ? String.fromCharCode(65 + correctIdx) : '?';
                                 return (
-                                    <span key={q.id} style={{ minWidth: '50px' }}>
+                                    <span key={q.id}>
                                         <span style={{ fontWeight: 'bold' }}>{i + 1}</span>{label}
-                                        {i < mcqQs.length - 1 ? '; ' : ''}
+                                        {i < mcqQs.length - 1 ? ',' : ''}
                                     </span>
                                 );
                             })}
@@ -103,9 +103,10 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
 
                 {groupTfQs.length > 0 && (
                     <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN II. (Trắc nghiệm Đúng/Sai)</p>
+                        <p style={sectionStyle}>PHẦN II</p>
                         {groupTfQs.map((q, i) => {
-                            const answers = q.subQuestions?.map(sq => sq.correctAnswer === 'True' ? 'Đ' : 'S').join(', ') || '';
+                            // Đáp án dạng Đ,S,Đ,S không khoảng trắng theo yêu cầu
+                            const answers = q.subQuestions?.map(sq => sq.correctAnswer === 'True' ? 'Đ' : 'S').join(',') || '';
                             return (
                                 <p key={q.id} style={{ margin: '5px 0' }}>
                                     <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {answers}
@@ -117,14 +118,12 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
 
                 {shortQs.length > 0 && (
                     <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN III. (Trắc nghiệm trả lời ngắn)</p>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '5px' }}>
-                            {shortQs.map((q, i) => (
-                                <p key={q.id} style={{ margin: '5px 0' }}>
-                                    <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {q.correctAnswer}
-                                </p>
-                            ))}
-                        </div>
+                        <p style={sectionStyle}>PHẦN III.</p>
+                        {shortQs.map((q, i) => (
+                            <p key={q.id} style={{ margin: '5px 0' }}>
+                                <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {q.correctAnswer}
+                            </p>
+                        ))}
                     </div>
                 )}
             </div>
@@ -132,8 +131,24 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
     };
 
     const handleExportWord = () => {
-        const content = document.getElementById('quiz-export-content')?.innerHTML;
-        if (!content) return alert("Không tìm thấy nội dung!");
+        const originalContent = document.getElementById('quiz-export-content');
+        if (!originalContent) return alert("Không tìm thấy nội dung!");
+
+        // Clone nội dung để xử lý LaTeX trước khi xuất
+        const clone = originalContent.cloneNode(true) as HTMLElement;
+        
+        // Tìm tất cả các thẻ đã được render bởi KaTeX và thay thế lại bằng text thuần có bao $
+        const latexItems = clone.querySelectorAll('[data-latex]');
+        latexItems.forEach(item => {
+            const rawLatex = item.getAttribute('data-latex');
+            if (rawLatex) {
+                // Thay thế HTML phức tạp của KaTeX bằng chuỗi văn bản $latex$
+                const textNode = document.createTextNode(`$${rawLatex}$`);
+                item.parentNode?.replaceChild(textNode, item);
+            }
+        });
+
+        const content = clone.innerHTML;
 
         const header = `
             <html xmlns:o='urn:schemas-microsoft-com:office:office' 
@@ -155,7 +170,6 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose }) =>
                     .footer { text-align: center; margin-top: 40pt; border-top: 1pt solid black; padding-top: 10pt; font-weight: bold; }
                     table { border-collapse: collapse; width: 100%; text-align: left; }
                     td { vertical-align: top; text-align: left; }
-                    /* CSS cho đáp án đúng trong đề */
                     .option-correct { font-weight: bold; text-decoration: underline; background-color: #f0f0f0; }
                 </style>
             </head>
