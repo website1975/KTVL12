@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult, Grade, QuizType } from '../../types';
-import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession } from '../../services/storage';
-import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText } from 'lucide-react';
+import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult } from '../../services/storage';
+import { ShieldAlert, Users, Clock, Search, Send, Trophy, RefreshCw, Trash2, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History } from 'lucide-react';
 import { format, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,6 +10,7 @@ const ExamMonitor: React.FC = () => {
     const [sessions, setSessions] = useState<ExamSession[]>([]);
     const [results, setResults] = useState<Result[]>([]);
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+    const [publishedHistory, setPublishedHistory] = useState<PublishedResult[]>([]);
     
     // Bộ lọc giám sát tổng thể
     const [selectedQuizId, setSelectedQuizId] = useState<string>('all');
@@ -36,11 +37,17 @@ const ExamMonitor: React.FC = () => {
     const refreshData = async (silent = false) => {
         if (!silent) setIsRefreshing(true);
         try {
-            const [s, r, q] = await Promise.all([getExamSessions(), getResults(), getQuizzes()]);
+            const [s, r, q, p] = await Promise.all([
+                getExamSessions(), 
+                getResults(), 
+                getQuizzes(),
+                getPublishedResults()
+            ]);
             const validSessions = s.filter(session => !deletingIdsRef.current.has(session.id));
             setSessions(validSessions);
             setResults(r);
             setQuizzes(q);
+            setPublishedHistory(p.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()));
         } catch (error) {
             console.error("Lỗi cập nhật giám sát:", error);
         } finally {
@@ -65,6 +72,16 @@ const ExamMonitor: React.FC = () => {
                 return timeB - timeA;
             });
     }, [sessions, quizzes, selectedQuizId, filterGrade, filterType]);
+
+    // Tập hợp mã HS đã được vinh danh trong đề thi đang chọn
+    const alreadyPublishedCodes = useMemo(() => {
+        if (selectedQuizId === 'all') return new Set<string>();
+        const codes = new Set<string>();
+        publishedHistory
+            .filter(p => p.quizId === selectedQuizId)
+            .forEach(p => p.studentCodes.forEach(c => codes.add(c.toUpperCase())));
+        return codes;
+    }, [publishedHistory, selectedQuizId]);
 
     // Xử lý danh sách kết quả cho Bảng Vàng: Lấy ĐIỂM CAO NHẤT của mỗi học sinh
     const bestResultsForBoard = useMemo(() => {
@@ -105,6 +122,14 @@ const ExamMonitor: React.FC = () => {
         if (!quiz) return;
 
         const resultsToPublish = bestResultsForBoard.filter(r => selectedResultIds.has(r.id));
+        
+        // Kiểm tra xem có em nào đã được vinh danh trước đó cho đề này chưa
+        const duplicates = resultsToPublish.filter(r => alreadyPublishedCodes.has(r.studentCode?.toUpperCase() || ''));
+        if (duplicates.length > 0) {
+            const confirmDup = confirm(`Có ${duplicates.length} học sinh đã được vinh danh cho đề này trước đó. Bạn có muốn vinh danh tiếp không? (Học sinh sẽ nhận thêm thẻ vàng mới)`);
+            if (!confirmDup) return;
+        }
+
         if (!confirm(`Xác nhận CÔNG BỐ BẢNG VÀNG cho ${resultsToPublish.length} em đang chọn?`)) return;
 
         const pub: PublishedResult = {
@@ -119,6 +144,14 @@ const ExamMonitor: React.FC = () => {
         await savePublishedResult(pub);
         alert("🎉 ĐÃ CÔNG BỐ BẢNG VÀNG THÀNH CÔNG!");
         setSelectedResultIds(new Set());
+        refreshData();
+    };
+
+    const handleDeletePublished = async (id: string, title: string) => {
+        if (!confirm(`Bạn có chắc muốn THU HỒI bảng vinh danh này? (Đề: ${title})`)) return;
+        setIsRefreshing(true);
+        await deletePublishedResult(id);
+        await refreshData();
     };
 
     const handleClearOffline = async () => {
@@ -306,6 +339,7 @@ const ExamMonitor: React.FC = () => {
                                 <tbody className="divide-y divide-slate-700/50">
                                     {bestResultsForBoard.map((r, idx) => {
                                         const isSelected = selectedResultIds.has(r.id);
+                                        const isAlreadyAwarded = alreadyPublishedCodes.has(r.studentCode?.toUpperCase() || '');
                                         return (
                                             <tr 
                                                 key={r.id} 
@@ -318,7 +352,14 @@ const ExamMonitor: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="py-5">
-                                                    <p className="font-black uppercase text-xs text-white group-hover:text-yellow-500 transition-colors">{r.studentName}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-black uppercase text-xs text-white group-hover:text-yellow-500 transition-colors">{r.studentName}</p>
+                                                        {isAlreadyAwarded && (
+                                                            <div className="flex items-center gap-1 bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded text-[8px] font-black" title="Đã có trong Bảng Vàng của đề này">
+                                                                <Medal size={10}/> ĐÃ VINH DANH
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">MS: {r.studentCode}</p>
                                                 </td>
                                                 <td className="py-5 text-center">
@@ -344,6 +385,58 @@ const ExamMonitor: React.FC = () => {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* QUẢN LÝ LỊCH SỬ CÔNG BỐ - CHỨC NĂNG THU HỒI/SỬA LỖI */}
+            <div className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
+                        <History size={24}/>
+                    </div>
+                    <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Lịch sử Bảng Vàng & Thu hồi</h2>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {publishedHistory.map(pub => (
+                        <div key={pub.id} className="bg-slate-50 border rounded-[2rem] p-6 hover:shadow-lg transition-all border-b-4 border-b-yellow-500 group">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Trophy size={16} className="text-yellow-600"/>
+                                    <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest">Đã công bố</span>
+                                </div>
+                                <button 
+                                    onClick={() => handleDeletePublished(pub.id, pub.quizTitle)}
+                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                    title="Thu hồi bảng vinh danh này"
+                                >
+                                    <XCircle size={20}/>
+                                </button>
+                            </div>
+                            
+                            <h3 className="text-xs font-black text-slate-800 uppercase line-clamp-2 mb-3 leading-tight">{pub.quizTitle}</h3>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-4">Ngày: {format(new Date(pub.publishedAt), 'HH:mm dd/MM/yyyy')}</p>
+                            
+                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-1 custom-scrollbar">
+                                {pub.results.map(r => (
+                                    <span key={r.id} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[8px] font-black text-slate-500 uppercase">
+                                        {r.studentName.split(' ').pop()} ({r.score.toFixed(1)})
+                                    </span>
+                                ))}
+                            </div>
+                            
+                            <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
+                                <span className="text-[9px] font-black text-slate-500 uppercase italic">Số lượng: {pub.results.length} em</span>
+                                <span className="text-[8px] font-bold text-slate-300 uppercase">ID: {pub.id.slice(0, 8)}</span>
+                            </div>
+                        </div>
+                    ))}
+                    {publishedHistory.length === 0 && (
+                        <div className="col-span-full py-10 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+                            <History size={48} className="mx-auto text-slate-200 mb-4"/>
+                            <p className="font-black text-slate-300 uppercase tracking-widest text-xs">Chưa có lịch sử công bố vinh danh</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
