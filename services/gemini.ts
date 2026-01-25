@@ -21,8 +21,9 @@ Quy tắc:
 Trả về mảng JSON.`;
 
     try {
+        // Fix: Use gemini-3-pro-preview for complex STEM/Math reasoning tasks
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -91,8 +92,9 @@ Quy tắc nhận diện từ file:
 Yêu cầu trả về JSON đúng cấu trúc mảng đối tượng.`;
 
   try {
+    // Fix: Use gemini-3-pro-preview for high-quality complex reasoning extraction from PDF
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: {
           parts: [
               { inlineData: { mimeType: "application/pdf", data: base64Data } },
