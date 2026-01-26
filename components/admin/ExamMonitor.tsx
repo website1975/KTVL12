@@ -57,13 +57,18 @@ const ExamMonitor: React.FC = () => {
         refreshData();
     };
 
+    // Sửa logic lọc: Đảm bảo khớp cả Khối và Đề thi đang chọn
     const activeSessions = useMemo(() => {
         return sessions.filter(s => {
             const quiz = quizzes.find(q => q.id === s.quizId);
             if (!quiz) return false;
-            return filterGrade === 'all' || quiz.grade === filterGrade;
+            
+            const matchGrade = filterGrade === 'all' || quiz.grade === filterGrade;
+            const matchQuiz = selectedQuizId === 'all' || s.quizId === selectedQuizId;
+            
+            return matchGrade && matchQuiz;
         });
-    }, [sessions, quizzes, filterGrade]);
+    }, [sessions, quizzes, filterGrade, selectedQuizId]);
 
     // Lọc danh sách đề thi theo khối lớp đã chọn
     const filteredQuizzes = useMemo(() => {
@@ -83,7 +88,6 @@ const ExamMonitor: React.FC = () => {
         if (selectedQuizId === 'all') return [];
         const grouped: Record<string, Result> = {};
         
-        // Chỉ lấy kết quả từ đề hình thức "Kiểm tra" (test) nếu cần, hoặc đề đang chọn
         results.forEach(r => {
             const code = r.studentCode?.toUpperCase() || `ID_${r.studentId}`;
             if (!grouped[code] || r.score > grouped[code].score) {
@@ -94,7 +98,6 @@ const ExamMonitor: React.FC = () => {
         return Object.values(grouped)
             .filter(r => {
                 const matchCode = !searchCode || r.studentCode?.toUpperCase().includes(searchCode.toUpperCase());
-                // Không hiển thị những bạn đã được vinh danh trong danh sách chọn (tránh trùng)
                 const notHonored = !honoredStudentCodes.has(r.studentCode?.toUpperCase() || '');
                 return matchCode && notHonored;
             })
