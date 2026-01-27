@@ -27,34 +27,29 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        // Tải đồng thời tất cả dữ liệu
         const [allQuizzes, allResults, allPubs] = await Promise.all([
             getQuizzes(), 
             getResults(), 
             getPublishedResults()
         ]);
         
-        // Lọc đề thi phù hợp
         const relevantQuizzes = allQuizzes.filter(q => {
             const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
             return isCorrectGrade && q.isPublished;
         });
         setQuizzes(relevantQuizzes);
 
-        // Lọc kết quả của chính học sinh này
         const userResults = allResults.filter(r => 
             r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
         ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         
         setResults(userResults);
 
-        // Lọc vinh danh
         const userPubs = allPubs.filter(p => 
             user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
 
-        // Tính toán thống kê
         const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
         const effortPoints = totalSeconds / 2700; 
 
@@ -71,8 +66,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         let bonusPoints = 0;
         Object.values(testBestScores).forEach(score => { if (score >= 8) bonusPoints += 1; });
 
-        // Sử dụng điểm từ DB (nếu có) hoặc tính toán từ kết quả
-        // Lưu ý: User.points có thể bị delay do RLS, nên ưu tiên tính từ Results
         setStats({
             totalQuizzes: userResults.length,
             avgScore: userResults.length > 0 ? (userResults.reduce((acc, r) => acc + r.score, 0) / userResults.length) : 0,
@@ -90,11 +83,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(() => refreshData(true), 60000); // 1 phút refresh ngầm 1 lần
+    const interval = setInterval(() => refreshData(true), 60000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
-  // Khi kết thúc bài thi, ép làm mới dữ liệu
   const handleExitQuiz = () => {
     setActiveQuiz(null);
     setTimeout(() => refreshData(), 500);
@@ -136,7 +128,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </header>
 
-      {/* HIỂN THỊ LOADING BAN ĐẦU */}
       {isLoading && results.length === 0 && (
           <div className="py-20 text-center space-y-4">
               <Loader2 className="animate-spin text-blue-500 mx-auto" size={40}/>
@@ -144,7 +135,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
       )}
 
-      {/* BẢNG VÀNG KẾT QUẢ */}
       {!isLoading && publishedResults.length > 0 && (
           <section className="animate-fade-in-up">
               <div className="flex items-center gap-3 mb-6 px-4">
@@ -180,7 +170,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </section>
       )}
 
-      {/* THÔNG KÊ CÁ NHÂN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
             <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><Trophy size={28} /></div>
@@ -278,7 +267,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
       </section>
 
-      {/* LỊCH SỬ NỘP BÀI */}
       <section className="pt-10">
           <div className="flex items-center gap-4 mb-8">
               <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2"><History size={20} className="text-blue-600"/> Lịch sử nộp bài gần đây</h2>
@@ -314,9 +302,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
       </section>
 
-      {/* MODALS */}
       {selectedResult && <ResultDetailModal isOpen={true} result={selectedResult.result} quiz={selectedResult.quiz} onClose={() => setSelectedResult(null)} />}
-      {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
+      {previewQuiz && <QuizPreviewModal quiz={previewQuiz} isAdmin={false} onClose={() => setPreviewQuiz(null)} />}
       {viewingHonorees && (
           <div className="fixed inset-0 bg-slate-900/95 z-[3000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
               <div className="bg-white rounded-[3.5rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white">
