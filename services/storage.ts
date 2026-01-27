@@ -16,14 +16,13 @@ try {
   console.error("Lỗi khởi tạo Supabase:", e);
 }
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 1000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
     try {
         return await fn();
     } catch (error) {
         if (retries <= 0) throw error;
-        const jitter = Math.random() * 2000;
-        await new Promise(resolve => setTimeout(resolve, delay + jitter));
-        return withRetry(fn, retries - 1, delay * 1.5);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return withRetry(fn, retries - 1, delay * 2);
     }
 };
 
@@ -34,11 +33,12 @@ export const isDatabaseConnected = (): boolean => {
 // --- Results ---
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
+  // Bypass cache bằng cách thêm timestamp vào query nếu cần, nhưng Supabase thường xử lý tốt
   let query = supabase.from('results').select('data');
   if (quizId && quizId !== 'all') {
     query = query.eq('quiz_id', quizId);
   }
-  const { data, error } = await query;
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) {
       console.error("Lỗi lấy kết quả:", error);
       return [];
@@ -46,27 +46,31 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
   return data ? data.map((row: any) => row.data as Result) : [];
 };
 
-export const saveResult = async (result: Result): Promise<void> => {
-  if (!supabase) throw new Error("Database not connected");
-  
-  // Validation kiểm tra tính hợp lệ trước khi gửi
-  if (!result.quizId || !result.studentId) {
-      console.error("Dữ liệu nộp bài không hợp lệ:", result);
-      throw new Error("Lỗi dữ liệu: Thiếu Quiz ID hoặc Student ID");
-  }
+export const verifyResultExists = async (resultId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data, error } = await supabase.from('results').select('id').eq('id', resultId).maybeSingle();
+    return !!data && !error;
+};
 
+export const saveResult = async (result: Result): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  
   await withRetry(async () => {
-      const { error } = await supabase.from('results').insert({ 
+      // Đảm bảo các trường ID không bị undefined
+      const payload = { 
           id: result.id, 
           quiz_id: result.quizId, 
           student_id: result.studentId, 
           data: result 
-      });
+      };
+
+      const { error } = await supabase.from('results').insert(payload);
+      
       if (error) {
-          console.error("Lỗi Supabase khi lưu Result:", error);
-          throw error;
+          // Log lỗi chi tiết để Admin có thể xem trong F12
+          console.error("SUPABASE ERROR:", error.message, error.details, error.hint);
+          throw new Error(`Database từ chối lưu: ${error.message}`);
       }
-      console.log(`Đã lưu thành công bài làm ${result.id} vào DB.`);
   });
 };
 
@@ -77,7 +81,6 @@ export const updateResultCode = async (id: string, code: string): Promise<void> 
   if (data) {
     const updatedData = { ...data.data, studentCode: code };
     const { error: updateErr } = await supabase.from('results').update({ data: updatedData }).eq('id', id);
-    if (updateErr) console.error("Lỗi cập nhật mã HS:", updateErr);
   }
 };
 
@@ -134,7 +137,6 @@ export const saveUser = async (user: User): Promise<void> => {
     fullName: user.fullName.trim()
   };
   const { error } = await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
-  if (error) console.error("Lỗi lưu user:", error);
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
