@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
-import { saveResult, addPointsToUser, saveExamSession, deleteExamSession } from '../services/storage';
+import { saveResult, addPointsToUser, saveExamSession, deleteExamSession, verifyResultExists } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, Info, ShieldAlert, Loader2, CheckCircle2, Trophy, ArrowRight, Home, Layout } from 'lucide-react';
+import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck } from 'lucide-react';
 import LatexText from './LatexText';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
@@ -19,7 +18,14 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const initialStartTimeRef = useRef(new Date().toISOString());
     const isInternalActionRef = useRef(false);
     
-    // Khôi phục đáp án từ backup nếu có
+    // Fix: Defined orderedQuestions using useMemo to resolve the reference error on line 308
+    const orderedQuestions = useMemo(() => {
+        const mcq = quiz.questions.filter(q => q.type === 'mcq');
+        const tf = quiz.questions.filter(q => q.type === 'group-tf');
+        const short = quiz.questions.filter(q => q.type === 'short');
+        return [...mcq, ...tf, ...short];
+    }, [quiz.questions]);
+
     const getInitialAnswers = () => {
         const saved = localStorage.getItem(backupKey);
         if (saved) {
@@ -46,7 +52,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const [violations, setViolations] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'done' | 'error'>('idle');
+    const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'verifying' | 'done' | 'error'>('idle');
+    const [errorMessage, setErrorMessage] = useState<string>('');
     const [finalResult, setFinalResult] = useState<Result | null>(null);
     
     const currentAnswersRef = useRef(currentAnswers);
@@ -57,8 +64,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         currentAnswersRef.current = currentAnswers;
         spentRef.current = spent;
         violationsRef.current = violations;
-        
-        // Chỉ backup nếu chưa nộp bài thành công
         if (submitStatus !== 'done') {
             localStorage.setItem(backupKey, JSON.stringify(currentAnswers));
         }
@@ -88,15 +93,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         }, 30000);
         return () => clearInterval(heartbeat);
     }, []);
-
-    const orderedQuestions = useMemo(() => {
-        const parts = {
-            mcq: quiz.questions.filter(q => q.type === 'mcq'),
-            'group-tf': quiz.questions.filter(q => q.type === 'group-tf'),
-            short: quiz.questions.filter(q => q.type === 'short')
-        };
-        return [...parts.mcq, ...parts['group-tf'], ...parts.short];
-    }, [quiz.questions]);
 
     useEffect(() => {
         if (submitStatus === 'done') return;
@@ -133,10 +129,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const handleTimeUp = async () => {
         isInternalActionRef.current = true;
         setSubmitStatus('queuing');
-        const delay = Math.random() * 3000;
-        setTimeout(async () => {
-            await finalizeSubmit(true);
-        }, delay);
+        setTimeout(() => finalizeSubmit(true), Math.random() * 2000);
     };
 
     const handleAutoSubmit = async (reason: string) => {
@@ -149,6 +142,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         if (isSubmitting || submitStatus === 'done') return;
         setIsSubmitting(true);
         setSubmitStatus('saving');
+        setErrorMessage('');
         
         const finalAnswers = { ...currentAnswersRef.current };
         const finalSpent = spentRef.current;
@@ -158,12 +152,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         quiz.questions.forEach(q => {
             const ans = finalAnswers[q.id];
             const qPoints = parseFloat(String(q.points || 0));
-            
-            if (q.type === 'mcq') {
-                if (ans === q.correctAnswer) score += qPoints;
-            } else if (q.type === 'short') {
-                if (String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase()) score += qPoints;
-            } else if (q.type === 'group-tf' && q.subQuestions) {
+            if (q.type === 'mcq' && ans === q.correctAnswer) score += qPoints;
+            else if (q.type === 'short' && String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase()) score += qPoints;
+            else if (q.type === 'group-tf' && q.subQuestions) {
                 let subCorrect = 0;
                 q.subQuestions.forEach((sq, i) => { if (ans?.[i] === sq.correctAnswer) subCorrect++; });
                 if (subCorrect === 4) score += qPoints;
@@ -189,24 +180,30 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         };
 
         try {
-            // Bước 1: Lưu vào Database chính
+            // Bước 1: Lưu vào DB
             await saveResult(result);
             
-            // Bước 2: Cộng điểm tích lũy
+            // Bước 2: Xác minh xem DB đã thực sự nhận chưa
+            setSubmitStatus('verifying');
+            await new Promise(r => setTimeout(r, 1500)); // Đợi DB đồng bộ
+            const exists = await verifyResultExists(result.id);
+            
+            if (!exists) {
+                throw new Error("Database báo lưu thành công nhưng không tìm thấy dữ liệu. Vui lòng nộp lại.");
+            }
+
+            // Bước 3: Hoàn tất
             await addPointsToUser(student.id, score);
-            
-            // Bước 3: Xóa phiên giám sát
             await deleteExamSession(sessionIdRef.current); 
-            
-            // Bước 4: Quan trọng nhất - CHỈ XÓA BACKUP KHI LƯU DB XONG
             localStorage.removeItem(backupKey);
             
             setFinalResult(result);
             setSubmitStatus('done');
-            setIsSubmitting(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Lỗi nộp bài:", error);
+            setErrorMessage(error.message || "Lỗi không xác định");
             setSubmitStatus('error');
+        } finally {
             setIsSubmitting(false);
         }
     };
@@ -226,37 +223,25 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
-    // Nếu đã nộp xong, hiển thị màn hình kết quả ngay tại đây
     if (submitStatus === 'done' && finalResult) {
         return (
             <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 animate-fade-in">
                 <div className="max-w-md w-full bg-white rounded-[3.5rem] p-12 text-center shadow-2xl space-y-8 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
-                    <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                        <Trophy size={48} className="animate-bounce"/>
-                    </div>
+                    <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={48} className="animate-bounce"/></div>
                     <div className="space-y-2">
-                        <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Hoàn thành bài thi!</h2>
-                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Hệ thống đã ghi nhận kết quả</p>
+                        <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Nộp bài thành công!</h2>
+                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest italic">Dữ liệu đã được lưu trên Cloud</p>
                     </div>
-
                     <div className="bg-slate-50 rounded-[2rem] p-8 space-y-4 border border-slate-100">
                         <div className="flex justify-between items-center px-4">
                             <span className="text-[10px] font-black text-slate-400 uppercase">Điểm số</span>
                             <span className="text-4xl font-black text-emerald-600 italic">{finalResult.score.toFixed(2)}</span>
                         </div>
-                        <div className="h-px bg-slate-200"></div>
-                        <div className="flex justify-between items-center px-4">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Thời gian</span>
-                            <span className="text-sm font-black text-slate-700">{formatTime(finalResult.durationSeconds)}</span>
-                        </div>
                     </div>
-
-                    <div className="space-y-3">
-                        <button onClick={onExit} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
-                            <Home size={18}/> Quay lại trang chủ
-                        </button>
-                    </div>
+                    <button onClick={onExit} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
+                        <Home size={18}/> Về trang chủ
+                    </button>
                 </div>
             </div>
         );
@@ -264,37 +249,36 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
 
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
-            {/* Lớp phủ trạng thái nộp bài */}
             {(submitStatus !== 'idle' && submitStatus !== 'done') && (
                 <div className="fixed inset-0 z-[3000] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center space-y-8 shadow-2xl">
                         {submitStatus === 'queuing' && (
-                            <>
+                            <div className="space-y-4">
                                 <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto animate-pulse"><Clock size={40}/></div>
-                                <div className="space-y-2">
-                                    <h3 className="text-xl font-black uppercase text-slate-800">Đang xếp hàng...</h3>
-                                    <p className="text-sm font-bold text-slate-400">Vui lòng đợi giây lát, hệ thống đang nhận bài của cả lớp.</p>
-                                </div>
-                            </>
+                                <h3 className="text-xl font-black uppercase text-slate-800">Đang xếp hàng...</h3>
+                            </div>
                         )}
                         {submitStatus === 'saving' && (
-                            <>
+                            <div className="space-y-4">
                                 <div className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto animate-spin-slow"><Loader2 size={40}/></div>
-                                <div className="space-y-2">
-                                    <h3 className="text-xl font-black uppercase text-slate-800">Đang lưu bài...</h3>
-                                    <p className="text-sm font-bold text-slate-400">Tuyệt đối không đóng trình duyệt lúc này.</p>
-                                </div>
-                            </>
+                                <h3 className="text-xl font-black uppercase text-slate-800">Đang ghi Database...</h3>
+                            </div>
+                        )}
+                        {submitStatus === 'verifying' && (
+                            <div className="space-y-4">
+                                <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><SearchCheck size={40}/></div>
+                                <h3 className="text-xl font-black uppercase text-emerald-600 italic">Đang xác minh...</h3>
+                            </div>
                         )}
                         {submitStatus === 'error' && (
-                            <>
+                            <div className="space-y-6">
                                 <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto"><XCircle size={40}/></div>
                                 <div className="space-y-2">
-                                    <h3 className="text-xl font-black uppercase text-red-600">Lỗi nộp bài</h3>
-                                    <p className="text-xs text-slate-500 font-medium">Hệ thống quá tải hoặc mất kết nối. Bài làm của bạn vẫn được lưu an toàn trên máy này.</p>
-                                    <button onClick={() => finalizeSubmit(false)} className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs hover:bg-black transition-all">THỬ NỘP LẠI NGAY</button>
+                                    <h3 className="text-xl font-black uppercase text-red-600">Nộp bài thất bại</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight bg-red-50 p-3 rounded-xl">{errorMessage}</p>
                                 </div>
-                            </>
+                                <button onClick={() => finalizeSubmit(false)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs hover:bg-black transition-all">THỬ NỘP LẠI NGAY</button>
+                            </div>
                         )}
                     </div>
                 </div>
