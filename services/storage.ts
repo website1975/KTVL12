@@ -16,18 +16,20 @@ try {
   console.error("Lỗi khởi tạo Supabase:", e);
 }
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
-    try {
-        return await fn();
-    } catch (error) {
-        if (retries <= 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return withRetry(fn, retries - 1, delay * 2);
-    }
-};
-
 export const isDatabaseConnected = (): boolean => {
     return !!supabase;
+};
+
+// --- HÀM BẮT LỖI TỔNG QUÁT ---
+const handleSupabaseError = (error: any, context: string) => {
+    if (error) {
+        console.error(`LỖI SUPABASE [${context}]:`, error);
+        // Lỗi 42501 là lỗi vi phạm RLS (Row Level Security)
+        if (error.code === '42501') {
+            throw new Error(`Database chặn quyền (RLS). Bạn cần chỉnh 'Target Roles' thành 'anon' trong Policy của bảng trên Supabase.`);
+        }
+        throw new Error(`${context} thất bại: ${error.message}`);
+    }
 };
 
 // --- Results ---
@@ -38,16 +40,10 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
       }
-      // Thêm order để đảm bảo lấy mới nhất và tránh cache của Supabase client
       const { data, error } = await query.order('created_at', { ascending: false });
-      
-      if (error) {
-          console.error("Lỗi SELECT results (Có thể do RLS):", error.message);
-          throw error;
-      }
+      if (error) return []; 
       return data ? data.map((row: any) => row.data as Result) : [];
   } catch (e) {
-      console.error("Không thể tải kết quả từ Cloud:", e);
       return [];
   }
 };
@@ -55,123 +51,79 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
 export const verifyResultExists = async (resultId: string): Promise<boolean> => {
     if (!supabase) return false;
     const { data, error } = await supabase.from('results').select('id').eq('id', resultId).maybeSingle();
-    if (error) {
-        console.error("Lỗi xác minh bản ghi:", error.message);
-        return false;
-    }
-    return !!data;
+    return !!data && !error;
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
-  if (!supabase) throw new Error("Mất kết nối Database Cloud");
-  
-  await withRetry(async () => {
-      const payload = { 
-          id: result.id, 
-          quiz_id: result.quizId, 
-          student_id: result.studentId, 
-          data: result 
-      };
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const payload = { 
+      id: result.id, 
+      quiz_id: result.quizId, 
+      student_id: result.studentId, 
+      data: result 
+  };
+  const { error } = await supabase.from('results').insert(payload);
+  handleSupabaseError(error, "Lưu kết quả thi");
+};
 
-      const { error } = await supabase.from('results').insert(payload);
-      
-      if (error) {
-          console.error("Lỗi INSERT results (Kiểm tra RLS Policy):", error.message);
-          throw new Error(`Cloud từ chối lưu bài: ${error.message}`);
-      }
-  });
+export const deleteResult = async (id: string): Promise<void> => {
+    if (supabase) {
+        const { error } = await supabase.from('results').delete().eq('id', id);
+        handleSupabaseError(error, "Xóa kết quả");
+    }
+};
+
+export const updateResultCode = async (id: string, code: string): Promise<void> => {
+    if (!supabase) return;
+    const { data, error: fetchError } = await supabase.from('results').select('data').eq('id', id).single();
+    if (fetchError || !data) return;
+    const resData = { ...data.data, studentCode: code.trim().toUpperCase() };
+    const { error } = await supabase.from('results').update({ data: resData }).eq('id', id);
+    handleSupabaseError(error, "Cập nhật mã học sinh");
 };
 
 export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
   if (!supabase) return;
   const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
-  
-  if (fetchError) {
-      console.error("Lỗi tải thông tin User để cộng điểm:", fetchError.message);
-      return;
-  }
-
+  if (fetchError) return;
   if (data) {
     const d = data.data as User;
     d.points = (Number(d.points) || 0) + Number(points);
-    
-    const { error: updateError } = await supabase.from('users').update({ data: d }).eq('id', userId);
-    if (updateError) {
-        console.error("Lỗi UPDATE điểm User (Kiểm tra RLS Policy bảng users):", updateError.message);
-        throw new Error("Không thể cập nhật điểm tích lũy lên Cloud.");
-    }
+    const { error } = await supabase.from('users').update({ data: d }).eq('id', userId);
+    if (error) console.error("Không thể cập nhật điểm:", error.message);
   }
-};
-
-export const updateResultCode = async (id: string, code: string): Promise<void> => {
-  if (!supabase) return;
-  const { data, error: fetchErr } = await supabase.from('results').select('data').eq('id', id).single();
-  if (fetchErr) return;
-  if (data) {
-    const updatedData = { ...data.data, studentCode: code };
-    await supabase.from('results').update({ data: updatedData }).eq('id', id);
-  }
-};
-
-export const deleteResult = async (id: string): Promise<void> => {
-  if (supabase) await supabase.from('results').delete().eq('id', id);
-};
-
-// --- Exam Sessions ---
-// Fix: Added getExamSessions which was missing and required by ExamMonitor.tsx
-export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> => {
-    if (!supabase) return [];
-    try {
-        let query = supabase.from('exam_sessions').select('data');
-        if (quizId && quizId !== 'all') {
-            // Using JSON path filtering if the schema allows, otherwise client-side filtering handled by consumer
-            query = query.filter('data->>quizId', 'eq', quizId);
-        }
-        const { data, error } = await query;
-        if (error) return [];
-        return data ? data.map((row: any) => row.data as ExamSession) : [];
-    } catch (e) {
-        return [];
-    }
-};
-
-export const saveExamSession = async (session: ExamSession): Promise<void> => {
-    if (!supabase) return;
-    const { error } = await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
-    if (error) console.error("Lỗi lưu session:", error.message);
-};
-
-export const deleteExamSession = async (id: string): Promise<void> => {
-    if (supabase) await supabase.from('exam_sessions').delete().eq('id', id);
 };
 
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
-  if (error) return [];
+  if (error) {
+      console.error("Lỗi tải danh sách Users:", error.message);
+      return [];
+  }
   return data.map((row: any) => ({ ...row.data, id: row.id } as User));
 };
 
 export const saveUser = async (user: User): Promise<void> => {
-  if (!supabase) return;
-  const { error } = await supabase.from('users').upsert({ id: user.id, username: user.username.toLowerCase(), data: user });
-  if (error) console.error("Lỗi lưu user:", error.message);
+  if (!supabase) throw new Error("Mất kết nối Database Cloud");
+  const payload = { 
+      id: user.id, 
+      username: user.username.toLowerCase().trim(), 
+      data: user 
+  };
+  const { error } = await supabase.from('users').upsert(payload);
+  handleSupabaseError(error, "Lưu thông tin người dùng");
+  console.log("Đã lưu User thành công vào Supabase:", user.fullName);
 };
 
-// Fix: Added changePassword which was missing and required by Layout.tsx and AdminDashboard.tsx
 export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
     if (!supabase) return false;
-    try {
-        const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
-        if (fetchError || !data) return false;
-        
-        const userData = { ...data.data, password: newPassword };
-        const { error: updateError } = await supabase.from('users').update({ data: userData }).eq('id', userId);
-        return !updateError;
-    } catch (e) {
-        return false;
-    }
+    const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
+    if (fetchError || !data) return false;
+    const userData = { ...data.data, password: newPassword };
+    const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
+    return !error;
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
@@ -187,7 +139,10 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  if (supabase) await supabase.from('users').delete().eq('id', id);
+  if (supabase) {
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      handleSupabaseError(error, "Xóa người dùng");
+  }
 };
 
 // --- Quizzes ---
@@ -199,11 +154,15 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
-  if (supabase) await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
+  if (!supabase) return;
+  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
+  handleSupabaseError(error, "Lưu đề thi");
 };
 
 export const updateQuiz = async (quiz: Quiz): Promise<void> => {
-  if (supabase) await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
+  if (!supabase) return;
+  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
+  handleSupabaseError(error, "Cập nhật đề thi");
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
@@ -232,14 +191,16 @@ export const getPublishedResults = async (): Promise<PublishedResult[]> => {
 };
 
 export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
-    if (supabase) await supabase.from('published_results').upsert({ id: pub.id, data: pub });
+    if (supabase) {
+        const { error } = await supabase.from('published_results').upsert({ id: pub.id, data: pub });
+        handleSupabaseError(error, "Công bố kết quả");
+    }
 };
 
 export const deletePublishedResult = async (id: string): Promise<void> => {
     if (supabase) await supabase.from('published_results').delete().eq('id', id);
 };
 
-// --- Chapters ---
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
   const { data } = await supabase.from('chapters').select('data');
@@ -247,14 +208,16 @@ export const getChapters = async (): Promise<Chapter[]> => {
 };
 
 export const saveChapter = async (c: Chapter): Promise<void> => {
-  if (supabase) await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
+  if (supabase) {
+      const { error } = await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
+      handleSupabaseError(error, "Lưu chương học");
+  }
 };
 
 export const deleteChapter = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
-// --- Bank ---
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
     const { data } = await supabase.from('bank_questions').select('data');
@@ -262,11 +225,31 @@ export const getBankQuestions = async (): Promise<Question[]> => {
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
-    if (supabase) await supabase.from('bank_questions').insert({ id: q.id, data: q });
+    if (supabase) {
+        const { error } = await supabase.from('bank_questions').insert({ id: q.id, data: q });
+        handleSupabaseError(error, "Lưu câu hỏi ngân hàng");
+    }
 };
 
-export const initStorage = () => {};
+export const saveExamSession = async (session: ExamSession): Promise<void> => {
+    if (supabase) await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
+};
+
+export const deleteExamSession = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('exam_sessions').delete().eq('id', id);
+};
+
+export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> => {
+    if (!supabase) return [];
+    let query = supabase.from('exam_sessions').select('data');
+    if (quizId && quizId !== 'all') query = query.filter('data->>quizId', 'eq', quizId);
+    const { data } = await query;
+    return data ? data.map((row: any) => row.data as ExamSession) : [];
+};
+
 export const clearAllSessions = async () => {
     if (supabase) await supabase.from('exam_sessions').delete().neq('id', 'null');
 };
+
+export const initStorage = () => {};
 export const clearLocalCache = () => { localStorage.clear(); window.location.reload(); };
