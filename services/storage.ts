@@ -53,8 +53,8 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
           return [];
       }
 
-      const parsedResults = data.map((row: any) => row.data as Result);
-      return parsedResults.sort((a, b) => 
+      const parsedResults: Result[] = data.map((row: any) => row.data as Result);
+      return parsedResults.sort((a: Result, b: Result) => 
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       );
   } catch (e) {
