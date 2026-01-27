@@ -152,17 +152,19 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         let score = 0;
         quiz.questions.forEach(q => {
             const ans = finalAnswers[q.id];
+            const qPoints = parseFloat(String(q.points || 0));
+            
             if (q.type === 'mcq') {
-                if (ans === q.correctAnswer) score += Number(q.points);
+                if (ans === q.correctAnswer) score += qPoints;
             } else if (q.type === 'short') {
-                if (String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase()) score += Number(q.points);
+                if (String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase()) score += qPoints;
             } else if (q.type === 'group-tf' && q.subQuestions) {
                 let subCorrect = 0;
                 q.subQuestions.forEach((sq, i) => { if (ans?.[i] === sq.correctAnswer) subCorrect++; });
-                if (subCorrect === 4) score += Number(q.points);
-                else if (subCorrect === 3) score += Number(q.points) * 0.5;
-                else if (subCorrect === 2) score += Number(q.points) * 0.25;
-                else if (subCorrect === 1) score += Number(q.points) * 0.1;
+                if (subCorrect === 4) score += qPoints;
+                else if (subCorrect === 3) score += qPoints * 0.5;
+                else if (subCorrect === 2) score += qPoints * 0.25;
+                else if (subCorrect === 1) score += qPoints * 0.1;
             }
         });
 
@@ -172,24 +174,28 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             studentId: student.id,
             studentName: student.fullName,
             studentCode: student.studentCode || 'N/A',
-            score: score,
+            score: Number(score.toFixed(2)),
             totalQuestions: quiz.questions.length,
             submittedAt: new Date().toISOString(),
             durationSeconds: finalSpent,
-            pointsAwarded: score,
+            pointsAwarded: Number(score.toFixed(2)),
             userAnswers: finalAnswers,
             violationCount: finalViolations
         };
 
         try {
+            // Quan trọng: Chỉ thực hiện tiếp khi Database xác nhận lưu thành công
             await saveResult(result);
             await addPointsToUser(student.id, score);
             await deleteExamSession(sessionIdRef.current); 
+            
             // Xóa backup sau khi nộp thành công
             localStorage.removeItem(backupKey);
             setSubmitStatus('done');
+            
             setTimeout(() => onExit(), 1500);
         } catch (error) {
+            console.error("Lỗi khi nộp bài:", error);
             setSubmitStatus('error');
             alert("Hệ thống đang quá tải, bài làm đã được lưu tạm vào máy của bạn. ĐỪNG ĐÓNG TRÌNH DUYỆT, hãy nhấn Nộp lại sau vài giây.");
             setIsSubmitting(false);
