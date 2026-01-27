@@ -24,7 +24,7 @@ import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 import { 
     Users as UsersIcon, ClipboardList, Sparkles, FolderTree, 
-    Database, PlusCircle, LayoutDashboard, ShieldAlert
+    Database, PlusCircle, LayoutDashboard, ShieldAlert, Loader2
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -53,7 +53,7 @@ const AdminDashboard: React.FC = () => {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-    // --- TRẠNG THÁI BỘ LỌC - MẶC ĐỊNH LÀ 'TẤT CẢ' ---
+    // --- TRẠNG THÁI BỘ LỌC ---
     const [sSearch, setSSearch] = useState('');
     const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
     const [qSearch, setQSearch] = useState('');
@@ -68,12 +68,12 @@ const AdminDashboard: React.FC = () => {
 
     // --- TRẠNG THÁI MODALS ---
     const [isAiLoading, setIsAiLoading] = useState(false);
+    const [isSavingStudent, setIsSavingStudent] = useState(false);
     const [studentModal, setStudentModal] = useState<{ isOpen: boolean, student: User | null }>({ isOpen: false, student: null });
     const [sForm, setSForm] = useState({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
     
-    // Results Detail Modals
     const [historyModal, setHistoryModal] = useState<{ isOpen: boolean, studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
     const [detailModal, setDetailModal] = useState<{ isOpen: boolean, result: Result | null, quiz: Quiz | null }>({ isOpen: false, result: null, quiz: null });
 
@@ -99,14 +99,30 @@ const AdminDashboard: React.FC = () => {
 
     const handleSaveStudent = async () => {
         if (!sForm.fullName || !sForm.studentCode) return alert("Vui lòng nhập đủ thông tin!");
-        await saveUser({
-            id: studentModal.student?.id || uuidv4(), username: sForm.studentCode.toLowerCase(),
-            password: sForm.password || '123', role: 'student', fullName: sForm.fullName,
-            studentCode: sForm.studentCode.toUpperCase(), grade: sForm.grade,
-            points: studentModal.student?.points || 0
-        });
-        setStudentModal({ isOpen: false, student: null });
-        refreshData();
+        
+        setIsSavingStudent(true);
+        try {
+            await saveUser({
+                id: studentModal.student?.id || uuidv4(), 
+                username: sForm.studentCode.toLowerCase().trim(),
+                password: sForm.password || '123', 
+                role: 'student', 
+                fullName: sForm.fullName.trim(),
+                studentCode: sForm.studentCode.toUpperCase().trim(), 
+                grade: sForm.grade,
+                points: studentModal.student?.points || 0
+            });
+            
+            // Chỉ đóng modal và thông báo nếu không có lỗi ném ra
+            setStudentModal({ isOpen: false, student: null });
+            await refreshData();
+            alert("Đã lưu học sinh thành công!");
+        } catch (error: any) {
+            console.error("Lỗi khi lưu học sinh:", error);
+            alert("LỖI DATABASE: " + error.message);
+        } finally {
+            setIsSavingStudent(false);
+        }
     };
 
     const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,19 +132,28 @@ const AdminDashboard: React.FC = () => {
         reader.onload = async (event) => {
             const content = event.target?.result as string;
             const lines = content.split('\n').map(l => l.trim()).filter(l => l !== '');
+            let count = 0;
+            let errors = 0;
+
             for (let i = 0; i < lines.length; i++) {
                 const row = lines[i].split(',').map(item => item.trim());
                 if (row.length < 2) continue;
                 const [code, name, g, p] = row;
                 if (i === 0 && (code.toLowerCase().includes('mã') || name.toLowerCase().includes('tên'))) continue;
                 if (!code || !name) continue;
-                await saveUser({
-                    id: uuidv4(), username: code.toLowerCase(), password: p || '123',
-                    role: 'student', fullName: name, studentCode: code.toUpperCase(),
-                    grade: (g || '12') as Grade, points: 0
-                });
+                
+                try {
+                    await saveUser({
+                        id: uuidv4(), username: code.toLowerCase(), password: p || '123',
+                        role: 'student', fullName: name, studentCode: code.toUpperCase(),
+                        grade: (g || '12') as Grade, points: 0
+                    });
+                    count++;
+                } catch (e) {
+                    errors++;
+                }
             }
-            alert(`Nhập dữ liệu thành công!`); 
+            alert(`Nhập dữ liệu thành công ${count} học sinh. Lỗi: ${errors}.`); 
             refreshData();
         };
         reader.readAsText(file);
@@ -241,7 +266,7 @@ const AdminDashboard: React.FC = () => {
                     />
                 )}
 
-                <StudentModal isOpen={studentModal.isOpen} student={studentModal.student} form={sForm} setForm={setSForm} onClose={() => setStudentModal({isOpen:false, student:null})} onSave={handleSaveStudent} />
+                <StudentModal isOpen={studentModal.isOpen} student={studentModal.student} form={sForm} setForm={setSForm} onClose={() => setStudentModal({isOpen:false, student:null})} onSave={handleSaveStudent} isSaving={isSavingStudent} />
                 <StudentDetailModal student={selectedStudent} results={results} quizzes={quizzes} onClose={() => setSelectedStudent(null)} onViewResult={res => setDetailModal({ isOpen: true, result: res, quiz: quizzes.find(q => q.id === res.quizId) || null })} />
                 
                 {historyModal && (
