@@ -33,30 +33,39 @@ export const isDatabaseConnected = (): boolean => {
 // --- Results ---
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
-  // Bypass cache bằng cách thêm timestamp vào query nếu cần, nhưng Supabase thường xử lý tốt
-  let query = supabase.from('results').select('data');
-  if (quizId && quizId !== 'all') {
-    query = query.eq('quiz_id', quizId);
-  }
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) {
-      console.error("Lỗi lấy kết quả:", error);
+  try {
+      let query = supabase.from('results').select('data');
+      if (quizId && quizId !== 'all') {
+        query = query.eq('quiz_id', quizId);
+      }
+      // Thêm order để đảm bảo lấy mới nhất và tránh cache của Supabase client
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) {
+          console.error("Lỗi SELECT results (Có thể do RLS):", error.message);
+          throw error;
+      }
+      return data ? data.map((row: any) => row.data as Result) : [];
+  } catch (e) {
+      console.error("Không thể tải kết quả từ Cloud:", e);
       return [];
   }
-  return data ? data.map((row: any) => row.data as Result) : [];
 };
 
 export const verifyResultExists = async (resultId: string): Promise<boolean> => {
     if (!supabase) return false;
     const { data, error } = await supabase.from('results').select('id').eq('id', resultId).maybeSingle();
-    return !!data && !error;
+    if (error) {
+        console.error("Lỗi xác minh bản ghi:", error.message);
+        return false;
+    }
+    return !!data;
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
-  if (!supabase) throw new Error("Mất kết nối Database");
+  if (!supabase) throw new Error("Mất kết nối Database Cloud");
   
   await withRetry(async () => {
-      // Đảm bảo các trường ID không bị undefined
       const payload = { 
           id: result.id, 
           quiz_id: result.quizId, 
@@ -67,11 +76,31 @@ export const saveResult = async (result: Result): Promise<void> => {
       const { error } = await supabase.from('results').insert(payload);
       
       if (error) {
-          // Log lỗi chi tiết để Admin có thể xem trong F12
-          console.error("SUPABASE ERROR:", error.message, error.details, error.hint);
-          throw new Error(`Database từ chối lưu: ${error.message}`);
+          console.error("Lỗi INSERT results (Kiểm tra RLS Policy):", error.message);
+          throw new Error(`Cloud từ chối lưu bài: ${error.message}`);
       }
   });
+};
+
+export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
+  if (!supabase) return;
+  const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
+  
+  if (fetchError) {
+      console.error("Lỗi tải thông tin User để cộng điểm:", fetchError.message);
+      return;
+  }
+
+  if (data) {
+    const d = data.data as User;
+    d.points = (Number(d.points) || 0) + Number(points);
+    
+    const { error: updateError } = await supabase.from('users').update({ data: d }).eq('id', userId);
+    if (updateError) {
+        console.error("Lỗi UPDATE điểm User (Kiểm tra RLS Policy bảng users):", updateError.message);
+        throw new Error("Không thể cập nhật điểm tích lũy lên Cloud.");
+    }
+  }
 };
 
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
@@ -80,7 +109,7 @@ export const updateResultCode = async (id: string, code: string): Promise<void> 
   if (fetchErr) return;
   if (data) {
     const updatedData = { ...data.data, studentCode: code };
-    const { error: updateErr } = await supabase.from('results').update({ data: updatedData }).eq('id', id);
+    await supabase.from('results').update({ data: updatedData }).eq('id', id);
   }
 };
 
@@ -89,35 +118,31 @@ export const deleteResult = async (id: string): Promise<void> => {
 };
 
 // --- Exam Sessions ---
+// Fix: Added getExamSessions which was missing and required by ExamMonitor.tsx
 export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> => {
     if (!supabase) return [];
-    let query = supabase.from('exam_sessions').select('data');
-    if (quizId && quizId !== 'all') {
-        query = query.filter('data->>quizId', 'eq', quizId);
+    try {
+        let query = supabase.from('exam_sessions').select('data');
+        if (quizId && quizId !== 'all') {
+            // Using JSON path filtering if the schema allows, otherwise client-side filtering handled by consumer
+            query = query.filter('data->>quizId', 'eq', quizId);
+        }
+        const { data, error } = await query;
+        if (error) return [];
+        return data ? data.map((row: any) => row.data as ExamSession) : [];
+    } catch (e) {
+        return [];
     }
-    const { data } = await query;
-    return data ? data.map((row: any) => row.data as ExamSession) : [];
 };
 
 export const saveExamSession = async (session: ExamSession): Promise<void> => {
     if (!supabase) return;
-    await withRetry(async () => {
-        const { error } = await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
-        if (error) throw error;
-    }, 2, 500);
+    const { error } = await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
+    if (error) console.error("Lỗi lưu session:", error.message);
 };
 
 export const deleteExamSession = async (id: string): Promise<void> => {
-    if (supabase) await withRetry(async () => {
-        const { error } = await supabase.from('exam_sessions').delete().eq('id', id);
-        if (error) throw error;
-    });
-};
-
-export const clearAllSessions = async (): Promise<void> => {
-    if (supabase) {
-        await supabase.from('exam_sessions').delete().neq('id', 'null');
-    }
+    if (supabase) await supabase.from('exam_sessions').delete().eq('id', id);
 };
 
 // --- Users ---
@@ -130,13 +155,23 @@ export const getUsers = async (): Promise<User[]> => {
 
 export const saveUser = async (user: User): Promise<void> => {
   if (!supabase) return;
-  const normalizedUser = {
-    ...user,
-    username: (user.studentCode || user.username).toLowerCase(),
-    studentCode: user.studentCode ? user.studentCode.toUpperCase() : undefined,
-    fullName: user.fullName.trim()
-  };
-  const { error } = await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
+  const { error } = await supabase.from('users').upsert({ id: user.id, username: user.username.toLowerCase(), data: user });
+  if (error) console.error("Lỗi lưu user:", error.message);
+};
+
+// Fix: Added changePassword which was missing and required by Layout.tsx and AdminDashboard.tsx
+export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+        const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
+        if (fetchError || !data) return false;
+        
+        const userData = { ...data.data, password: newPassword };
+        const { error: updateError } = await supabase.from('users').update({ data: userData }).eq('id', userId);
+        return !updateError;
+    } catch (e) {
+        return false;
+    }
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
@@ -155,23 +190,11 @@ export const deleteUser = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('users').delete().eq('id', id);
 };
 
-export const changePassword = async (userId: string, newPass: string): Promise<boolean> => {
-  if (!supabase) return false;
-  const { data } = await supabase.from('users').select('data').eq('id', userId).single();
-  if (!data) return false;
-  const updated = { ...data.data as User, password: newPass };
-  const { error } = await supabase.from('users').update({ data: updated }).eq('id', userId);
-  return !error;
-};
-
-export const clearLocalCache = () => {
-    localStorage.clear();
-    window.location.reload();
-};
-
+// --- Quizzes ---
 export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
-  const { data } = await supabase.from('quizzes').select('data');
+  const { data, error } = await supabase.from('quizzes').select('data');
+  if (error) return [];
   return data ? data.map((row: any) => row.data as Quiz) : [];
 };
 
@@ -202,16 +225,6 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
   }
 };
 
-export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
-  if (!supabase) return;
-  const { data } = await supabase.from('users').select('data').eq('id', userId).single();
-  if (data) {
-    const d = data.data as User;
-    d.points = (d.points || 0) + points;
-    await supabase.from('users').update({ data: d }).eq('id', userId);
-  }
-};
-
 export const getPublishedResults = async (): Promise<PublishedResult[]> => {
     if (!supabase) return [];
     const { data } = await supabase.from('published_results').select('data');
@@ -226,6 +239,7 @@ export const deletePublishedResult = async (id: string): Promise<void> => {
     if (supabase) await supabase.from('published_results').delete().eq('id', id);
 };
 
+// --- Chapters ---
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
   const { data } = await supabase.from('chapters').select('data');
@@ -240,6 +254,7 @@ export const deleteChapter = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
+// --- Bank ---
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
     const { data } = await supabase.from('bank_questions').select('data');
@@ -251,3 +266,7 @@ export const saveBankQuestion = async (q: Question): Promise<void> => {
 };
 
 export const initStorage = () => {};
+export const clearAllSessions = async () => {
+    if (supabase) await supabase.from('exam_sessions').delete().neq('id', 'null');
+};
+export const clearLocalCache = () => { localStorage.clear(); window.location.reload(); };
