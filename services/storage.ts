@@ -21,7 +21,6 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 1000): Pr
         return await fn();
     } catch (error) {
         if (retries <= 0) throw error;
-        // Tăng độ trễ ngẫu nhiên để tránh dồn toa
         const jitter = Math.random() * 2000;
         await new Promise(resolve => setTimeout(resolve, delay + jitter));
         return withRetry(fn, retries - 1, delay * 1.5);
@@ -32,33 +31,42 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- Results (Tối ưu: Chỉ lấy theo Quiz ID nếu có) ---
+// --- Results ---
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   let query = supabase.from('results').select('data');
   if (quizId && quizId !== 'all') {
     query = query.eq('quiz_id', quizId);
   }
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) {
+      console.error("Lỗi lấy kết quả:", error);
+      return [];
+  }
   return data ? data.map((row: any) => row.data as Result) : [];
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
-  if (!supabase) return;
-  await withRetry(() => supabase.from('results').insert({ 
-      id: result.id, 
-      quiz_id: result.quizId, 
-      student_id: result.studentId, 
-      data: result 
-  }));
+  if (!supabase) throw new Error("Database not connected");
+  await withRetry(async () => {
+      const { error } = await supabase.from('results').insert({ 
+          id: result.id, 
+          quiz_id: result.quizId, 
+          student_id: result.studentId, 
+          data: result 
+      });
+      if (error) throw error; // Quan trọng: ném lỗi để withRetry xử lý
+  });
 };
 
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
   if (!supabase) return;
-  const { data } = await supabase.from('results').select('data').eq('id', id).single();
+  const { data, error: fetchErr } = await supabase.from('results').select('data').eq('id', id).single();
+  if (fetchErr) return;
   if (data) {
     const updatedData = { ...data.data, studentCode: code };
-    await supabase.from('results').update({ data: updatedData }).eq('id', id);
+    const { error: updateErr } = await supabase.from('results').update({ data: updatedData }).eq('id', id);
+    if (updateErr) console.error("Lỗi cập nhật mã HS:", updateErr);
   }
 };
 
@@ -79,12 +87,17 @@ export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> =
 
 export const saveExamSession = async (session: ExamSession): Promise<void> => {
     if (!supabase) return;
-    // Sử dụng retry ngắn cho heartbeat
-    await withRetry(() => supabase.from('exam_sessions').upsert({ id: session.id, data: session }), 2, 500);
+    await withRetry(async () => {
+        const { error } = await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
+        if (error) throw error;
+    }, 2, 500);
 };
 
 export const deleteExamSession = async (id: string): Promise<void> => {
-    if (supabase) await withRetry(() => supabase.from('exam_sessions').delete().eq('id', id));
+    if (supabase) await withRetry(async () => {
+        const { error } = await supabase.from('exam_sessions').delete().eq('id', id);
+        if (error) throw error;
+    });
 };
 
 export const clearAllSessions = async (): Promise<void> => {
@@ -93,7 +106,7 @@ export const clearAllSessions = async (): Promise<void> => {
     }
 };
 
-// --- Các hàm khác ---
+// --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
@@ -109,7 +122,8 @@ export const saveUser = async (user: User): Promise<void> => {
     studentCode: user.studentCode ? user.studentCode.toUpperCase() : undefined,
     fullName: user.fullName.trim()
   };
-  await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
+  const { error } = await supabase.from('users').upsert({ id: normalizedUser.id, username: normalizedUser.username, data: normalizedUser });
+  if (error) console.error("Lỗi lưu user:", error);
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
