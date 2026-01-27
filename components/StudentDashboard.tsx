@@ -5,7 +5,7 @@ import { getQuizzes, getResults, getPublishedResults } from '../services/storage
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Sparkles } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Sparkles, Loader2 } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -22,61 +22,71 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
   const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
+  // Quan trọng: Làm mới dữ liệu khi người dùng vừa thi xong (activeQuiz chuyển từ đề sang null)
   useEffect(() => {
     refreshData();
     const interval = setInterval(refreshData, 30000);
     return () => clearInterval(interval);
-  }, [user.grade, activeQuiz]);
+  }, [user.grade, activeQuiz === null]);
 
   const refreshData = async () => {
-    const [allQuizzes, allResults, allPubs] = await Promise.all([
-        getQuizzes(), 
-        getResults(), 
-        getPublishedResults()
-    ]);
-    
-    const relevantQuizzes = allQuizzes.filter(q => {
-        const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
-        return isCorrectGrade && q.isPublished;
-    });
-    setQuizzes(relevantQuizzes);
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+        const [allQuizzes, allResults, allPubs] = await Promise.all([
+            getQuizzes(), 
+            getResults(), 
+            getPublishedResults()
+        ]);
+        
+        const relevantQuizzes = allQuizzes.filter(q => {
+            const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
+            return isCorrectGrade && q.isPublished;
+        });
+        setQuizzes(relevantQuizzes);
 
-    const userResults = allResults.filter(r => 
-        r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
-    ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-    
-    setResults(userResults);
+        const userResults = allResults.filter(r => 
+            r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
+        ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+        
+        setResults(userResults);
 
-    const userPubs = allPubs.filter(p => 
-        user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
-    ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    setPublishedResults(userPubs);
+        const userPubs = allPubs.filter(p => 
+            user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
+        ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+        setPublishedResults(userPubs);
 
-    const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
-    const effortPoints = totalSeconds / 2700; 
+        const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
+        const effortPoints = totalSeconds / 2700; 
 
-    const testBestScores: Record<string, number> = {};
-    userResults.forEach(r => {
-        const quiz = relevantQuizzes.find(q => q.id === r.quizId);
-        if (quiz && quiz.type === 'test') {
-            if (!testBestScores[r.quizId] || r.score > testBestScores[r.quizId]) {
-                testBestScores[r.quizId] = r.score;
+        const testBestScores: Record<string, number> = {};
+        userResults.forEach(r => {
+            const quiz = relevantQuizzes.find(q => q.id === r.quizId);
+            if (quiz && quiz.type === 'test') {
+                if (!testBestScores[r.quizId] || r.score > testBestScores[r.quizId]) {
+                    testBestScores[r.quizId] = r.score;
+                }
             }
-        }
-    });
-    
-    let bonusPoints = 0;
-    Object.values(testBestScores).forEach(score => { if (score >= 8) bonusPoints += 1; });
+        });
+        
+        let bonusPoints = 0;
+        Object.values(testBestScores).forEach(score => { if (score >= 8) bonusPoints += 1; });
 
-    setStats({
-        totalQuizzes: userResults.length,
-        avgScore: userResults.length > 0 ? (userResults.reduce((acc, r) => acc + r.score, 0) / userResults.length) : 0,
-        totalSeconds,
-        effortPoints,
-        bonusPoints,
-        accumulatedPoints: effortPoints + bonusPoints
-    });
+        setStats({
+            totalQuizzes: userResults.length,
+            avgScore: userResults.length > 0 ? (userResults.reduce((acc, r) => acc + r.score, 0) / userResults.length) : 0,
+            totalSeconds,
+            effortPoints,
+            bonusPoints,
+            accumulatedPoints: effortPoints + bonusPoints
+        });
+    } catch (err) {
+        console.error("Lỗi làm mới dữ liệu:", err);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const formatStudyTime = (seconds: number) => {
@@ -102,6 +112,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Khối {user.grade} • Mã số: {user.studentCode}</p>
         </div>
         <div className="flex items-center gap-6 relative z-10">
+            {isLoading && <Loader2 className="animate-spin text-blue-500" size={20}/>}
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm group">
                 <div className="w-10 h-10 bg-yellow-400 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><Medal size={24}/></div>
                 <div className="text-right">
@@ -112,7 +123,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </header>
 
-      {/* BẢNG VÀNG KẾT QUẢ - THU NHỎ HIỂN THỊ NHIỀU CỘT */}
+      {/* BẢNG VÀNG KẾT QUẢ */}
       {publishedResults.length > 0 && (
           <section className="animate-fade-in-up">
               <div className="flex items-center gap-3 mb-6 px-4">
@@ -161,7 +172,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </section>
       )}
 
-      {/* Modal hiển thị danh sách vinh danh (Honorees) - GIỮ NGUYÊN */}
+      {/* Modal hiển thị danh sách vinh danh */}
       {viewingHonorees && (
           <div className="fixed inset-0 bg-slate-900/95 z-[3000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
               <div className="bg-white rounded-[3.5rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white">
@@ -210,7 +221,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
       )}
 
-      {/* THÔNG KÊ CÁ NHÂN - GIỮ NGUYÊN */}
+      {/* THÔNG KÊ CÁ NHÂN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
             <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><Trophy size={28} /></div>
@@ -226,7 +237,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* CÁC PHẦN CÒN LẠI GIỮ NGUYÊN */}
       <section className="space-y-12">
           {testQuizzes.length > 0 && (
               <div>
