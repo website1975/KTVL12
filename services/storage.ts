@@ -20,13 +20,11 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
-// --- HÀM BẮT LỖI TỔNG QUÁT ---
 const handleSupabaseError = (error: any, context: string) => {
     if (error) {
         console.error(`LỖI SUPABASE [${context}]:`, error);
-        // Lỗi 42501 là lỗi vi phạm RLS (Row Level Security)
         if (error.code === '42501') {
-            throw new Error(`Database chặn quyền (RLS). Bạn cần chỉnh 'Target Roles' thành 'anon' trong Policy của bảng trên Supabase.`);
+            throw new Error(`Database chặn quyền (RLS). Bạn cần chỉnh 'Target Roles' thành 'anon' trong Policy của bảng.`);
         }
         throw new Error(`${context} thất bại: ${error.message}`);
     }
@@ -36,14 +34,31 @@ const handleSupabaseError = (error: any, context: string) => {
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
+      // Lấy cột data từ bảng results
       let query = supabase.from('results').select('data');
+      
+      // Sửa chính xác thành quiz_id theo ảnh chụp DB
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
       }
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) return []; 
-      return data ? data.map((row: any) => row.data as Result) : [];
+      
+      const { data, error } = await query;
+      
+      if (error) {
+          console.error("Lỗi getResults:", error.message);
+          return [];
+      }
+
+      if (!data || data.length === 0) {
+          return [];
+      }
+
+      const parsedResults = data.map((row: any) => row.data as Result);
+      return parsedResults.sort((a, b) => 
+        new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
+      );
   } catch (e) {
+      console.error("Lỗi crash hàm getResults:", e);
       return [];
   }
 };
@@ -56,6 +71,7 @@ export const verifyResultExists = async (resultId: string): Promise<boolean> => 
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
+  // Sửa chính xác payload dùng quiz_id và student_id
   const payload = { 
       id: result.id, 
       quiz_id: result.quizId, 
@@ -114,7 +130,6 @@ export const saveUser = async (user: User): Promise<void> => {
   };
   const { error } = await supabase.from('users').upsert(payload);
   handleSupabaseError(error, "Lưu thông tin người dùng");
-  console.log("Đã lưu User thành công vào Supabase:", user.fullName);
 };
 
 export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
@@ -193,7 +208,7 @@ export const getPublishedResults = async (): Promise<PublishedResult[]> => {
 export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
     if (supabase) {
         const { error } = await supabase.from('published_results').upsert({ id: pub.id, data: pub });
-        handleSupabaseError(error, "Công bố kết quả");
+        handleSupabaseError(error, "Công bộ kết quả");
     }
 };
 
