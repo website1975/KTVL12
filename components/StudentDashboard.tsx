@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
 import { getQuizzes, getResults, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Sparkles, Loader2 } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -24,40 +24,37 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Quan trọng: Làm mới dữ liệu khi người dùng vừa thi xong (activeQuiz chuyển từ đề sang null)
-  useEffect(() => {
-    refreshData();
-    const interval = setInterval(refreshData, 30000);
-    return () => clearInterval(interval);
-  }, [user.grade, activeQuiz === null]);
-
-  const refreshData = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
+  const refreshData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoading(true);
     try {
+        // Tải đồng thời tất cả dữ liệu
         const [allQuizzes, allResults, allPubs] = await Promise.all([
             getQuizzes(), 
             getResults(), 
             getPublishedResults()
         ]);
         
+        // Lọc đề thi phù hợp
         const relevantQuizzes = allQuizzes.filter(q => {
             const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
             return isCorrectGrade && q.isPublished;
         });
         setQuizzes(relevantQuizzes);
 
+        // Lọc kết quả của chính học sinh này
         const userResults = allResults.filter(r => 
             r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
         ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
         
         setResults(userResults);
 
+        // Lọc vinh danh
         const userPubs = allPubs.filter(p => 
             user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
 
+        // Tính toán thống kê
         const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
         const effortPoints = totalSeconds / 2700; 
 
@@ -74,6 +71,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         let bonusPoints = 0;
         Object.values(testBestScores).forEach(score => { if (score >= 8) bonusPoints += 1; });
 
+        // Sử dụng điểm từ DB (nếu có) hoặc tính toán từ kết quả
+        // Lưu ý: User.points có thể bị delay do RLS, nên ưu tiên tính từ Results
         setStats({
             totalQuizzes: userResults.length,
             avgScore: userResults.length > 0 ? (userResults.reduce((acc, r) => acc + r.score, 0) / userResults.length) : 0,
@@ -83,10 +82,22 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             accumulatedPoints: effortPoints + bonusPoints
         });
     } catch (err) {
-        console.error("Lỗi làm mới dữ liệu:", err);
+        console.error("Lỗi đồng bộ dữ liệu StudentDashboard:", err);
     } finally {
         setIsLoading(false);
     }
+  }, [user.id, user.studentCode, user.grade]);
+
+  useEffect(() => {
+    refreshData();
+    const interval = setInterval(() => refreshData(true), 60000); // 1 phút refresh ngầm 1 lần
+    return () => clearInterval(interval);
+  }, [refreshData]);
+
+  // Khi kết thúc bài thi, ép làm mới dữ liệu
+  const handleExitQuiz = () => {
+    setActiveQuiz(null);
+    setTimeout(() => refreshData(), 500);
   };
 
   const formatStudyTime = (seconds: number) => {
@@ -96,7 +107,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   };
 
   if (activeQuiz) {
-    return <QuizTaker quiz={activeQuiz} student={user} onExit={() => setActiveQuiz(null)} />;
+    return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
   }
 
   const now = new Date();
@@ -111,8 +122,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic">Chào mừng, {user.fullName} 👋</h1>
             <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Khối {user.grade} • Mã số: {user.studentCode}</p>
         </div>
-        <div className="flex items-center gap-6 relative z-10">
-            {isLoading && <Loader2 className="animate-spin text-blue-500" size={20}/>}
+        <div className="flex items-center gap-4 relative z-10">
+            <button onClick={() => refreshData()} className={`p-3 rounded-2xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-all ${isLoading ? 'animate-spin' : ''}`}>
+                <RefreshCw size={20}/>
+            </button>
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm group">
                 <div className="w-10 h-10 bg-yellow-400 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><Medal size={24}/></div>
                 <div className="text-right">
@@ -123,8 +136,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         </div>
       </header>
 
+      {/* HIỂN THỊ LOADING BAN ĐẦU */}
+      {isLoading && results.length === 0 && (
+          <div className="py-20 text-center space-y-4">
+              <Loader2 className="animate-spin text-blue-500 mx-auto" size={40}/>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang tải dữ liệu từ Cloud...</p>
+          </div>
+      )}
+
       {/* BẢNG VÀNG KẾT QUẢ */}
-      {publishedResults.length > 0 && (
+      {!isLoading && publishedResults.length > 0 && (
           <section className="animate-fade-in-up">
               <div className="flex items-center gap-3 mb-6 px-4">
                   <Star className="text-yellow-500 fill-yellow-500" size={18}/>
@@ -136,89 +157,27 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                       return (
                           <div key={pub.id} className="relative group overflow-hidden bg-slate-900 rounded-[2rem] p-4 shadow-xl border-2 border-yellow-500/20 hover:border-yellow-500 transition-all flex flex-col h-full">
                               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-yellow-500/20 transition-all"></div>
-                              
                               <div className="relative z-10 flex flex-col h-full space-y-3">
                                   <div className="flex items-center gap-2">
-                                      <div className="w-8 h-8 bg-yellow-500 text-slate-900 rounded-lg flex items-center justify-center shadow-lg shrink-0">
-                                          <Award size={18} />
-                                      </div>
+                                      <div className="w-8 h-8 bg-yellow-500 text-slate-900 rounded-lg flex items-center justify-center shadow-lg shrink-0"><Award size={18} /></div>
                                       <div className="flex-1 overflow-hidden">
                                           <p className="text-[7px] font-black text-yellow-500 uppercase tracking-widest truncate">{pub.quizTitle}</p>
                                           <p className="text-[8px] font-bold text-white/50 uppercase leading-none">{format(new Date(pub.publishedAt), 'dd/MM/yy')}</p>
                                       </div>
                                   </div>
-
                                   <div className="bg-white/5 rounded-xl p-3 border border-white/10 backdrop-blur-sm flex-1 flex flex-col justify-between items-center text-center">
                                       <div className="flex flex-col items-center">
                                           <p className="text-[7px] font-black text-slate-400 uppercase mb-1">Điểm số</p>
-                                          <div className="text-xl font-black text-emerald-400 leading-none mb-1">
-                                              {userResultInPub?.score.toFixed(1)}
-                                          </div>
+                                          <div className="text-xl font-black text-emerald-400 leading-none mb-1">{userResultInPub?.score.toFixed(1)}</div>
                                       </div>
-                                      
-                                      <button 
-                                          onClick={() => setViewingHonorees(pub)}
-                                          className="w-full mt-2 py-2 bg-yellow-500 text-slate-900 rounded-lg text-[8px] font-black uppercase hover:bg-white transition-all shadow-md flex items-center justify-center gap-1.5"
-                                      >
-                                          <Users size={12}/> Xem lớp
-                                      </button>
+                                      <button onClick={() => setViewingHonorees(pub)} className="w-full mt-2 py-2 bg-yellow-500 text-slate-900 rounded-lg text-[8px] font-black uppercase hover:bg-white transition-all shadow-md flex items-center justify-center gap-1.5"><Users size={12}/> Xem lớp</button>
                                   </div>
                               </div>
-                              <Sparkles className="absolute bottom-2 right-2 text-yellow-500/10 animate-pulse pointer-events-none" size={24}/>
                           </div>
                       );
                   })}
               </div>
           </section>
-      )}
-
-      {/* Modal hiển thị danh sách vinh danh */}
-      {viewingHonorees && (
-          <div className="fixed inset-0 bg-slate-900/95 z-[3000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
-              <div className="bg-white rounded-[3.5rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white">
-                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-4">
-                          <div className="p-3 bg-yellow-500 text-slate-900 rounded-2xl shadow-lg"><Trophy size={24}/></div>
-                          <div>
-                              <h3 className="text-lg font-black uppercase tracking-tight italic">Danh Sách Vinh Danh Tập Thể</h3>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 leading-none">{viewingHonorees.quizTitle}</p>
-                          </div>
-                      </div>
-                      <button onClick={() => setViewingHonorees(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-slate-50">
-                      <div className="text-center mb-6">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Đội ngũ xuất sắc nhất</p>
-                          <div className="h-1 w-20 bg-yellow-500 mx-auto rounded-full"></div>
-                      </div>
-                      {viewingHonorees.results.map((r, idx) => (
-                          <div key={r.id} className={`flex items-center justify-between p-5 rounded-[2rem] border-2 transition-all shadow-sm ${r.studentCode === user.studentCode ? 'border-yellow-500 bg-yellow-50' : 'border-white bg-white hover:border-blue-100'}`}>
-                              <div className="flex items-center gap-5">
-                                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shadow-inner ${idx === 0 ? 'bg-yellow-500 text-slate-900' : idx === 1 ? 'bg-slate-300 text-slate-700' : idx === 2 ? 'bg-orange-300 text-orange-800' : 'bg-slate-100 text-slate-400'}`}>
-                                      {idx + 1}
-                                  </div>
-                                  <div>
-                                      <p className="font-black text-slate-800 uppercase text-sm leading-tight">{r.studentName}</p>
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">MSHS: {r.studentCode}</p>
-                                  </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                  <div className="text-right">
-                                      <p className="text-[8px] font-black text-slate-300 uppercase leading-none">ĐIỂM SỐ</p>
-                                      <p className="text-2xl font-black text-blue-600 leading-none">{r.score.toFixed(2)}</p>
-                                  </div>
-                                  {idx < 3 && <Star className="text-yellow-500 fill-yellow-500" size={20}/>}
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-                  <div className="p-8 bg-white text-center border-t border-slate-100">
-                      <p className="text-[11px] font-black text-slate-500 uppercase italic flex items-center justify-center gap-2">
-                          <Sparkles size={16} className="text-yellow-500"/> Hãy nỗ lực để có tên trên bảng vàng lần tới! <Sparkles size={16} className="text-yellow-500"/>
-                      </p>
-                  </div>
-              </div>
-          </div>
       )}
 
       {/* THÔNG KÊ CÁ NHÂN */}
@@ -319,6 +278,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
       </section>
 
+      {/* LỊCH SỬ NỘP BÀI */}
       <section className="pt-10">
           <div className="flex items-center gap-4 mb-8">
               <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2"><History size={20} className="text-blue-600"/> Lịch sử nộp bài gần đây</h2>
@@ -339,50 +299,50 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                           const quiz = quizzes.find(q => q.id === r.quizId);
                           return (
                               <tr key={r.id} className="hover:bg-slate-50 transition-colors group">
-                                  <td className="p-6">
-                                      <div className="flex flex-col">
-                                          <span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span>
-                                      </div>
-                                  </td>
-                                  <td className="p-6 text-center text-xs font-bold text-slate-500">
-                                      {format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <span className={`text-sm font-black ${r.score >= 8 ? 'text-emerald-600' : r.score >= 5 ? 'text-blue-600' : 'text-orange-600'}`}>
-                                          {r.score.toFixed(2)}
-                                      </span>
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <button 
-                                        onClick={() => quiz && setSelectedResult({ result: r, quiz: quiz })}
-                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                      >
-                                          Xem lại <ChevronRight size={14}/>
-                                      </button>
-                                  </td>
+                                  <td className="p-6"><span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span></td>
+                                  <td className="p-6 text-center text-xs font-bold text-slate-500">{format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}</td>
+                                  <td className="p-6 text-center"><span className={`text-sm font-black ${r.score >= 8 ? 'text-emerald-600' : r.score >= 5 ? 'text-blue-600' : 'text-orange-600'}`}>{r.score.toFixed(2)}</span></td>
+                                  <td className="p-6 text-center"><button onClick={() => quiz && setSelectedResult({ result: r, quiz: quiz })} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm">Xem lại <ChevronRight size={14}/></button></td>
                               </tr>
                           );
                       })}
                   </tbody>
               </table>
+              {results.length === 0 && !isLoading && (
+                  <div className="p-20 text-center text-slate-300 font-black uppercase text-[10px] italic">Bạn chưa thực hiện bài thi nào</div>
+              )}
           </div>
       </section>
 
       {/* MODALS */}
-      {selectedResult && (
-          <ResultDetailModal 
-            isOpen={true} 
-            result={selectedResult.result} 
-            quiz={selectedResult.quiz} 
-            onClose={() => setSelectedResult(null)} 
-          />
-      )}
-
-      {previewQuiz && (
-          <QuizPreviewModal 
-            quiz={previewQuiz} 
-            onClose={() => setPreviewQuiz(null)} 
-          />
+      {selectedResult && <ResultDetailModal isOpen={true} result={selectedResult.result} quiz={selectedResult.quiz} onClose={() => setSelectedResult(null)} />}
+      {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
+      {viewingHonorees && (
+          <div className="fixed inset-0 bg-slate-900/95 z-[3000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+              <div className="bg-white rounded-[3.5rem] w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border-8 border-white">
+                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-4">
+                          <div className="p-3 bg-yellow-500 text-slate-900 rounded-2xl shadow-lg"><Trophy size={24}/></div>
+                          <div><h3 className="text-lg font-black uppercase tracking-tight italic">Vinh Danh Tập Thể</h3><p className="text-[9px] font-bold text-slate-400 uppercase mt-1 leading-none">{viewingHonorees.quizTitle}</p></div>
+                      </div>
+                      <button onClick={() => setViewingHonorees(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-slate-50">
+                      {viewingHonorees.results.map((r, idx) => (
+                          <div key={r.id} className={`flex items-center justify-between p-5 rounded-[2rem] border-2 transition-all shadow-sm ${r.studentCode === user.studentCode ? 'border-yellow-500 bg-yellow-50' : 'border-white bg-white'}`}>
+                              <div className="flex items-center gap-5">
+                                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${idx === 0 ? 'bg-yellow-500 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>{idx + 1}</div>
+                                  <div><p className="font-black text-slate-800 uppercase text-sm leading-tight">{r.studentName}</p><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">MSHS: {r.studentCode}</p></div>
+                              </div>
+                              <div className="text-right">
+                                  <p className="text-[8px] font-black text-slate-300 uppercase leading-none">ĐIỂM SỐ</p>
+                                  <p className="text-2xl font-black text-blue-600 leading-none">{r.score.toFixed(2)}</p>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
