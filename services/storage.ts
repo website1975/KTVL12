@@ -48,6 +48,13 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Database not connected");
+  
+  // Validation kiểm tra tính hợp lệ trước khi gửi
+  if (!result.quizId || !result.studentId) {
+      console.error("Dữ liệu nộp bài không hợp lệ:", result);
+      throw new Error("Lỗi dữ liệu: Thiếu Quiz ID hoặc Student ID");
+  }
+
   await withRetry(async () => {
       const { error } = await supabase.from('results').insert({ 
           id: result.id, 
@@ -55,7 +62,11 @@ export const saveResult = async (result: Result): Promise<void> => {
           student_id: result.studentId, 
           data: result 
       });
-      if (error) throw error; // Quan trọng: ném lỗi để withRetry xử lý
+      if (error) {
+          console.error("Lỗi Supabase khi lưu Result:", error);
+          throw error;
+      }
+      console.log(`Đã lưu thành công bài làm ${result.id} vào DB.`);
   });
 };
 
