@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, Info, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
+import { Clock, Send, XCircle, Info, ShieldAlert, Loader2, CheckCircle2, Trophy, ArrowRight, Home, Layout } from 'lucide-react';
 import LatexText from './LatexText';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
@@ -47,6 +47,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const [showWarning, setShowWarning] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'done' | 'error'>('idle');
+    const [finalResult, setFinalResult] = useState<Result | null>(null);
     
     const currentAnswersRef = useRef(currentAnswers);
     const spentRef = useRef(spent);
@@ -56,9 +57,12 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         currentAnswersRef.current = currentAnswers;
         spentRef.current = spent;
         violationsRef.current = violations;
-        // Lưu backup vào máy học sinh mỗi khi có thay đổi
-        localStorage.setItem(backupKey, JSON.stringify(currentAnswers));
-    }, [currentAnswers, spent, violations]);
+        
+        // Chỉ backup nếu chưa nộp bài thành công
+        if (submitStatus !== 'done') {
+            localStorage.setItem(backupKey, JSON.stringify(currentAnswers));
+        }
+    }, [currentAnswers, spent, violations, submitStatus]);
 
     const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
         try {
@@ -80,8 +84,8 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     useEffect(() => {
         updateMonitorStatus(0);
         const heartbeat = setInterval(() => {
-            if (!isSubmitting) updateMonitorStatus(violationsRef.current);
-        }, 30000); // Giãn cách heartbeat lên 30s để cực nhẹ database
+            if (!isSubmitting && submitStatus !== 'done') updateMonitorStatus(violationsRef.current);
+        }, 30000);
         return () => clearInterval(heartbeat);
     }, []);
 
@@ -95,6 +99,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     }, [quiz.questions]);
 
     useEffect(() => {
+        if (submitStatus === 'done') return;
         const timer = setInterval(() => {
             const remaining = calculateTimeLeft();
             setTimeLeft(remaining);
@@ -105,10 +110,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             }
         }, 1000);
         return () => clearInterval(timer);
-    }, [deadline]);
+    }, [deadline, submitStatus]);
 
     useEffect(() => {
-        if (!quiz.isMonitored || isSubmitting) return;
+        if (!quiz.isMonitored || isSubmitting || submitStatus === 'done') return;
         const handleVisibilityChange = () => {
             if (isInternalActionRef.current) return;
             if (document.hidden) {
@@ -123,12 +128,12 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [quiz.isMonitored, isSubmitting]);
+    }, [quiz.isMonitored, isSubmitting, submitStatus]);
 
     const handleTimeUp = async () => {
         isInternalActionRef.current = true;
         setSubmitStatus('queuing');
-        const delay = Math.random() * 5000; // Tăng jitter lên 5s cho 100 em nộp
+        const delay = Math.random() * 3000;
         setTimeout(async () => {
             await finalizeSubmit(true);
         }, delay);
@@ -141,11 +146,11 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     };
 
     const finalizeSubmit = async (isAuto = false) => {
-        if (isSubmitting) return;
+        if (isSubmitting || submitStatus === 'done') return;
         setIsSubmitting(true);
         setSubmitStatus('saving');
         
-        const finalAnswers = currentAnswersRef.current;
+        const finalAnswers = { ...currentAnswersRef.current };
         const finalSpent = spentRef.current;
         const finalViolations = violationsRef.current;
         
@@ -184,20 +189,24 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         };
 
         try {
-            // Quan trọng: Chỉ thực hiện tiếp khi Database xác nhận lưu thành công
+            // Bước 1: Lưu vào Database chính
             await saveResult(result);
+            
+            // Bước 2: Cộng điểm tích lũy
             await addPointsToUser(student.id, score);
+            
+            // Bước 3: Xóa phiên giám sát
             await deleteExamSession(sessionIdRef.current); 
             
-            // Xóa backup sau khi nộp thành công
+            // Bước 4: Quan trọng nhất - CHỈ XÓA BACKUP KHI LƯU DB XONG
             localStorage.removeItem(backupKey);
-            setSubmitStatus('done');
             
-            setTimeout(() => onExit(), 1500);
+            setFinalResult(result);
+            setSubmitStatus('done');
+            setIsSubmitting(false);
         } catch (error) {
-            console.error("Lỗi khi nộp bài:", error);
+            console.error("Lỗi nộp bài:", error);
             setSubmitStatus('error');
-            alert("Hệ thống đang quá tải, bài làm đã được lưu tạm vào máy của bạn. ĐỪNG ĐÓNG TRÌNH DUYỆT, hãy nhấn Nộp lại sau vài giây.");
             setIsSubmitting(false);
         }
     };
@@ -217,10 +226,46 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
+    // Nếu đã nộp xong, hiển thị màn hình kết quả ngay tại đây
+    if (submitStatus === 'done' && finalResult) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 animate-fade-in">
+                <div className="max-w-md w-full bg-white rounded-[3.5rem] p-12 text-center shadow-2xl space-y-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
+                    <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                        <Trophy size={48} className="animate-bounce"/>
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Hoàn thành bài thi!</h2>
+                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Hệ thống đã ghi nhận kết quả</p>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-[2rem] p-8 space-y-4 border border-slate-100">
+                        <div className="flex justify-between items-center px-4">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Điểm số</span>
+                            <span className="text-4xl font-black text-emerald-600 italic">{finalResult.score.toFixed(2)}</span>
+                        </div>
+                        <div className="h-px bg-slate-200"></div>
+                        <div className="flex justify-between items-center px-4">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Thời gian</span>
+                            <span className="text-sm font-black text-slate-700">{formatTime(finalResult.durationSeconds)}</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <button onClick={onExit} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
+                            <Home size={18}/> Quay lại trang chủ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
             {/* Lớp phủ trạng thái nộp bài */}
-            {submitStatus !== 'idle' && (
+            {(submitStatus !== 'idle' && submitStatus !== 'done') && (
                 <div className="fixed inset-0 z-[3000] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center space-y-8 shadow-2xl">
                         {submitStatus === 'queuing' && (
@@ -241,21 +286,13 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                                 </div>
                             </>
                         )}
-                        {submitStatus === 'done' && (
-                            <>
-                                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><CheckCircle2 size={40}/></div>
-                                <div className="space-y-2">
-                                    <h3 className="text-xl font-black uppercase text-emerald-600">Nộp bài thành công!</h3>
-                                    <p className="text-sm font-bold text-slate-400">Kết quả của bạn đã được ghi nhận.</p>
-                                </div>
-                            </>
-                        )}
                         {submitStatus === 'error' && (
                             <>
                                 <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto"><XCircle size={40}/></div>
                                 <div className="space-y-2">
-                                    <h3 className="text-xl font-black uppercase text-red-600">Lỗi kết nối</h3>
-                                    <button onClick={() => finalizeSubmit(false)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs">THỬ NỘP LẠI NGAY</button>
+                                    <h3 className="text-xl font-black uppercase text-red-600">Lỗi nộp bài</h3>
+                                    <p className="text-xs text-slate-500 font-medium">Hệ thống quá tải hoặc mất kết nối. Bài làm của bạn vẫn được lưu an toàn trên máy này.</p>
+                                    <button onClick={() => finalizeSubmit(false)} className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs hover:bg-black transition-all">THỬ NỘP LẠI NGAY</button>
                                 </div>
                             </>
                         )}
@@ -263,7 +300,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 </div>
             )}
 
-            {showWarning && !isSubmitting && (
+            {showWarning && (
                 <div className="fixed inset-0 z-[2000] bg-red-600/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white rounded-[3rem] p-12 max-w-lg text-center shadow-2xl space-y-6">
                         <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto animate-bounce"><ShieldAlert size={48}/></div>
