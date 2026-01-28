@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   getQuizzes, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
   getUsers, saveUser, deleteUser, changePassword,
@@ -86,7 +86,20 @@ const AdminDashboard: React.FC = () => {
   const [isBankOpen, setIsBankOpen] = useState(false);
   const [bankTargetType, setBankTargetType] = useState<QuestionType | 'all'>('all');
 
-  // Fix: Tải dữ liệu song song nhưng cập nhật độc lập để tránh treo
+  // TỔI ƯU: Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
+  const allAvailableQuestions = useMemo(() => {
+    const fromQuizzes: Question[] = quizzes.flatMap(quiz => 
+      quiz.questions.map(q => ({
+        ...q,
+        quizTitle: quiz.title, // Gắn tiêu đề đề thi gốc
+        quizGrade: quiz.grade  // Gắn khối lớp gốc
+      }))
+    );
+    
+    // Gộp và lọc trùng (dựa trên ID hoặc Nội dung nếu cần, ở đây tạm thời gộp hết)
+    return [...bankQuestions, ...fromQuizzes];
+  }, [quizzes, bankQuestions]);
+
   const fetchData = useCallback(async () => {
     getQuizzes().then(setQuizzes);
     getUsers().then(u => setStudents(u.filter(user => user.role === 'student')));
@@ -295,7 +308,7 @@ const AdminDashboard: React.FC = () => {
             <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">NGÂN HÀNG CÂU HỎI</h1>
                 <QuestionBank 
-                    questions={bankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                    questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
                     bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
                     onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setActiveTab('quizzes'); setIsEditingQuiz(true); }}
                 />
@@ -326,7 +339,7 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
                     <QuestionBank 
-                        questions={bankQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
                         bTypeFilter={bankTargetType !== 'all' ? bankTargetType : bTypeFilter} setBTypeFilter={setBTypeFilter}
                         bSearch={bSearch} setBSearch={setBSearch}
                         onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
