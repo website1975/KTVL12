@@ -38,7 +38,8 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
       const { data, error } = await query;
       if (error) return [];
       if (!data) return [];
-      return data.map((row: any) => row.data as Result).sort((a, b) => 
+      // Sửa lỗi TS7006 tại đây: Thêm kiểu dữ liệu (a: Result, b: Result)
+      return data.map((row: any) => row.data as Result).sort((a: Result, b: Result) => 
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       );
   } catch (e) {
