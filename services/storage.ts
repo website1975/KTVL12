@@ -189,12 +189,25 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
   try {
     const fileExt = file.name.split('.').pop();
     const fileName = `${uuidv4()}.${fileExt}`;
-    const filePath = `quiz-images/${fileName}`;
-    const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
-    if (uploadError) return '';
-    const { data } = supabase.storage.from('images').getPublicUrl(filePath);
+    // Tên bucket khớp với ảnh chụp của bác (quiz-images)
+    const bucketName = 'quiz-images';
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
+
+    if (uploadError) {
+        console.error("Lỗi upload chi tiết:", uploadError);
+        return '';
+    }
+
+    const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
     return data.publicUrl;
   } catch (err) {
+    console.error("Lỗi crash uploadQuizImage:", err);
     return '';
   }
 };
