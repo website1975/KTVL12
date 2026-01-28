@@ -53,6 +53,8 @@ export interface Quiz {
   endTime?: string; 
   durationMinutes: number;
   questions: Question[];
+  questionCount?: number; 
+  attemptCount?: number; // Đã thêm: Quản lý số lượt làm bài
   createdAt: string;
   isPublished: boolean;
   isMonitored?: boolean;
@@ -70,7 +72,7 @@ export interface Result {
   durationSeconds: number;
   detailScores?: number[];
   pointsAwarded?: number;
-  bonusPoint?: number; // Đã thêm: Điểm thưởng tích lũy
+  bonusPoint?: number; 
   userAnswers?: Record<string, any>; 
   violationCount?: number;
 }
