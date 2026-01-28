@@ -24,14 +24,22 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-    // Fix: Bộ lọc Khối lớp với logic dự phòng (Fallback) - Removed invalid access to .grade property
+    // Chuẩn hóa dữ liệu trước khi lọc để tránh lỗi chuỗi (như 'group_tf' vs 'group-tf')
     const filteredQuestions = useMemo(() => {
         return questions.filter(q => {
-            // Fix: Sử dụng quizGrade từ interface Question để lọc chính xác
-            const qGrade = q.quizGrade || 'all';
-            const matchGrade = bGradeFilter === 'all' || qGrade === bGradeFilter;
-            const matchType = bTypeFilter === 'all' || q.type === bTypeFilter;
+            // Lấy khối
+            const qGradeRaw = (q.quizGrade || 'all').toString().trim();
+            const matchGrade = bGradeFilter === 'all' || qGradeRaw === bGradeFilter;
+            
+            // Lấy dạng câu hỏi và chuẩn hóa các trường hợp AI gõ nhầm dấu gạch dưới (_)
+            let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
+            const targetType = bTypeFilter.toString().trim().toLowerCase().replace('_', '-');
+            
+            const matchType = bTypeFilter === 'all' || qTypeRaw === targetType;
+            
+            // Tìm kiếm văn bản
             const matchSearch = !bSearch || q.text.toLowerCase().includes(bSearch.toLowerCase());
+            
             return matchGrade && matchType && matchSearch;
         });
     }, [questions, bGradeFilter, bTypeFilter, bSearch]);
@@ -106,7 +114,6 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                                     <span className={`text-[8px] font-black px-1.5 py-0.5 rounded text-white ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type === 'group-tf' ? 'bg-purple-500' : 'bg-orange-500'}`}>
                                         {bq.type.toUpperCase()}
                                     </span>
-                                    {/* Fix: Sử dụng quizGrade thay vì grade không tồn tại */}
                                     <span className="text-[8px] text-slate-400 font-bold uppercase">Khối {bq.quizGrade || 'all'}</span>
                                 </div>
                                 <div className="text-slate-800 text-sm font-medium leading-relaxed overflow-x-auto"><LatexText text={bq.text}/></div>
@@ -131,7 +138,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                 )}
                 {filteredQuestions.length === 0 && (
                     <div className="py-10 text-center bg-white rounded-2xl border-2 border-dashed border-slate-100">
-                        <p className="font-black text-slate-300 uppercase text-[9px]">Dữ liệu trống</p>
+                        <p className="font-black text-slate-300 uppercase text-[9px]">Dữ liệu trống (Vui lòng kiểm tra lại bộ lọc)</p>
                     </div>
                 )}
             </div>
