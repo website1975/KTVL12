@@ -10,17 +10,16 @@ const cleanJsonString = (str: string): string => {
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const prompt = `Bạn là chuyên gia soạn đề Toán lớp ${config.grade} Việt Nam.
+    const prompt = `Bạn là chuyên gia soạn đề thi THPT quốc gia Việt Nam môn Toán/Lý/Hóa.
 Sử dụng model: gemini-3-flash-preview.
 Chủ đề: ${config.topic}.
+Khối: ${config.grade}.
 Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf, ${config.part3Count} câu short.
 
 QUY TẮC BẮT BUỘC:
-1. LaTeX: Mọi biểu thức, con số, biến số toán học BẮT BUỘC nằm trong $...$. Ví dụ: $x = \frac{1}{2}$.
-2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức toán trong $...$.
-3. Cấu trúc Phần I (mcq): 4 phương án.
-4. Cấu trúc Phần II (group-tf): 4 ý a,b,c,d chọn True/False.
-5. Cấu trúc Phần III (short): Đáp án là số.`;
+1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. 
+2. Solution (Lời giải): Phải có lời giải chi tiết, bọc công thức trong $...$.
+3. Cấu trúc JSON phải chuẩn xác.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -78,21 +77,15 @@ QUY TẮC BẮT BUỘC:
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `Phân tích file PDF đề thi Toán THPT sau đây.
-Sử dụng model: gemini-3-flash-preview.
+  const prompt = `Hãy đóng vai chuyên gia trích xuất đề thi THPT môn Vật Lý/Toán học.
+Phân tích file PDF này và trả về JSON chuẩn.
 
-QUY TẮC NHẬN DIỆN (CỰC KỲ QUAN TRỌNG):
-1. PHẦN I (Trắc nghiệm): Tìm dấu "*" ở đầu phương án (VD: *A. Đáp án, *B...). 
-   - Nếu thấy dấu "*", phương án đó là correctAnswer. 
-   - Khi lưu vào JSON, hãy BỎ dấu "*" đi nhưng lưu text đó vào correctAnswer.
-2. LỜI GIẢI (Solution): 
-   - Tìm đoạn văn sau chữ "Lời giải:" hoặc "Hướng dẫn giải:".
-   - Trích xuất toàn bộ lời giải này.
-   - BẮT BUỘC bọc tất cả công thức toán học trong lời giải vào cặp dấu $...$.
-3. PHẦN II (Đúng/Sai): Xác định 4 ý a,b,c,d và đáp án True/False.
-4. PHẦN III (Ngắn): Lấy nội dung câu hỏi và đáp số.
-
-Mọi ký hiệu toán học ở bất kỳ đâu đều phải dùng LaTeX $...$.`;
+QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG:
+1. Trong file PDF, phương án nào bắt đầu bằng dấu "*" (Ví dụ: *D. lực từ..., *A. 2,5 cm) thì đó là đáp án ĐÚNG (correctAnswer).
+2. Hãy lấy nội dung phương án đó (bỏ dấu *) lưu vào correctAnswer.
+3. Nếu là câu Đúng/Sai (Phần II), xác định Đ/S cho từng ý a,b,c,d.
+4. Mọi ký hiệu khoa học ($B$, $r$, $10^{-7}$, $\pi$, $\Omega$) phải bọc trong LaTeX $...$.
+5. Trích xuất cả phần "Lời giải" nếu có.`;
 
   try {
     const response = await ai.models.generateContent({
