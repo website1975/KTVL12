@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
 import { getQuizzes, getResultsForStudent, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -15,10 +15,9 @@ interface StudentDashboardProps {
 
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
-  const [stats, setStats] = useState({ totalQuizzes: 0, avgScore: 0, totalSeconds: 0, accumulatedPoints: 0, bonusPoints: 0, effortPoints: 0 });
   const [results, setResults] = useState<Result[]>([]);
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
+  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
   const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
@@ -27,7 +26,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        // TỐI ƯU: Chỉ gọi lấy kết quả của riêng học sinh này (getResultsForStudent)
         const [allQuizzes, userResults, allPubs] = await Promise.all([
             getQuizzes(), 
             getResultsForStudent(user.id, user.studentCode), 
@@ -40,8 +38,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         });
         setQuizzes(relevantQuizzes);
 
-        // Đã lọc từ server nhưng vẫn sort lại cho chắc chắn
-        const sortedResults = userResults.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+        const sortedResults = (userResults as Result[]).sort((a, b) => 
+            new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        );
         setResults(sortedResults);
 
         const userPubs = allPubs.filter(p => 
@@ -49,34 +48,43 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
 
-        const totalSeconds = sortedResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
-        const effortPoints = totalSeconds / 2700; 
-
-        const bonusPoints = sortedResults.reduce((acc, r) => {
-            if (r.bonusPoint !== undefined) {
-                return acc + r.bonusPoint;
-            }
-            const quiz = allQuizzes.find(q => q.id === r.quizId);
-            if (quiz && quiz.type === 'test' && r.score >= 8) {
-                return acc + 1;
-            }
-            return acc;
-        }, 0);
-
-        setStats({
-            totalQuizzes: sortedResults.length,
-            avgScore: sortedResults.length > 0 ? (sortedResults.reduce((acc, r) => acc + r.score, 0) / sortedResults.length) : 0,
-            totalSeconds,
-            effortPoints,
-            bonusPoints,
-            accumulatedPoints: effortPoints + bonusPoints
-        });
     } catch (err) {
         console.error("Lỗi đồng bộ dữ liệu StudentDashboard:", err);
     } finally {
         setIsLoading(false);
     }
   }, [user.id, user.studentCode, user.grade]);
+
+  // Tối ưu hóa tính toán Stats bằng useMemo để tránh lag giao diện
+  const stats = useMemo(() => {
+    const totalQuizzes = results.length;
+    const avgScore = totalQuizzes > 0 ? (results.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
+    const totalSeconds = results.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
+    const effortPoints = totalSeconds / 2700; 
+
+    // Tính điểm thưởng an toàn, tránh lỗi TS2339
+    const bonusPoints = results.reduce((acc, r) => {
+        // Kiểm tra xem record đã có sẵn bonusPoint từ lúc nộp bài chưa
+        const bp = (r as any).bonusPoint;
+        if (bp !== undefined && bp !== null) {
+            return acc + Number(bp);
+        }
+        // Dự phòng cho dữ liệu cũ chưa có trường bonusPoint
+        if (r.score >= 8) {
+            return acc + 1;
+        }
+        return acc;
+    }, 0);
+
+    return {
+        totalQuizzes,
+        avgScore,
+        totalSeconds,
+        effortPoints,
+        bonusPoints,
+        accumulatedPoints: effortPoints + bonusPoints
+    };
+  }, [results]);
 
   useEffect(() => {
     refreshData();
