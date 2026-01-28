@@ -60,30 +60,32 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
     }, [questions, visibleCount]);
 
     return (
-        <div className="space-y-6 animate-fade-in pb-20">
-            {/* Header Bộ lọc & Thanh công cụ chọn nhanh */}
-            <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm sticky top-0 z-30 space-y-4">
-                <div className="flex flex-col md:flex-row gap-4">
-                    <select 
-                        className="bg-slate-50 border p-3 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500" 
-                        value={bGradeFilter} 
-                        onChange={e => setBGradeFilter(e.target.value as any)}
-                    >
-                        <option value="all">TẤT CẢ KHỐI</option>
-                        <option value="12">KHỐI 12</option>
-                        <option value="11">KHỐI 11</option>
-                        <option value="10">KHỐI 10</option>
-                    </select>
-                    <select 
-                        className="bg-slate-50 border p-3 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500" 
-                        value={bTypeFilter} 
-                        onChange={e => setBTypeFilter(e.target.value as any)}
-                    >
-                        <option value="all">TẤT CẢ DẠNG</option>
-                        <option value="mcq">TRẮC NGHIỆM (P.I)</option>
-                        <option value="group-tf">ĐÚNG/SAI (P.II)</option>
-                        <option value="short">TRẢ LỜI NGẮN (P.III)</option>
-                    </select>
+        <div className="space-y-6 animate-fade-in pb-20 w-full">
+            {/* Header Bộ lọc & Thanh công cụ chọn nhanh - Luôn dính ở trên để dễ lọc */}
+            <div className="bg-white p-6 rounded-[2rem] border-4 border-slate-100 shadow-xl sticky top-0 z-30 space-y-4">
+                <div className="flex flex-col lg:flex-row gap-4">
+                    <div className="flex gap-2 shrink-0">
+                        <select 
+                            className="bg-slate-50 border p-3 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500" 
+                            value={bGradeFilter} 
+                            onChange={e => setBGradeFilter(e.target.value as any)}
+                        >
+                            <option value="all">TẤT CẢ KHỐI</option>
+                            <option value="12">KHỐI 12</option>
+                            <option value="11">KHỐI 11</option>
+                            <option value="10">KHỐI 10</option>
+                        </select>
+                        <select 
+                            className="bg-slate-50 border p-3 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500" 
+                            value={bTypeFilter} 
+                            onChange={e => setBTypeFilter(e.target.value as any)}
+                        >
+                            <option value="all">TẤT CẢ DẠNG</option>
+                            <option value="mcq">TRẮC NGHIỆM (P.I)</option>
+                            <option value="group-tf">ĐÚNG/SAI (P.II)</option>
+                            <option value="short">TRẢ LỜI NGẮN (P.III)</option>
+                        </select>
+                    </div>
                     <div className="flex-1 flex items-center bg-slate-50 border rounded-xl px-3 group focus-within:ring-2 focus-within:ring-blue-500 transition-all">
                         <Search size={16} className="text-slate-300"/>
                         <input 
@@ -97,68 +99,82 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
 
                 {/* Thanh trạng thái chọn */}
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-6">
                         <button 
                             onClick={handleSelectAll}
                             className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 hover:text-blue-600 transition-colors"
                         >
-                            {selectedIds.size === questions.length ? <CheckSquare size={16}/> : <Square size={16}/>}
-                            {selectedIds.size === questions.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                            {selectedIds.size === questions.length ? <CheckSquare size={18}/> : <Square size={18}/>}
+                            {selectedIds.size === questions.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả trong danh sách'}
                         </button>
-                        <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">
-                            Đã chọn: {selectedIds.size} câu
+                        <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-4 py-1.5 rounded-xl border border-blue-100">
+                            Số lượng đã chọn: {selectedIds.size} câu
                         </span>
                     </div>
                     <button 
                         onClick={handleAddSelected}
                         disabled={selectedIds.size === 0}
-                        className={`flex items-center gap-2 px-8 py-3 rounded-2xl text-[10px] font-black uppercase transition-all shadow-lg ${selectedIds.size > 0 ? 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                        className={`flex items-center gap-3 px-10 py-4 rounded-2xl text-[11px] font-black uppercase transition-all shadow-xl ${selectedIds.size > 0 ? 'bg-blue-600 text-white hover:bg-black hover:scale-105 active:scale-95' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                     >
-                        <PlusCircle size={16}/> Thêm {selectedIds.size} câu vào đề
+                        <PlusCircle size={20}/> Nạp {selectedIds.size} câu vào đề
                     </button>
                 </div>
             </div>
 
-            {/* Danh sách câu hỏi hiển thị từng phần */}
-            <div className="grid grid-cols-1 gap-4">
+            {/* Danh sách câu hỏi - Tận dụng tối đa chiều ngang */}
+            <div className="flex flex-col gap-4">
                 {visibleQuestions.map((bq, idx) => {
                     const isSelected = selectedIds.has(bq.id);
                     return (
                         <div 
                             key={bq.id || idx} 
                             onClick={() => toggleSelect(bq.id)}
-                            className={`bg-white p-6 rounded-[2rem] border-2 shadow-sm flex items-start gap-5 group cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/20' : 'hover:border-slate-300 border-transparent'}`}
+                            className={`bg-white p-8 rounded-[2.5rem] border-2 shadow-sm flex items-start gap-8 group cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/20 ring-4 ring-blue-500/10' : 'hover:border-slate-300 border-transparent hover:shadow-lg'}`}
                         >
-                            <div className={`mt-1 shrink-0 transition-colors ${isSelected ? 'text-blue-600' : 'text-slate-200 group-hover:text-slate-400'}`}>
-                                {isSelected ? <CheckCircle2 size={24}/> : <PlusCircle size={24}/>}
+                            <div className={`mt-1 shrink-0 transition-all ${isSelected ? 'text-blue-600 scale-125' : 'text-slate-200 group-hover:text-blue-200 group-hover:scale-110'}`}>
+                                {isSelected ? <CheckCircle2 size={32}/> : <PlusCircle size={32}/>}
                             </div>
                             
                             <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <span className={`text-[8px] font-black px-2 py-1 rounded-md text-white uppercase tracking-widest ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type === 'group-tf' ? 'bg-purple-500' : 'bg-orange-500'}`}>
-                                        {bq.type === 'mcq' ? 'Phần I' : bq.type === 'group-tf' ? 'Phần II' : 'Phần III'}
+                                <div className="flex flex-wrap items-center gap-3 mb-4">
+                                    <span className={`text-[9px] font-black px-3 py-1 rounded-lg text-white uppercase tracking-widest ${bq.type === 'mcq' ? 'bg-blue-600' : bq.type === 'group-tf' ? 'bg-purple-600' : 'bg-orange-600'}`}>
+                                        {bq.type === 'mcq' ? 'PHẦN I' : bq.type === 'group-tf' ? 'PHẦN II' : 'PHẦN III'}
                                     </span>
-                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-tight">
-                                        Nguồn: <span className="text-slate-600">{bq.quizTitle || 'Tự do'}</span> | Khối: {bq.quizGrade || 'all'}
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">
+                                        Nguồn: <span className="text-slate-900 font-black">{bq.quizTitle || 'Tự do'}</span> | Khối: <span className="text-slate-900 font-black">{bq.quizGrade || 'Chung'}</span>
                                     </span>
                                 </div>
-                                <div className="text-slate-800 text-sm font-bold leading-relaxed">
+                                <div className="text-slate-800 text-lg font-bold leading-relaxed max-w-full overflow-x-auto">
                                     <LatexText text={bq.text}/>
                                 </div>
                                 
                                 {bq.type === 'mcq' && bq.options && (
-                                    <div className="mt-4 grid grid-cols-2 gap-2 opacity-60">
+                                    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 opacity-80">
                                         {bq.options.map((opt, i) => (
-                                            <div key={i} className="text-[10px] font-medium truncate bg-white/50 px-2 py-1 rounded">
-                                                {String.fromCharCode(65+i)}. {opt}
+                                            <div key={i} className="text-[11px] font-bold bg-slate-50/50 px-4 py-2 rounded-xl border border-slate-100 truncate">
+                                                <span className="text-blue-600 mr-2">{String.fromCharCode(65+i)}.</span>
+                                                {opt}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {bq.type === 'group-tf' && bq.subQuestions && (
+                                    <div className="mt-4 space-y-2 opacity-60">
+                                        {bq.subQuestions.map((sq, i) => (
+                                            <div key={i} className="text-[10px] font-medium flex gap-2">
+                                                <span className="text-purple-600">{String.fromCharCode(97+i)})</span>
+                                                <span className="truncate">{sq.text}</span>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
 
-                            <div className="hidden lg:block">
-                                <span className="text-[9px] font-black text-blue-600/30 uppercase italic">Click để chọn</span>
+                            <div className="hidden lg:flex shrink-0 h-full items-center">
+                                <div className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2 rounded-full border transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-300 border-slate-100 group-hover:text-blue-400 group-hover:border-blue-100'}`}>
+                                    {isSelected ? 'ĐÃ CHỌN' : 'BẤM CHỌN'}
+                                </div>
                             </div>
                         </div>
                     );
@@ -166,20 +182,22 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
 
                 {/* Nút Xem thêm */}
                 {visibleCount < questions.length && (
-                    <div className="p-8 text-center">
+                    <div className="p-12 text-center">
                         <button 
-                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
-                            className="inline-flex items-center gap-2 px-12 py-4 bg-white border-2 border-slate-200 rounded-3xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-xl"
+                            onClick={(e) => { e.stopPropagation(); setVisibleCount(prev => prev + PAGE_SIZE); }}
+                            className="inline-flex items-center gap-3 px-16 py-5 bg-white border-4 border-slate-100 rounded-full text-[12px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xl active:scale-95"
                         >
-                            <ChevronDown size={16}/> Tải thêm câu hỏi (Còn {questions.length - visibleCount})
+                            <ChevronDown size={20}/> Tải thêm 20 câu hỏi (Còn {questions.length - visibleCount} câu trong kho)
                         </button>
                     </div>
                 )}
 
                 {questions.length === 0 && (
-                    <div className="py-20 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                        <Database size={48} className="mx-auto text-slate-200 mb-4"/>
-                        <p className="font-black text-slate-300 uppercase tracking-widest text-xs">Không tìm thấy câu hỏi nào phù hợp</p>
+                    <div className="py-40 text-center bg-white rounded-[3.5rem] border-4 border-dashed border-slate-100">
+                        <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Database size={48} className="text-slate-200"/>
+                        </div>
+                        <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Không tìm thấy câu hỏi nào phù hợp với bộ lọc</p>
                     </div>
                 )}
             </div>
