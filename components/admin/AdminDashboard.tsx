@@ -78,6 +78,7 @@ const AdminDashboard: React.FC = () => {
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [studentForm, setStudentForm] = useState({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
   const [viewingStudent, setViewingStudent] = useState<User | null>(null);
   const [historyData, setHistoryData] = useState<{ studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
   const [selectedResultDetail, setSelectedResultDetail] = useState<{ result: Result, quiz: Quiz } | null>(null);
@@ -176,7 +177,6 @@ const AdminDashboard: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Fix: Hỏi người dùng để tránh cộng dồn câu hỏi gây lặp
     let append = false;
     if (questions.length > 0) {
         const choice = confirm("Đề hiện tại đã có câu hỏi. Bạn muốn THAY THẾ TOÀN BỘ (OK) hay CHÈN THÊM VÀO CUỐI (Cancel)?");
@@ -189,13 +189,8 @@ const AdminDashboard: React.FC = () => {
       reader.onload = async () => {
         const base64 = (reader.result as string).split(',')[1];
         const newQs = await parseQuestionsFromPDF(base64);
-        
-        if (append) {
-            setQuestions([...questions, ...newQs]);
-        } else {
-            setQuestions(newQs);
-        }
-        
+        if (append) setQuestions([...questions, ...newQs]);
+        else setQuestions(newQs);
         setIsAiLoading(false);
       };
       reader.readAsDataURL(file);
@@ -237,35 +232,60 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Student Handlers
+  // Fix: Added handleSaveStudent to correctly process user creation/updates in the student modal
   const handleSaveStudent = async () => {
-    if (!studentForm.fullName || !studentForm.studentCode) return alert("Điền đủ thông tin!");
-    const user: User = {
-      id: selectedStudent?.id || uuidv4(),
-      username: studentForm.studentCode.toLowerCase(),
-      password: studentForm.password,
-      role: 'student',
-      fullName: studentForm.fullName,
-      studentCode: studentForm.studentCode,
-      grade: studentForm.grade,
-      points: selectedStudent?.points || 0
-    };
-    await saveUser(user);
-    setIsStudentModalOpen(false);
-    fetchData();
-  };
-
-  const handleResetPassword = async (user: User) => {
-    const newPass = prompt("Nhập mật khẩu mới cho " + user.fullName, "123");
-    if (newPass) {
-      await changePassword(user.id, newPass);
-      alert("Đã đổi mật khẩu!");
+    if (!studentForm.fullName || !studentForm.studentCode) {
+      return alert("Vui lòng điền đủ Họ tên và MAHS!");
+    }
+    setIsSavingStudent(true);
+    try {
+      const newUser: User = {
+        id: selectedStudent?.id || uuidv4(),
+        username: studentForm.studentCode.toLowerCase().trim(),
+        password: studentForm.password,
+        role: 'student',
+        fullName: studentForm.fullName,
+        studentCode: studentForm.studentCode.trim().toUpperCase(),
+        grade: studentForm.grade,
+        points: selectedStudent?.points || 0
+      };
+      await saveUser(newUser);
+      setIsStudentModalOpen(false);
+      fetchData();
+    } catch (e: any) {
+      alert("Lỗi lưu học sinh: " + (e as Error).message);
+    } finally {
+      setIsSavingStudent(false);
     }
   };
 
+  // Fix: Added handleDeleteStudent to remove student records from the database
   const handleDeleteStudent = async (id: string, name: string) => {
     if (confirm(`Xóa học sinh ${name}?`)) {
-      await deleteUser(id);
-      fetchData();
+      try {
+        await deleteUser(id);
+        fetchData();
+      } catch (e) {
+        alert("Lỗi khi xóa học sinh");
+      }
+    }
+  };
+
+  // Fix: Added handleResetPassword to allow administrators to reset student passwords
+  const handleResetPassword = async (user: User) => {
+    const newPass = prompt(`Nhập mật khẩu mới cho ${user.fullName}:`, "123");
+    if (newPass) {
+      try {
+        const success = await changePassword(user.id, newPass);
+        if (success) {
+          alert("Đổi mật khẩu thành công!");
+          fetchData();
+        } else {
+          alert("Lỗi khi đổi mật khẩu.");
+        }
+      } catch (e) {
+        alert("Lỗi kết nối.");
+      }
     }
   };
 
@@ -323,7 +343,11 @@ const AdminDashboard: React.FC = () => {
                 questions={questions} setQuestions={setQuestions}
                 chapters={chapters}
                 onSave={handleSaveQuiz}
-                onOpenBank={(type) => { setBankTargetType(type); setIsBankOpen(true); }}
+                onOpenBank={(type) => { 
+                    setBankTargetType(type); 
+                    setBGradeFilter(quizGrade); // Tự động lọc theo khối đang soạn
+                    setIsBankOpen(true); 
+                }}
                 onPdfExtract={handlePdfExtract}
                 onUploadImage={handleUploadImage}
                 uploadingId={uploadingId}
@@ -395,7 +419,7 @@ const AdminDashboard: React.FC = () => {
             <div className="space-y-10">
                 <h1 className="text-3xl font-black text-slate-800 uppercase italic">Ngân hàng câu hỏi</h1>
                 <QuestionBank 
-                    questions={bankQuestions.filter(q => (bGradeFilter === 'all' || q.quizGrade === bGradeFilter) && (bTypeFilter === 'all' || q.type === bTypeFilter) && q.text.toLowerCase().includes(bSearch.toLowerCase()))}
+                    questions={bankQuestions}
                     bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
                     bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
                     bSearch={bSearch} setBSearch={setBSearch}
@@ -407,35 +431,33 @@ const AdminDashboard: React.FC = () => {
       </main>
 
       {/* Modals */}
-      {isStudentModalOpen && <StudentModal isOpen={isStudentModalOpen} student={selectedStudent} form={studentForm} setForm={setStudentForm} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} />}
+      {isStudentModalOpen && <StudentModal isOpen={isStudentModalOpen} student={selectedStudent} form={studentForm} setForm={setStudentForm} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} isSaving={isSavingStudent} />}
       {viewingStudent && <StudentDetailModal student={viewingStudent} results={results} quizzes={quizzes} onClose={() => setViewingStudent(null)} onViewResult={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} />}
       {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} onDeleteOne={(r) => deleteResult(r.id).then(() => fetchData())} />}
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
       
-      {/* Cập nhật Ngân hàng dạng Full-screen để bác duyệt đề rộng rãi */}
+      {/* Cập nhật Ngân hàng dạng Full-screen để bác duyệt đề rộng rãi - TỐI ƯU DIỆN TÍCH */}
       {isBankOpen && (
         <div className="fixed inset-0 bg-slate-900/40 z-[2000] flex items-stretch justify-end animate-fade-in">
-             <div className="bg-white w-full max-w-[95vw] h-full flex flex-col overflow-hidden shadow-2xl animate-slide-in-right">
-                <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-white/10">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><Database size={24}/></div>
-                        <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight italic leading-none">Chọn từ Ngân hàng đề</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Loại: {bankTargetType === 'all' ? 'Tất cả dạng' : bankTargetType}</p>
-                        </div>
+             <div className="bg-white w-full h-full flex flex-col overflow-hidden shadow-2xl animate-slide-in-right">
+                <div className="px-6 py-3 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-white/5">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-600 rounded-lg shadow-lg"><Database size={18}/></div>
+                        <h3 className="text-sm font-black uppercase tracking-tight italic">Ngân hàng: {bankTargetType === 'all' ? 'Tất cả' : bankTargetType.toUpperCase()} - KHỐI {bGradeFilter}</h3>
                     </div>
-                    <button onClick={() => setIsBankOpen(false)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-all flex items-center gap-2 group">
-                        <span className="text-[10px] font-black uppercase group-hover:mr-2 transition-all">Đóng bảng</span>
-                        <X size={20}/>
+                    <button onClick={() => setIsBankOpen(false)} className="px-4 py-2 bg-slate-800 rounded-xl hover:bg-red-600 transition-all flex items-center gap-2 group">
+                        <span className="text-[10px] font-black uppercase">Đóng</span>
+                        <X size={16}/>
                     </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 lg:p-12 bg-slate-50 custom-scrollbar">
-                    <div className="max-w-[1400px] mx-auto">
+                <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
+                    <div className="w-full">
                         <QuestionBank 
-                            questions={bankQuestions.filter(q => (bankTargetType === 'all' || q.type === bankTargetType))}
+                            questions={bankQuestions}
                             bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                            bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
+                            bTypeFilter={bankTargetType !== 'all' ? bankTargetType : bTypeFilter} 
+                            setBTypeFilter={setBTypeFilter}
                             bSearch={bSearch} setBSearch={setBSearch}
                             onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
                         />
