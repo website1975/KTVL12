@@ -10,18 +10,17 @@ const cleanJsonString = (str: string): string => {
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const prompt = `Bạn là chuyên gia soạn đề Toán lớp ${config.grade} Việt Nam theo cấu trúc mới của Bộ GD&ĐT.
+    const prompt = `Bạn là chuyên gia soạn đề Toán lớp ${config.grade} Việt Nam.
+Sử dụng model: gemini-3-flash-preview.
 Chủ đề: ${config.topic}.
-Yêu cầu số lượng: ${config.part1Count} câu mcq (Phần I), ${config.part2Count} câu group-tf (Phần II), ${config.part3Count} câu short (Phần III).
+Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf, ${config.part3Count} câu short.
 
-Quy tắc bắt buộc:
-1. Công thức Toán học: Mọi ký hiệu toán học, biến số (x, y, z...), con số trong biểu thức, các phép toán BẮT BUỘC phải nằm trong cặp dấu $...$ (LaTeX). Ví dụ: $x = 2$, $f(x) = x^2 + 1$.
-2. Dạng mcq (Phần I): 4 phương án, 1 đáp án đúng duy nhất.
-3. Dạng group-tf (Phần II): Mỗi câu có 4 ý con (a, b, c, d), mỗi ý chọn "True" (Đúng) hoặc "False" (Sai).
-4. Dạng short (Phần III): Đáp án đúng phải là một con số cụ thể.
-5. Giải thích (solution): Cung cấp lời giải chi tiết, mọi công thức trong lời giải phải nằm trong $...$.
-
-Trả về một mảng JSON các đối tượng câu hỏi.`;
+QUY TẮC BẮT BUỘC:
+1. LaTeX: Mọi biểu thức, con số, biến số toán học BẮT BUỘC nằm trong $...$. Ví dụ: $x = \frac{1}{2}$.
+2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức toán trong $...$.
+3. Cấu trúc Phần I (mcq): 4 phương án.
+4. Cấu trúc Phần II (group-tf): 4 ý a,b,c,d chọn True/False.
+5. Cấu trúc Phần III (short): Đáp án là số.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -37,11 +36,7 @@ Trả về một mảng JSON các đối tượng câu hỏi.`;
                             type: { type: Type.STRING },
                             text: { type: Type.STRING },
                             points: { type: Type.NUMBER },
-                            options: { 
-                                type: Type.ARRAY, 
-                                items: { type: Type.STRING }, 
-                                nullable: true 
-                            },
+                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             correctAnswer: { type: Type.STRING, nullable: true },
                             solution: { type: Type.STRING },
                             subQuestions: {
@@ -72,33 +67,32 @@ Trả về một mảng JSON các đối tượng câu hỏi.`;
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
                 ...sq, 
                 id: uuidv4(),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === true || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
+                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
             })) : undefined
         }));
     } catch (error: any) {
-        throw new Error(error.message || "AI gặp lỗi khi tạo câu hỏi.");
+        throw new Error("AI không thể tạo đề: " + error.message);
     }
 };
 
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `Bạn là trợ lý phân tích đề thi Toán THPT Việt Nam. Hãy trích xuất file PDF này sang JSON.
+  const prompt = `Phân tích file PDF đề thi Toán THPT sau đây.
+Sử dụng model: gemini-3-flash-preview.
 
-QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG (CỰC KỲ QUAN TRỌNG):
-1. Với Trắc nghiệm (Phần I): 
-   - Nếu thấy một phương án bắt đầu bằng dấu sao (Ví dụ: *A. Nội dung, *B, *C., *D), hãy hiểu đó là ĐÁP ÁN ĐÚNG.
-   - Trích xuất nội dung phương án đó (bỏ dấu *) vào correctAnswer.
-   - Giữ nguyên các phương án còn lại trong mảng options.
-2. Với Đúng/Sai (Phần II):
-   - Trích xuất nội dung 4 ý a, b, c, d và xác định Đúng (True) / Sai (False).
-3. Lời giải (Solution):
-   - Nếu trong PDF có phần "Lời giải" hoặc "Giải thích", hãy trích xuất toàn bộ.
-   - Mọi công thức toán trong lời giải BẮT BUỘC phải bọc trong $...$.
+QUY TẮC NHẬN DIỆN (CỰC KỲ QUAN TRỌNG):
+1. PHẦN I (Trắc nghiệm): Tìm dấu "*" ở đầu phương án (VD: *A. Đáp án, *B...). 
+   - Nếu thấy dấu "*", phương án đó là correctAnswer. 
+   - Khi lưu vào JSON, hãy BỎ dấu "*" đi nhưng lưu text đó vào correctAnswer.
+2. LỜI GIẢI (Solution): 
+   - Tìm đoạn văn sau chữ "Lời giải:" hoặc "Hướng dẫn giải:".
+   - Trích xuất toàn bộ lời giải này.
+   - BẮT BUỘC bọc tất cả công thức toán học trong lời giải vào cặp dấu $...$.
+3. PHẦN II (Đúng/Sai): Xác định 4 ý a,b,c,d và đáp án True/False.
+4. PHẦN III (Ngắn): Lấy nội dung câu hỏi và đáp số.
 
-Yêu cầu kỹ thuật:
-- Sử dụng LaTeX $...$ cho tất cả ký hiệu toán học ở mọi trường dữ liệu.
-- Phân loại đúng type: 'mcq', 'group-tf', 'short'.`;
+Mọi ký hiệu toán học ở bất kỳ đâu đều phải dùng LaTeX $...$.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -147,15 +141,14 @@ Yêu cầu kỹ thuật:
     return rawData.map((item: any) => ({
         ...item,
         id: uuidv4(),
-        // Áp dụng điểm mặc định chuẩn theo yêu cầu của bác nếu AI không lấy được
         points: item.points || (item.type === 'mcq' ? 0.25 : 1.0),
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
             ...sq, 
             id: uuidv4(),
-            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === true || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
+            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
         })) : undefined
     }));
   } catch (error: any) {
-    throw new Error(error.message || "Lỗi xử lý PDF.");
+    throw new Error("Lỗi đọc PDF: " + error.message);
   }
 };
