@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  getQuizzes, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
+  getQuizzesMetadata, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
   getUsers, saveUser, deleteUser, changePassword,
-  getResults, deleteResult,
+  getResultsMetadata, getResultById, deleteResult,
   getChapters, saveChapter, deleteChapter,
   getBankQuestions, saveBankQuestion,
   clearLocalCache,
@@ -22,7 +22,6 @@ import QuizEditor from './QuizEditor';
 import StudentManager from './StudentManager';
 import ResultsBoard from './ResultsBoard';
 import ExamMonitor from './ExamMonitor';
-import AIRenderer from './AIRenderer';
 import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
 
@@ -32,7 +31,7 @@ import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 
-type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'ai' | 'chapters' | 'bank';
+type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank';
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
@@ -45,32 +44,27 @@ const AdminDashboard: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
-  // Tối ưu: Chỉ tải dữ liệu khi Tab đó được kích hoạt hoặc khi khởi tạo (Quizzes)
+  // Lazy loading data
   const loadTabData = useCallback(async (tab: AdminTab) => {
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
-        const [q, c] = await Promise.all([getQuizzes(), getChapters()]);
+        const [q, c] = await Promise.all([getQuizzesMetadata(), getChapters()]);
         setQuizzes(q);
         setChapters(c);
       } else if (tab === 'students') {
         const u = await getUsers();
         setStudents(u.filter(user => user.role === 'student'));
       } else if (tab === 'results') {
-        // Tải đề thi trước để map tên đề trong bảng điểm
         if (quizzes.length === 0) {
-            const q = await getQuizzes();
+            const q = await getQuizzesMetadata();
             setQuizzes(q);
         }
-        const r = await getResults();
+        const r = await getResultsMetadata();
         setResults(r);
       } else if (tab === 'bank') {
         const b = await getBankQuestions();
         setBankQuestions(b);
-      } else if (tab === 'monitor') {
-        const [q, r] = await Promise.all([getQuizzes(), getResults()]);
-        setQuizzes(q);
-        setResults(r);
       }
     } finally {
       setIsDataLoading(false);
@@ -121,17 +115,10 @@ const AdminDashboard: React.FC = () => {
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isBankOpen, setIsBankOpen] = useState(false);
 
-  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
+  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có (Chỉ những đề đã load full)
   const allAvailableQuestions = useMemo(() => {
-    const fromQuizzes: Question[] = quizzes.flatMap(quiz => 
-      quiz.questions.map(q => ({
-        ...q,
-        quizTitle: quiz.title,
-        quizGrade: quiz.grade
-      }))
-    );
-    return [...bankQuestions, ...fromQuizzes];
-  }, [quizzes, bankQuestions]);
+    return bankQuestions; // Tạm thời dùng bank độc lập để tránh lag
+  }, [bankQuestions]);
 
   // Quiz Handlers
   const handleCreateQuiz = () => {
@@ -140,11 +127,41 @@ const AdminDashboard: React.FC = () => {
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
   };
 
-  const handleEditQuiz = (quiz: Quiz) => {
-    setEditingQuizId(quiz.id); setQuizTitle(quiz.title); setQuizGrade(quiz.grade);
-    setQuizType(quiz.type); setIsPublished(quiz.isPublished); setIsMonitored(quiz.isMonitored || false);
-    setDuration(quiz.durationMinutes); setCategory(quiz.category || ''); setStartTime(quiz.startTime || '');
-    setEndTime(quiz.endTime || ''); setQuestions(quiz.questions); setIsEditingQuiz(true);
+  const handleEditQuiz = async (quiz: Quiz) => {
+    setIsDataLoading(true);
+    try {
+        const fullQuiz = await getQuizById(quiz.id);
+        if (fullQuiz) {
+            setEditingQuizId(fullQuiz.id); setQuizTitle(fullQuiz.title); setQuizGrade(fullQuiz.grade);
+            setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
+            setDuration(fullQuiz.durationMinutes); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
+            setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
+        }
+    } finally {
+        setIsDataLoading(false);
+    }
+  };
+
+  const handlePreviewQuiz = async (quiz: Quiz) => {
+    setIsDataLoading(true);
+    try {
+        const fullQuiz = await getQuizById(quiz.id);
+        if (fullQuiz) setPreviewQuiz(fullQuiz);
+    } finally {
+        setIsDataLoading(false);
+    }
+  };
+
+  const handleViewResultDetail = async (res: Result) => {
+    setIsDataLoading(true);
+    try {
+        const [fullResult, fullQuiz] = await Promise.all([getResultById(res.id), getQuizById(res.quizId)]);
+        if (fullResult && fullQuiz) {
+            setSelectedResultDetail({ result: fullResult, quiz: fullQuiz });
+        }
+    } finally {
+        setIsDataLoading(false);
+    }
   };
 
   const handleSaveQuiz = async () => {
@@ -169,16 +186,13 @@ const AdminDashboard: React.FC = () => {
   const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    let append = false;
-    if (questions.length > 0) append = !confirm("Đề hiện tại đã có câu hỏi. Bạn muốn THAY THẾ TOÀN BỘ (OK)?");
     setIsAiLoading(true);
     try {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = (reader.result as string).split(',')[1];
         const newQs = await parseQuestionsFromPDF(base64);
-        if (append) setQuestions([...questions, ...newQs]);
-        else setQuestions(newQs);
+        setQuestions([...questions, ...newQs]);
         setIsAiLoading(false);
       };
       reader.readAsDataURL(file);
@@ -266,11 +280,11 @@ const AdminDashboard: React.FC = () => {
                    </button>
                 </div>
                 {isDataLoading ? (
-                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải đề thi...</p></div>
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải Cloud...</p></div>
                 ) : (
                     <QuizList 
                         quizzes={quizzes} results={results} chapters={chapters}
-                        onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={setPreviewQuiz}
+                        onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                         qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
                     />
@@ -283,7 +297,7 @@ const AdminDashboard: React.FC = () => {
             <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">DANH SÁCH HỌC SINH</h1>
                 {isDataLoading ? (
-                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải học sinh...</p></div>
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <StudentManager 
                         students={students} results={results} quizzes={quizzes}
@@ -301,7 +315,7 @@ const AdminDashboard: React.FC = () => {
              <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">KẾT QUẢ HỌC TẬP</h1>
                 {isDataLoading ? (
-                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải bảng điểm...</p></div>
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <ResultsBoard 
                         results={results} quizzes={quizzes} users={students} chapters={chapters}
@@ -335,8 +349,8 @@ const AdminDashboard: React.FC = () => {
 
       {/* Modals */}
       {isStudentModalOpen && <StudentModal isOpen={isStudentModalOpen} student={selectedStudent} form={studentForm} setForm={setStudentForm} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} isSaving={isSavingStudent} />}
-      {viewingStudent && <StudentDetailModal student={viewingStudent} results={results} quizzes={quizzes} onClose={() => setViewingStudent(null)} onViewResult={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} />}
-      {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} onDeleteOne={(r) => deleteResult(r.id).then(() => loadTabData('results'))} />}
+      {viewingStudent && <StudentDetailModal student={viewingStudent} results={results} quizzes={quizzes} onClose={() => setViewingStudent(null)} onViewResult={handleViewResultDetail} />}
+      {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={handleViewResultDetail} onDeleteOne={(r) => deleteResult(r.id).then(() => loadTabData('results'))} />}
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
       
