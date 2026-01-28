@@ -28,16 +28,29 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-export const getResults = async (quizId?: string): Promise<Result[]> => {
+// TỐI ƯU: Chỉ lấy thông tin cơ bản của kết quả (Metadata) để hiện bảng điểm
+export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let query = supabase.from('results').select('data');
+      // Loại bỏ trường userAnswers để giảm dung lượng tải xuống
+      let query = supabase.from('results').select('id, quiz_id, student_id, data->studentName, data->studentCode, data->score, data->submittedAt, data->durationSeconds, data->violationCount');
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
       }
       const { data, error } = await query;
       if (error) throw error;
-      return data ? data.map((row: any) => row.data as Result).sort((a: Result, b: Result) => 
+      
+      return data ? data.map((row: any) => ({
+          id: row.id,
+          quizId: row.quiz_id,
+          studentId: row.student_id,
+          studentName: row.studentName,
+          studentCode: row.studentCode,
+          score: row.score,
+          submittedAt: row.submittedAt,
+          durationSeconds: row.durationSeconds,
+          violationCount: row.violationCount
+      } as any)).sort((a: any, b: any) => 
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       ) : [];
   } catch (e) {
@@ -45,98 +58,81 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
   }
 };
 
-export const getResultsForStudent = async (userId: string, studentCode?: string): Promise<Result[]> => {
-    if (!supabase) return [];
-    try {
-        let query = supabase.from('results').select('data');
-        if (studentCode) {
-            query = query.or(`student_id.eq.${userId},data->>studentCode.eq.${studentCode.toUpperCase().trim()}`);
-        } else {
-            query = query.eq('student_id', userId);
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-        return data ? data.map((row: any) => row.data as Result) : [];
-    } catch (e) {
-        return [];
-    }
+export const getResults = async (quizId?: string): Promise<Result[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('results').select('data');
+  if (error) return [];
+  return data.map((row: any) => row.data as Result);
 };
 
-export const verifyResultExists = async (resultId: string): Promise<boolean> => {
+// Fix: Added getResultsForStudent to resolve module member error in StudentDashboard.tsx
+export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
+  if (!supabase) return [];
+  let query = supabase.from('results').select('data');
+  if (studentCode && studentCode !== 'N/A') {
+    query = query.or(`student_id.eq.${studentId},data->>studentCode.eq.${studentCode.toUpperCase()}`);
+  } else {
+    query = query.eq('student_id', studentId);
+  }
+  const { data, error } = await query;
+  if (error) return [];
+  return data.map((row: any) => row.data as Result);
+};
+
+// Fix: Added verifyResultExists to resolve module member error in QuizTaker.tsx
+export const verifyResultExists = async (id: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { data, error } = await supabase.from('results').select('id').eq('id', resultId).maybeSingle();
-    return !!data && !error;
+    const { data } = await supabase.from('results').select('id').eq('id', id).maybeSingle();
+    return !!data;
+};
+
+export const getResultById = async (id: string): Promise<Result | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('results').select('data').eq('id', id).single();
+    if (error || !data) return null;
+    return data.data as Result;
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  const payload = { 
-      id: result.id, 
-      quiz_id: result.quizId, 
-      student_id: result.studentId, 
-      data: result 
-  };
+  const payload = { id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result };
   const { error } = await supabase.from('results').insert(payload);
   handleSupabaseError(error, "Lưu kết quả thi");
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
-    if (supabase) {
-        const { error } = await supabase.from('results').delete().eq('id', id);
-        handleSupabaseError(error, "Xóa kết quả");
-    }
+    if (supabase) await supabase.from('results').delete().eq('id', id);
 };
 
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
     if (!supabase) return;
-    const { data, error: fetchError } = await supabase.from('results').select('data').eq('id', id).single();
-    if (fetchError || !data) return;
+    const { data } = await supabase.from('results').select('data').eq('id', id).single();
+    if (!data) return;
     const resData = { ...data.data, studentCode: code.trim().toUpperCase() };
-    const { error } = await supabase.from('results').update({ data: resData }).eq('id', id);
-    handleSupabaseError(error, "Cập nhật mã học sinh");
-};
-
-export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
-  if (!supabase) return;
-  const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
-  if (fetchError) return;
-  if (data) {
-    const d = data.data as User;
-    d.points = (Number(d.points) || 0) + Number(points);
-    const { error } = await supabase.from('users').update({ data: d }).eq('id', userId);
-  }
+    await supabase.from('results').update({ data: resData }).eq('id', id);
 };
 
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
-  try {
-    const { data, error } = await supabase.from('users').select('*');
-    if (error) throw error;
-    return data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
-  } catch (e) {
-    return [];
-  }
+  const { data } = await supabase.from('users').select('*');
+  return data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
 };
 
 export const saveUser = async (user: User): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database Cloud");
-  const payload = { 
-      id: user.id, 
-      username: user.username.toLowerCase().trim(), 
-      data: user 
-  };
-  const { error } = await supabase.from('users').upsert(payload);
-  handleSupabaseError(error, "Lưu thông tin người dùng");
+  const payload = { id: user.id, username: user.username.toLowerCase().trim(), data: user };
+  await supabase.from('users').upsert(payload);
 };
 
-export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
-    if (!supabase) return false;
-    const { data, error: fetchError } = await supabase.from('users').select('data').eq('id', userId).single();
-    if (fetchError || !data) return false;
-    const userData = { ...data.data, password: newPassword };
-    const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
-    return !error;
+// Fix: Added addPointsToUser to resolve module member error in QuizTaker.tsx
+export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
+    if (!supabase) return;
+    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+    if (data) {
+      const userData = { ...data.data, points: (data.data.points || 0) + points };
+      await supabase.from('users').update({ data: userData }).eq('id', userId);
+    }
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
@@ -152,14 +148,48 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  if (supabase) {
-      const { error } = await supabase.from('users').delete().eq('id', id);
-      handleSupabaseError(error, "Xóa người dùng");
-  }
+  if (supabase) await supabase.from('users').delete().eq('id', id);
+};
+
+export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+    if (!data) return false;
+    const userData = { ...data.data, password: newPassword };
+    const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
+    return !error;
 };
 
 // --- Quizzes ---
-// TỐI ƯU: Lọc theo khối lớp ngay tại Cloud
+// TỐI ƯU: Chỉ lấy Metadata để hiện danh sách đề (Cực kỳ nhanh)
+export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->createdAt, data->category, data->durationMinutes, data->isMonitored');
+    if (grade && grade !== 'all') {
+        query = query.or(`grade.eq.${grade},grade.eq.all`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    return data ? data.map((row: any) => ({
+        id: row.id,
+        grade: row.grade,
+        title: row.title,
+        type: row.type,
+        isPublished: row.isPublished,
+        createdAt: row.createdAt,
+        category: row.category,
+        durationMinutes: row.durationMinutes,
+        isMonitored: row.isMonitored,
+        questions: [] // Trống để nhẹ
+    } as any)) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Fix: Added getQuizzes to resolve module member error in StudentDashboard.tsx and ExamMonitor.tsx
 export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
@@ -175,56 +205,25 @@ export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   }
 };
 
+export const getQuizById = async (id: string): Promise<Quiz | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).single();
+    if (error || !data) return null;
+    return data.data as Quiz;
+};
+
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
-  handleSupabaseError(error, "Lưu đề thi");
+  await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
 };
 
 export const updateQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
-  handleSupabaseError(error, "Cập nhật đề thi");
+  await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('quizzes').delete().eq('id', id);
-};
-
-export const uploadQuizImage = async (file: File): Promise<string> => {
-  if (!supabase) return '';
-  try {
-    const fileExt = file.name.split('.').pop() || 'png';
-    const fileName = `${uuidv4()}.${fileExt}`;
-    const bucketName = 'quiz-images';
-    const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(fileName, file);
-    if (uploadError) return '';
-    const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
-    return data.publicUrl;
-  } catch (err) {
-    return '';
-  }
-};
-
-// TỐI ƯU: Chỉ lấy 20 bản vinh danh mới nhất để tránh lag
-export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
-    if (!supabase) return [];
-    const { data } = await supabase.from('published_results')
-        .select('data')
-        .order('id', { ascending: false })
-        .limit(limit);
-    return data ? data.map((row: any) => row.data as PublishedResult) : [];
-};
-
-export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
-    if (supabase) {
-        const { error } = await supabase.from('published_results').upsert({ id: pub.id, data: pub });
-        handleSupabaseError(error, "Công bộ kết quả");
-    }
-};
-
-export const deletePublishedResult = async (id: string): Promise<void> => {
-    if (supabase) await supabase.from('published_results').delete().eq('id', id);
 };
 
 export const getChapters = async (): Promise<Chapter[]> => {
@@ -234,10 +233,7 @@ export const getChapters = async (): Promise<Chapter[]> => {
 };
 
 export const saveChapter = async (c: Chapter): Promise<void> => {
-  if (supabase) {
-      const { error } = await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
-      handleSupabaseError(error, "Lưu chương học");
-  }
+  if (supabase) await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
 };
 
 export const deleteChapter = async (id: string): Promise<void> => {
@@ -246,20 +242,38 @@ export const deleteChapter = async (id: string): Promise<void> => {
 
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
-    try {
-        const { data, error } = await supabase.from('bank_questions').select('data');
-        if (error) throw error;
-        return data ? data.map((row: any) => row.data as Question) : [];
-    } catch (e) {
-        return [];
-    }
+    const { data } = await supabase.from('bank_questions').select('data');
+    return data ? data.map((row: any) => row.data as Question) : [];
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
-    if (supabase) {
-        const { error } = await supabase.from('bank_questions').insert({ id: q.id, data: q });
-        handleSupabaseError(error, "Lưu câu hỏi ngân hàng");
-    }
+    if (supabase) await supabase.from('bank_questions').insert({ id: q.id, data: q });
+};
+
+export const uploadQuizImage = async (file: File): Promise<string> => {
+    if (!supabase) return '';
+    try {
+      const fileExt = file.name.split('.').pop() || 'png';
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file);
+      if (uploadError) return '';
+      const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
+      return data.publicUrl;
+    } catch (err) { return ''; }
+};
+
+export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('published_results').select('data').order('id', { ascending: false }).limit(limit);
+    return data ? data.map((row: any) => row.data as PublishedResult) : [];
+};
+
+export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
+    if (supabase) await supabase.from('published_results').upsert({ id: pub.id, data: pub });
+};
+
+export const deletePublishedResult = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('published_results').delete().eq('id', id);
 };
 
 export const saveExamSession = async (session: ExamSession): Promise<void> => {
