@@ -28,6 +28,7 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
+// Lấy toàn bộ kết quả (Dùng cho Admin)
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
@@ -44,6 +45,26 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
       console.error("Lỗi lấy kết quả:", e);
       return [];
   }
+};
+
+// TỐI ƯU: Chỉ lấy kết quả của riêng học sinh hiện tại (Dùng cho Student Dashboard)
+export const getResultsForStudent = async (userId: string, studentCode?: string): Promise<Result[]> => {
+    if (!supabase) return [];
+    try {
+        let query = supabase.from('results').select('data');
+        if (studentCode) {
+            // Lọc theo studentId HOẶC studentCode (dự phòng trường hợp đổi máy hoặc dữ liệu Cloud cũ)
+            query = query.or(`student_id.eq.${userId},data->>studentCode.eq.${studentCode.toUpperCase().trim()}`);
+        } else {
+            query = query.eq('student_id', userId);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ? data.map((row: any) => row.data as Result) : [];
+    } catch (e) {
+        console.error("Lỗi lấy kết quả học sinh:", e);
+        return [];
+    }
 };
 
 export const verifyResultExists = async (resultId: string): Promise<boolean> => {
