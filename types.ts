@@ -70,6 +70,7 @@ export interface Result {
   durationSeconds: number;
   detailScores?: number[];
   pointsAwarded?: number;
+  bonusPoint?: number; // Đã thêm: Điểm thưởng tích lũy
   userAnswers?: Record<string, any>; 
   violationCount?: number;
 }
