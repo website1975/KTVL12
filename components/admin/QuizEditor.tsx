@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, CopyCheck, ImageIcon, Loader2, Lightbulb, Eye, Plus, Calendar, ImageMinus, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -56,12 +56,19 @@ interface QuestionSectionProps {
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, questions, setQuestions, onUploadImage, uploadingId, onOpenBank }) => {
+    const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const sectionQuestions = questions.filter(q => q.type === type);
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
+    const handleSetAllPoints = () => {
+        const val = quickPoints.replace(',', '.');
+        const newList = questions.map(q => q.type === type ? { ...q, points: val } : q);
+        setQuestions(newList);
+    };
+
     const addManual = () => {
         const newQ: Question = {
-            id: uuidv4(), type, text: '', points: type === 'mcq' ? 0.25 : 1.0,
+            id: uuidv4(), type, text: '', points: quickPoints,
             options: type === 'mcq' ? ['', '', '', ''] : undefined,
             correctAnswer: '', solution: '',
             subQuestions: type === 'group-tf' ? [
@@ -85,14 +92,30 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
     return (
         <div className="space-y-6 mt-10">
-            <div className="flex items-center justify-between bg-white p-6 rounded-3xl border shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-6 rounded-3xl border shadow-sm gap-4">
                 <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-2xl ${type === 'mcq' ? 'bg-blue-50 text-blue-600' : type === 'group-tf' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}><Icon size={24}/></div>
-                    <h3 className="font-black text-slate-800 uppercase tracking-tight">{sectionTitle}</h3>
+                    <div>
+                        <h3 className="font-black text-slate-800 uppercase tracking-tight">{sectionTitle}</h3>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{sectionQuestions.length} câu hỏi</p>
+                    </div>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-5 py-3 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase border border-blue-100 transition-all hover:bg-blue-600 hover:text-white"><Database size={14}/> Ngân hàng</button>
-                    <button onClick={addManual} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase transition-all hover:bg-black"><Plus size={14}/> Thêm mới</button>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 bg-slate-50 border px-3 py-1.5 rounded-2xl">
+                        <span className="text-[9px] font-black text-slate-400 uppercase">Sét điểm:</span>
+                        <input 
+                            type="text" 
+                            className="w-12 bg-transparent text-center font-black text-blue-600 outline-none text-xs" 
+                            value={quickPoints} 
+                            onChange={e => setQuickPoints(e.target.value)} 
+                        />
+                        <button onClick={handleSetAllPoints} className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-black transition-colors" title="Gán cho tất cả câu ở phần này">
+                            <Zap size={14}/>
+                        </button>
+                    </div>
+                    <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase hover:bg-slate-50"><Database size={14}/> Ngân hàng</button>
+                    <button onClick={addManual} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-md"><Plus size={14}/> Thêm mới</button>
                 </div>
             </div>
 
@@ -170,12 +193,12 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
                     <div className="pt-6 border-t border-slate-100 grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="space-y-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2\"><Lightbulb size={14}/> Hướng dẫn giải</label>
-                            <textarea className="w-full p-4 bg-yellow-50/20 border border-yellow-100 rounded-2xl text-sm outline-none min-h-[80px]\" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Giải chi tiết..." />
+                            <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2"><Lightbulb size={14}/> Lời giải chi tiết</label>
+                            <textarea className="w-full p-4 bg-yellow-50/20 border border-yellow-100 rounded-2xl text-sm outline-none min-h-[80px]" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Giải chi tiết (LaTeX: $...$)" />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[9px] font-black text-yellow-600 uppercase flex items-center gap-2\"><Eye size={14}/> Xem trước giải</label>
-                            <div className="w-full p-4 bg-yellow-50/10 rounded-2xl border border-yellow-100/50 min-h-[80px] text-sm italic text-slate-500 overflow-auto\"><LatexText text={q.solution || '*Chưa có lời giải*'} /></div>
+                            <label className="text-[9px] font-black text-yellow-600 uppercase flex items-center gap-2"><Eye size={14}/> Xem trước lời giải</label>
+                            <div className="w-full p-4 bg-yellow-50/10 rounded-2xl border border-yellow-100/50 min-h-[80px] text-sm italic text-slate-500 overflow-auto"><LatexText text={q.solution || '*Chưa có lời giải*'} /></div>
                         </div>
                     </div>
                 </div>
@@ -241,7 +264,6 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         <select className="w-full border rounded-2xl p-4 text-xs font-black bg-slate-50" value={props.quizType} onChange={e => {
                             const val = e.target.value as any;
                             props.setQuizType(val);
-                            // TỰ ĐỘNG TẮT GIÁM SÁT NẾU CHUYỂN SANG LUYỆN TẬP
                             if (val === 'practice') props.setIsMonitored(false);
                         }}>
                             <option value="practice">Luyện tập (Tự do)</option>
@@ -256,7 +278,7 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-1">
-                        <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Calendar size={12}/> Thời điểm mở / Hạn chót</label>
+                        <label className="text-[9px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Zap size={12}/> Thời điểm mở / Hạn chót</label>
                         <input type="datetime-local" className="w-full border rounded-2xl p-4 text-xs font-black bg-blue-50/30 border-blue-100" value={props.quizType === 'test' ? props.startTime : props.endTime} onChange={e => props.quizType === 'test' ? props.setStartTime(e.target.value) : props.setEndTime(e.target.value)} />
                     </div>
                     <div className="space-y-1">
@@ -276,11 +298,8 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         </button>
                     </div>
                 </div>
-                <div className="bg-slate-50 p-4 rounded-2xl text-[9px] text-slate-500 font-bold leading-tight">
-                    <span className="text-red-500">* Ghi chú:</span> Khi bật <span className="text-red-600">Giám sát</span>, học sinh sẽ bị cảnh báo nếu thoát tab hoặc chuyển cửa sổ khi đang làm bài.
-                </div>
 
-                <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl\"><Save size={20}/> LƯU ĐỀ THI</button>
+                <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl"><Save size={20}/> LƯU ĐỀ THI</button>
             </div>
 
             <QuestionSection sectionTitle="PHẦN I. TRẮC NGHIỆM" type="mcq" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
