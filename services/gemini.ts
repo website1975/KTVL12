@@ -77,15 +77,17 @@ QUY TẮC BẮT BUỘC:
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `Hãy đóng vai chuyên gia trích xuất đề thi THPT môn Vật Lý/Toán học.
-Phân tích file PDF này và trả về JSON chuẩn.
+  const prompt = `HÃY PHÂN TÍCH TOÀN BỘ FILE PDF ĐỀ THI VẬT LÝ/TOÁN HỌC NÀY.
+Đây là đề thi chuẩn cấu trúc mới của Bộ GD&ĐT Việt Nam.
 
-QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG:
-1. Trong file PDF, phương án nào bắt đầu bằng dấu "*" (Ví dụ: *D. lực từ..., *A. 2,5 cm) thì đó là đáp án ĐÚNG (correctAnswer).
-2. Hãy lấy nội dung phương án đó (bỏ dấu *) lưu vào correctAnswer.
-3. Nếu là câu Đúng/Sai (Phần II), xác định Đ/S cho từng ý a,b,c,d.
-4. Mọi ký hiệu khoa học ($B$, $r$, $10^{-7}$, $\pi$, $\Omega$) phải bọc trong LaTeX $...$.
-5. Trích xuất cả phần "Lời giải" nếu có.`;
+QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
+1. PHẦN I (4 lựa chọn): Nhận diện dấu hiệu "*" ở đầu phương án để xác định correctAnswer (VD: *D. Lực từ...).
+2. PHẦN II (Đúng/Sai): Nhận diện ký hiệu (Đ) hoặc (S) ở cuối mỗi ý a,b,c,d để gán correctAnswer là "True" hoặc "False".
+3. PHẦN III (Trả lời ngắn): Tìm nội dung sau chữ "Đáp án:" hoặc "Kết quả:".
+4. LATEX: Bọc tất cả công thức vật lý ($\Delta\Phi$, $\pi$, $\Omega$, $10^{-7}$) vào dấu $...$.
+5. LỜI GIẢI: Trích xuất toàn bộ lời giải chi tiết nếu có trong file.
+
+HÃY ĐẢM BẢO KHÔNG BỎ SÓT BẤT KỲ CÂU NÀO TRONG TẤT CẢ CÁC TRANG.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -103,7 +105,7 @@ QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG:
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    type: { type: Type.STRING },
+                    type: { type: Type.STRING, description: "Phải là 'mcq', 'group-tf' hoặc 'short'" },
                     text: { type: Type.STRING },
                     points: { type: Type.NUMBER },
                     options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
@@ -116,7 +118,7 @@ QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG:
                             type: Type.OBJECT,
                             properties: {
                                 text: { type: Type.STRING },
-                                correctAnswer: { type: Type.STRING }
+                                correctAnswer: { type: Type.STRING, description: "Chỉ được là 'True' hoặc 'False'" }
                             },
                             required: ["text", "correctAnswer"]
                         }
@@ -134,14 +136,15 @@ QUY TẮC NHẬN DIỆN ĐÁP ÁN ĐÚNG:
     return rawData.map((item: any) => ({
         ...item,
         id: uuidv4(),
-        points: item.points || (item.type === 'mcq' ? 0.25 : 1.0),
+        points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
             ...sq, 
             id: uuidv4(),
-            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
+            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'true') ? 'True' : 'False'
         })) : undefined
     }));
   } catch (error: any) {
+    console.error("Lỗi AI trích xuất:", error);
     throw new Error("Lỗi đọc PDF: " + error.message);
   }
 };
