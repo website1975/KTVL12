@@ -36,13 +36,12 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
         query = query.eq('quiz_id', quizId);
       }
       const { data, error } = await query;
-      if (error) return [];
-      if (!data) return [];
-      // Sửa lỗi TS7006 tại đây: Thêm kiểu dữ liệu (a: Result, b: Result)
-      return data.map((row: any) => row.data as Result).sort((a: Result, b: Result) => 
+      if (error) throw error;
+      return data ? data.map((row: any) => row.data as Result).sort((a: Result, b: Result) => 
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
-      );
+      ) : [];
   } catch (e) {
+      console.error("Lỗi lấy kết quả:", e);
       return [];
   }
 };
@@ -95,9 +94,14 @@ export const addPointsToUser = async (userId: string, points: number): Promise<v
 // --- Users ---
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('users').select('*');
-  if (error) return [];
-  return data.map((row: any) => ({ ...row.data, id: row.id } as User));
+  try {
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) throw error;
+    return data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
+  } catch (e) {
+    console.error("Lỗi lấy người dùng:", e);
+    return [];
+  }
 };
 
 export const saveUser = async (user: User): Promise<void> => {
@@ -142,9 +146,14 @@ export const deleteUser = async (id: string): Promise<void> => {
 // --- Quizzes ---
 export const getQuizzes = async (): Promise<Quiz[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('quizzes').select('data');
-  if (error) return [];
-  return data ? data.map((row: any) => row.data as Quiz) : [];
+  try {
+    const { data, error } = await supabase.from('quizzes').select('data');
+    if (error) throw error;
+    return data ? data.map((row: any) => row.data as Quiz) : [];
+  } catch (e) {
+    console.error("Lỗi lấy đề thi:", e);
+    return [];
+  }
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
@@ -168,27 +177,12 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
   try {
     const fileExt = file.name.split('.').pop() || 'png';
     const fileName = `${uuidv4()}.${fileExt}`;
-    // Tên bucket khớp hoàn toàn với ảnh bác chụp (không viết hoa)
     const bucketName = 'quiz-images';
-    
-    console.log("Đang tải ảnh lên bucket:", bucketName);
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(bucketName)
-        .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false
-        });
-
-    if (uploadError) {
-        console.error("Lỗi upload:", uploadError.message);
-        return '';
-    }
-
+    const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(fileName, file);
+    if (uploadError) return '';
     const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
     return data.publicUrl;
   } catch (err) {
-    console.error("Lỗi hệ thống khi tải ảnh:", err);
     return '';
   }
 };
@@ -229,8 +223,14 @@ export const deleteChapter = async (id: string): Promise<void> => {
 
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
-    const { data } = await supabase.from('bank_questions').select('data');
-    return data ? data.map((row: any) => row.data as Question) : [];
+    try {
+        const { data, error } = await supabase.from('bank_questions').select('data');
+        if (error) throw error;
+        return data ? data.map((row: any) => row.data as Question) : [];
+    } catch (e) {
+        console.error("Lỗi lấy ngân hàng câu hỏi:", e);
+        return [];
+    }
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
