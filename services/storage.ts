@@ -28,11 +28,9 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-// TỐI ƯU: Chỉ lấy thông tin cơ bản của kết quả (Metadata) để hiện bảng điểm
 export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      // Loại bỏ trường userAnswers để giảm dung lượng tải xuống
       let query = supabase.from('results').select('id, quiz_id, student_id, data->studentName, data->studentCode, data->score, data->submittedAt, data->durationSeconds, data->violationCount');
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
@@ -65,7 +63,6 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
   return data.map((row: any) => row.data as Result);
 };
 
-// Fix: Added getResultsForStudent to resolve module member error in StudentDashboard.tsx
 export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
   if (!supabase) return [];
   let query = supabase.from('results').select('data');
@@ -79,7 +76,6 @@ export const getResultsForStudent = async (studentId: string, studentCode?: stri
   return data.map((row: any) => row.data as Result);
 };
 
-// Fix: Added verifyResultExists to resolve module member error in QuizTaker.tsx
 export const verifyResultExists = async (id: string): Promise<boolean> => {
     if (!supabase) return false;
     const { data } = await supabase.from('results').select('id').eq('id', id).maybeSingle();
@@ -125,7 +121,6 @@ export const saveUser = async (user: User): Promise<void> => {
   await supabase.from('users').upsert(payload);
 };
 
-// Fix: Added addPointsToUser to resolve module member error in QuizTaker.tsx
 export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
     if (!supabase) return;
     const { data } = await supabase.from('users').select('data').eq('id', userId).single();
@@ -161,18 +156,35 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 };
 
 // --- Quizzes ---
-// TỐI ƯU: Chỉ lấy Metadata để hiện danh sách đề (Cực kỳ nhanh)
+// TỐI ƯU: Chỉ lấy Metadata + Count lượt làm bài từ Server
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->createdAt, data->category, data->durationMinutes, data->isMonitored');
+    // 1. Lấy thông tin cơ bản của Quizzes
+    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->createdAt, data->category, data->durationMinutes, data->isMonitored, data->questionCount');
     if (grade && grade !== 'all') {
         query = query.or(`grade.eq.${grade},grade.eq.all`);
     }
-    const { data, error } = await query;
-    if (error) throw error;
+    const { data: quizzesData, error: qError } = await query;
+    if (qError) throw qError;
     
-    return data ? data.map((row: any) => ({
+    // 2. TỐI ƯU: Đếm số lượt làm cho mỗi đề thi ngay tại Database (Group by quiz_id)
+    // Cách này cực nhanh vì Cloud chỉ gửi về danh sách ID và số lượng (VD: {quiz1: 15, quiz2: 20})
+    const { data: countsData, error: cError } = await supabase
+        .from('results')
+        .select('quiz_id')
+        .then((res: any) => {
+            // Tạo một map để tra cứu số lượt làm nhanh chóng
+            const counts: Record<string, number> = {};
+            if (res.data) {
+                res.data.forEach((r: any) => {
+                    counts[r.quiz_id] = (counts[r.quiz_id] || 0) + 1;
+                });
+            }
+            return { data: counts, error: null };
+        });
+
+    return quizzesData ? quizzesData.map((row: any) => ({
         id: row.id,
         grade: row.grade,
         title: row.title,
@@ -182,14 +194,15 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
         category: row.category,
         durationMinutes: row.durationMinutes,
         isMonitored: row.isMonitored,
-        questions: [] // Trống để nhẹ
+        questionCount: row.questionCount || 0,
+        attemptCount: countsData[row.id] || 0, // Đã có số lượt làm chính xác mà không cần tải Results mảng lớn
+        questions: [] 
     } as any)) : [];
   } catch (e) {
     return [];
   }
 };
 
-// Fix: Added getQuizzes to resolve module member error in StudentDashboard.tsx and ExamMonitor.tsx
 export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
@@ -214,12 +227,14 @@ export const getQuizById = async (id: string): Promise<Quiz | null> => {
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: quiz });
+  const enrichedQuiz = { ...quiz, questionCount: quiz.questions.length };
+  await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
 };
 
-export const updateQuiz = async (quiz: Quiz): Promise<void> => {
+export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   if (!supabase) return;
-  await supabase.from('quizzes').update({ data: quiz, grade: quiz.grade }).eq('id', quiz.id);
+  const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
+  await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
