@@ -23,9 +23,6 @@ export const isDatabaseConnected = (): boolean => {
 const handleSupabaseError = (error: any, context: string) => {
     if (error) {
         console.error(`LỖI SUPABASE [${context}]:`, error);
-        if (error.code === '42501') {
-            throw new Error(`Database chặn quyền (RLS). Bạn cần chỉnh 'Target Roles' thành 'anon' trong Policy của bảng.`);
-        }
         throw new Error(`${context} thất bại: ${error.message}`);
     }
 };
@@ -34,31 +31,17 @@ const handleSupabaseError = (error: any, context: string) => {
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      // Lấy cột data từ bảng results
       let query = supabase.from('results').select('data');
-      
-      // Sửa chính xác thành quiz_id theo ảnh chụp DB
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
       }
-      
       const { data, error } = await query;
-      
-      if (error) {
-          console.error("Lỗi getResults:", error.message);
-          return [];
-      }
-
-      if (!data || data.length === 0) {
-          return [];
-      }
-
-      const parsedResults: Result[] = data.map((row: any) => row.data as Result);
-      return parsedResults.sort((a: Result, b: Result) => 
+      if (error) return [];
+      if (!data) return [];
+      return data.map((row: any) => row.data as Result).sort((a, b) => 
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       );
   } catch (e) {
-      console.error("Lỗi crash hàm getResults:", e);
       return [];
   }
 };
@@ -71,7 +54,6 @@ export const verifyResultExists = async (resultId: string): Promise<boolean> => 
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  // Sửa chính xác payload dùng quiz_id và student_id
   const payload = { 
       id: result.id, 
       quiz_id: result.quizId, 
@@ -106,7 +88,6 @@ export const addPointsToUser = async (userId: string, points: number): Promise<v
     const d = data.data as User;
     d.points = (Number(d.points) || 0) + Number(points);
     const { error } = await supabase.from('users').update({ data: d }).eq('id', userId);
-    if (error) console.error("Không thể cập nhật điểm:", error.message);
   }
 };
 
@@ -114,10 +95,7 @@ export const addPointsToUser = async (userId: string, points: number): Promise<v
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
   const { data, error } = await supabase.from('users').select('*');
-  if (error) {
-      console.error("Lỗi tải danh sách Users:", error.message);
-      return [];
-  }
+  if (error) return [];
   return data.map((row: any) => ({ ...row.data, id: row.id } as User));
 };
 
@@ -187,11 +165,13 @@ export const deleteQuiz = async (id: string): Promise<void> => {
 export const uploadQuizImage = async (file: File): Promise<string> => {
   if (!supabase) return '';
   try {
-    const fileExt = file.name.split('.').pop();
+    const fileExt = file.name.split('.').pop() || 'png';
     const fileName = `${uuidv4()}.${fileExt}`;
-    // Tên bucket khớp với ảnh chụp của bác (quiz-images)
+    // Tên bucket khớp hoàn toàn với ảnh bác chụp (không viết hoa)
     const bucketName = 'quiz-images';
     
+    console.log("Đang tải ảnh lên bucket:", bucketName);
+
     const { data: uploadData, error: uploadError } = await supabase.storage
         .from(bucketName)
         .upload(fileName, file, {
@@ -200,14 +180,14 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
         });
 
     if (uploadError) {
-        console.error("Lỗi upload chi tiết:", uploadError);
+        console.error("Lỗi upload:", uploadError.message);
         return '';
     }
 
     const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
     return data.publicUrl;
   } catch (err) {
-    console.error("Lỗi crash uploadQuizImage:", err);
+    console.error("Lỗi hệ thống khi tải ảnh:", err);
     return '';
   }
 };
