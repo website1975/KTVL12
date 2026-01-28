@@ -412,21 +412,34 @@ const AdminDashboard: React.FC = () => {
       {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} onDeleteOne={(r) => deleteResult(r.id).then(() => fetchData())} />}
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
+      
+      {/* Cập nhật Ngân hàng dạng Full-screen để bác duyệt đề rộng rãi */}
       {isBankOpen && (
-        <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-10 backdrop-blur-xl animate-fade-in">
-             <div className="bg-white rounded-[3.5rem] w-full h-full flex flex-col overflow-hidden border-8 border-white">
-                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                    <h3 className="text-lg font-black uppercase tracking-tight italic">Ngân hàng câu hỏi: {bankTargetType === 'all' ? 'Tất cả' : bankTargetType}</h3>
-                    <button onClick={() => setIsBankOpen(false)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+        <div className="fixed inset-0 bg-slate-900/40 z-[2000] flex items-stretch justify-end animate-fade-in">
+             <div className="bg-white w-full max-w-[95vw] h-full flex flex-col overflow-hidden shadow-2xl animate-slide-in-right">
+                <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-white/10">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><Database size={24}/></div>
+                        <div>
+                            <h3 className="text-xl font-black uppercase tracking-tight italic leading-none">Chọn từ Ngân hàng đề</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Loại: {bankTargetType === 'all' ? 'Tất cả dạng' : bankTargetType}</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setIsBankOpen(false)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-all flex items-center gap-2 group">
+                        <span className="text-[10px] font-black uppercase group-hover:mr-2 transition-all">Đóng bảng</span>
+                        <X size={20}/>
+                    </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-10 bg-slate-50">
-                    <QuestionBank 
-                        questions={bankQuestions.filter(q => (bankTargetType === 'all' || q.type === bankTargetType))}
-                        bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                        bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
-                        bSearch={bSearch} setBSearch={setBSearch}
-                        onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
-                    />
+                <div className="flex-1 overflow-y-auto p-6 lg:p-12 bg-slate-50 custom-scrollbar">
+                    <div className="max-w-[1400px] mx-auto">
+                        <QuestionBank 
+                            questions={bankQuestions.filter(q => (bankTargetType === 'all' || q.type === bankTargetType))}
+                            bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                            bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
+                            bSearch={bSearch} setBSearch={setBSearch}
+                            onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
+                        />
+                    </div>
                 </div>
              </div>
         </div>
