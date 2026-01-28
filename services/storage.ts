@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult } from '../types';
+import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const SUPABASE_URL = 'https://lchfhsioxvgkjfsikycl.supabase.co';
@@ -28,7 +28,6 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-// Lấy toàn bộ kết quả (Dùng cho Admin)
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
@@ -42,18 +41,15 @@ export const getResults = async (quizId?: string): Promise<Result[]> => {
         new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
       ) : [];
   } catch (e) {
-      console.error("Lỗi lấy kết quả:", e);
       return [];
   }
 };
 
-// TỐI ƯU: Chỉ lấy kết quả của riêng học sinh hiện tại (Dùng cho Student Dashboard)
 export const getResultsForStudent = async (userId: string, studentCode?: string): Promise<Result[]> => {
     if (!supabase) return [];
     try {
         let query = supabase.from('results').select('data');
         if (studentCode) {
-            // Lọc theo studentId HOẶC studentCode (dự phòng trường hợp đổi máy hoặc dữ liệu Cloud cũ)
             query = query.or(`student_id.eq.${userId},data->>studentCode.eq.${studentCode.toUpperCase().trim()}`);
         } else {
             query = query.eq('student_id', userId);
@@ -62,7 +58,6 @@ export const getResultsForStudent = async (userId: string, studentCode?: string)
         if (error) throw error;
         return data ? data.map((row: any) => row.data as Result) : [];
     } catch (e) {
-        console.error("Lỗi lấy kết quả học sinh:", e);
         return [];
     }
 };
@@ -120,7 +115,6 @@ export const getUsers = async (): Promise<User[]> => {
     if (error) throw error;
     return data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
   } catch (e) {
-    console.error("Lỗi lấy người dùng:", e);
     return [];
   }
 };
@@ -165,14 +159,18 @@ export const deleteUser = async (id: string): Promise<void> => {
 };
 
 // --- Quizzes ---
-export const getQuizzes = async (): Promise<Quiz[]> => {
+// TỐI ƯU: Lọc theo khối lớp ngay tại Cloud
+export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    const { data, error } = await supabase.from('quizzes').select('data');
+    let query = supabase.from('quizzes').select('data');
+    if (grade && grade !== 'all') {
+        query = query.or(`grade.eq.${grade},grade.eq.all`);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data ? data.map((row: any) => row.data as Quiz) : [];
   } catch (e) {
-    console.error("Lỗi lấy đề thi:", e);
     return [];
   }
 };
@@ -208,9 +206,13 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
   }
 };
 
-export const getPublishedResults = async (): Promise<PublishedResult[]> => {
+// TỐI ƯU: Chỉ lấy 20 bản vinh danh mới nhất để tránh lag
+export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
     if (!supabase) return [];
-    const { data } = await supabase.from('published_results').select('data');
+    const { data } = await supabase.from('published_results')
+        .select('data')
+        .order('id', { ascending: false })
+        .limit(limit);
     return data ? data.map((row: any) => row.data as PublishedResult) : [];
 };
 
@@ -249,7 +251,6 @@ export const getBankQuestions = async (): Promise<Question[]> => {
         if (error) throw error;
         return data ? data.map((row: any) => row.data as Question) : [];
     } catch (e) {
-        console.error("Lỗi lấy ngân hàng câu hỏi:", e);
         return [];
     }
 };
