@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
-import { getQuizzes, getResults, getPublishedResults } from '../services/storage';
+import { getQuizzes, getResultsForStudent, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
@@ -27,9 +27,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        const [allQuizzes, allResults, allPubs] = await Promise.all([
+        // TỐI ƯU: Chỉ gọi lấy kết quả của riêng học sinh này (getResultsForStudent)
+        const [allQuizzes, userResults, allPubs] = await Promise.all([
             getQuizzes(), 
-            getResults(), 
+            getResultsForStudent(user.id, user.studentCode), 
             getPublishedResults()
         ]);
         
@@ -39,36 +40,32 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         });
         setQuizzes(relevantQuizzes);
 
-        const userResults = allResults.filter(r => 
-            r.studentId === user.id || (user.studentCode && r.studentCode === user.studentCode.toUpperCase())
-        ).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-        
-        setResults(userResults);
+        // Đã lọc từ server nhưng vẫn sort lại cho chắc chắn
+        const sortedResults = userResults.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+        setResults(sortedResults);
 
         const userPubs = allPubs.filter(p => 
             user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
 
-        const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
+        const totalSeconds = sortedResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
         const effortPoints = totalSeconds / 2700; 
 
-        const testBestScores: Record<string, number> = {};
-        userResults.forEach(r => {
-            const quiz = relevantQuizzes.find(q => q.id === r.quizId);
-            if (quiz && quiz.type === 'test') {
-                if (!testBestScores[r.quizId] || r.score > testBestScores[r.quizId]) {
-                    testBestScores[r.quizId] = r.score;
-                }
+        const bonusPoints = sortedResults.reduce((acc, r) => {
+            if (r.bonusPoint !== undefined) {
+                return acc + r.bonusPoint;
             }
-        });
-        
-        let bonusPoints = 0;
-        Object.values(testBestScores).forEach(score => { if (score >= 8) bonusPoints += 1; });
+            const quiz = allQuizzes.find(q => q.id === r.quizId);
+            if (quiz && quiz.type === 'test' && r.score >= 8) {
+                return acc + 1;
+            }
+            return acc;
+        }, 0);
 
         setStats({
-            totalQuizzes: userResults.length,
-            avgScore: userResults.length > 0 ? (userResults.reduce((acc, r) => acc + r.score, 0) / userResults.length) : 0,
+            totalQuizzes: sortedResults.length,
+            avgScore: sortedResults.length > 0 ? (sortedResults.reduce((acc, r) => acc + r.score, 0) / sortedResults.length) : 0,
             totalSeconds,
             effortPoints,
             bonusPoints,
@@ -131,7 +128,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       {isLoading && results.length === 0 && (
           <div className="py-20 text-center space-y-4">
               <Loader2 className="animate-spin text-blue-500 mx-auto" size={40}/>
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang tải dữ liệu từ Cloud...</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang tải dữ liệu Cloud...</p>
           </div>
       )}
 
