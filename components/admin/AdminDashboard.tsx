@@ -36,7 +36,7 @@ type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'ai' | 'chapter
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(false);
 
   // Data states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -44,6 +44,42 @@ const AdminDashboard: React.FC = () => {
   const [results, setResults] = useState<Result[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
+
+  // Tối ưu: Chỉ tải dữ liệu khi Tab đó được kích hoạt hoặc khi khởi tạo (Quizzes)
+  const loadTabData = useCallback(async (tab: AdminTab) => {
+    setIsDataLoading(true);
+    try {
+      if (tab === 'quizzes') {
+        const [q, c] = await Promise.all([getQuizzes(), getChapters()]);
+        setQuizzes(q);
+        setChapters(c);
+      } else if (tab === 'students') {
+        const u = await getUsers();
+        setStudents(u.filter(user => user.role === 'student'));
+      } else if (tab === 'results') {
+        // Tải đề thi trước để map tên đề trong bảng điểm
+        if (quizzes.length === 0) {
+            const q = await getQuizzes();
+            setQuizzes(q);
+        }
+        const r = await getResults();
+        setResults(r);
+      } else if (tab === 'bank') {
+        const b = await getBankQuestions();
+        setBankQuestions(b);
+      } else if (tab === 'monitor') {
+        const [q, r] = await Promise.all([getQuizzes(), getResults()]);
+        setQuizzes(q);
+        setResults(r);
+      }
+    } finally {
+      setIsDataLoading(false);
+    }
+  }, [quizzes.length]);
+
+  useEffect(() => {
+    loadTabData(activeTab);
+  }, [activeTab]);
 
   // Quiz Editing
   const [isEditingQuiz, setIsEditingQuiz] = useState(false);
@@ -84,33 +120,18 @@ const AdminDashboard: React.FC = () => {
   const [selectedResultDetail, setSelectedResultDetail] = useState<{ result: Result, quiz: Quiz } | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isBankOpen, setIsBankOpen] = useState(false);
-  const [bankTargetType, setBankTargetType] = useState<QuestionType | 'all'>('all');
 
-  // TỔI ƯU: Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
+  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
   const allAvailableQuestions = useMemo(() => {
     const fromQuizzes: Question[] = quizzes.flatMap(quiz => 
       quiz.questions.map(q => ({
         ...q,
-        quizTitle: quiz.title, // Gắn tiêu đề đề thi gốc
-        quizGrade: quiz.grade  // Gắn khối lớp gốc
+        quizTitle: quiz.title,
+        quizGrade: quiz.grade
       }))
     );
-    
-    // Gộp và lọc trùng (dựa trên ID hoặc Nội dung nếu cần, ở đây tạm thời gộp hết)
     return [...bankQuestions, ...fromQuizzes];
   }, [quizzes, bankQuestions]);
-
-  const fetchData = useCallback(async () => {
-    getQuizzes().then(setQuizzes);
-    getUsers().then(u => setStudents(u.filter(user => user.role === 'student')));
-    getResults().then(setResults);
-    getChapters().then(setChapters);
-    getBankQuestions().then(setBankQuestions);
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   // Quiz Handlers
   const handleCreateQuiz = () => {
@@ -137,12 +158,12 @@ const AdminDashboard: React.FC = () => {
       if (editingQuizId) await updateQuiz(quiz);
       else await saveQuiz(quiz);
       setIsEditingQuiz(false);
-      fetchData();
+      loadTabData('quizzes');
     } catch (e) { alert("Lỗi lưu đề thi"); }
   };
 
   const handleDeleteQuiz = async (id: string) => {
-    if (confirm("Xóa đề thi này?")) { await deleteQuiz(id); fetchData(); }
+    if (confirm("Xóa đề thi này?")) { await deleteQuiz(id); loadTabData('quizzes'); }
   };
 
   const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,19 +192,6 @@ const AdminDashboard: React.FC = () => {
     setUploadingId(null);
   };
 
-  const handleAiGenerate = async (p: string, p1: number, p2: number, p3: number, target: 'editor' | 'bank') => {
-    setIsAiLoading(true);
-    try {
-      const newQs = await generateQuizFromPrompt({ topic: p, grade: quizGrade, part1Count: p1, part2Count: p2, part3Count: p3 });
-      if (target === 'editor') {
-        setQuestions([...questions, ...newQs]); setActiveTab('quizzes'); setIsEditingQuiz(true);
-      } else {
-        for (const q of newQs) await saveBankQuestion({ ...q, quizTitle: 'AI Generated', quizGrade: quizGrade });
-        fetchData(); alert("Đã lưu vào ngân hàng câu hỏi!");
-      }
-    } catch (error: any) { alert(error.message); } finally { setIsAiLoading(false); }
-  };
-
   const handleSaveStudent = async () => {
     if (!studentForm.fullName || !studentForm.studentCode) return alert("Vui lòng điền đủ thông tin!");
     setIsSavingStudent(true);
@@ -194,22 +202,16 @@ const AdminDashboard: React.FC = () => {
         studentCode: studentForm.studentCode.trim().toUpperCase(), grade: studentForm.grade,
         points: selectedStudent?.points || 0
       };
-      await saveUser(newUser); setIsStudentModalOpen(false); fetchData();
+      await saveUser(newUser); setIsStudentModalOpen(false); loadTabData('students');
     } catch (e: any) { alert("Lỗi lưu học sinh"); } finally { setIsSavingStudent(false); }
   };
 
   const handleDeleteStudent = async (id: string, name: string) => {
-    if (confirm(`Xóa học sinh ${name}?`)) { await deleteUser(id); fetchData(); }
-  };
-
-  const handleResetPassword = async (user: User) => {
-    const newPass = prompt(`Nhập mật khẩu mới cho ${user.fullName}:`, "123");
-    if (newPass) { await changePassword(user.id, newPass); fetchData(); }
+    if (confirm(`Xóa học sinh ${name}?`)) { await deleteUser(id); loadTabData('students'); }
   };
 
   return (
     <div className="min-h-screen bg-white flex">
-      {/* Sidebar thu gọn */}
       <aside className="w-16 lg:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all">
         <div className="p-4 lg:p-8 border-b border-white/10 text-center lg:text-left">
           <h2 className="text-xl font-black uppercase tracking-tighter italic">
@@ -230,7 +232,6 @@ const AdminDashboard: React.FC = () => {
               key={tab.id}
               onClick={() => { setActiveTab(tab.id as AdminTab); setIsEditingQuiz(false); }}
               className={`w-full flex items-center justify-center lg:justify-start gap-3 px-4 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}
-              title={tab.label}
             >
               <tab.icon size={18}/> <span className="hidden lg:inline">{tab.label}</span>
             </button>
@@ -238,7 +239,6 @@ const AdminDashboard: React.FC = () => {
         </nav>
       </aside>
 
-      {/* Main Content mở rộng tối đa */}
       <main className="flex-1 h-screen overflow-y-auto custom-scrollbar bg-slate-50">
         <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
           {activeTab === 'quizzes' && (
@@ -250,7 +250,11 @@ const AdminDashboard: React.FC = () => {
                 duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
                 startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
                 questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
-                onOpenBank={(type) => { setBankTargetType(type); setBGradeFilter(quizGrade); setIsBankOpen(true); }}
+                onOpenBank={(type) => { 
+                    setBTypeFilter(type); 
+                    setBGradeFilter(quizGrade); 
+                    setIsBankOpen(true); 
+                }}
                 onPdfExtract={handlePdfExtract} onUploadImage={handleUploadImage} uploadingId={uploadingId} isAiLoading={isAiLoading}
               />
             ) : (
@@ -261,12 +265,16 @@ const AdminDashboard: React.FC = () => {
                       <Plus size={16}/> TẠO ĐỀ MỚI
                    </button>
                 </div>
-                <QuizList 
-                  quizzes={quizzes} results={results} chapters={chapters}
-                  onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={setPreviewQuiz}
-                  qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
-                  qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
-                />
+                {isDataLoading ? (
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải đề thi...</p></div>
+                ) : (
+                    <QuizList 
+                        quizzes={quizzes} results={results} chapters={chapters}
+                        onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={setPreviewQuiz}
+                        qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
+                        qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
+                    />
+                )}
               </div>
             )
           )}
@@ -274,35 +282,43 @@ const AdminDashboard: React.FC = () => {
           {activeTab === 'students' && (
             <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">DANH SÁCH HỌC SINH</h1>
-                <StudentManager 
-                    students={students} results={results} quizzes={quizzes}
-                    sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
-                    onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
-                    onImportCsv={() => {}} onViewDetail={setViewingStudent}
-                    onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
-                    onDelete={handleDeleteStudent} onResetPassword={handleResetPassword}
-                />
+                {isDataLoading ? (
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải học sinh...</p></div>
+                ) : (
+                    <StudentManager 
+                        students={students} results={results} quizzes={quizzes}
+                        sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
+                        onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
+                        onImportCsv={() => {}} onViewDetail={setViewingStudent}
+                        onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
+                        onDelete={handleDeleteStudent} onResetPassword={() => {}}
+                    />
+                )}
             </div>
           )}
 
           {activeTab === 'results' && (
              <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">KẾT QUẢ HỌC TẬP</h1>
-                <ResultsBoard 
-                    results={results} quizzes={quizzes} users={students} chapters={chapters}
-                    rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter}
-                    rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter}
-                    rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter}
-                    onClearCache={clearLocalCache}
-                    onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
-                    onDeleteResult={(history) => history.forEach(r => deleteResult(r.id).then(() => fetchData()))}
-                />
+                {isDataLoading ? (
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải bảng điểm...</p></div>
+                ) : (
+                    <ResultsBoard 
+                        results={results} quizzes={quizzes} users={students} chapters={chapters}
+                        rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter}
+                        rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter}
+                        rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter}
+                        onClearCache={clearLocalCache}
+                        onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
+                        onDeleteResult={(history) => history.forEach(r => deleteResult(r.id).then(() => loadTabData('results')))}
+                    />
+                )}
              </div>
           )}
 
           {activeTab === 'monitor' && <ExamMonitor />}
           {activeTab === 'chapters' && (
-            <ChapterManager chapters={chapters} onSave={async (c) => { await saveChapter(c); fetchData(); }} onDelete={async (id) => { await deleteChapter(id); fetchData(); }} />
+            <ChapterManager chapters={chapters} onSave={async (c) => { await saveChapter(c); loadTabData('chapters'); }} onDelete={async (id) => { await deleteChapter(id); loadTabData('chapters'); }} />
           )}
           {activeTab === 'bank' && (
             <div className="space-y-6">
@@ -320,7 +336,7 @@ const AdminDashboard: React.FC = () => {
       {/* Modals */}
       {isStudentModalOpen && <StudentModal isOpen={isStudentModalOpen} student={selectedStudent} form={studentForm} setForm={setStudentForm} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} isSaving={isSavingStudent} />}
       {viewingStudent && <StudentDetailModal student={viewingStudent} results={results} quizzes={quizzes} onClose={() => setViewingStudent(null)} onViewResult={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} />}
-      {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} onDeleteOne={(r) => deleteResult(r.id).then(() => fetchData())} />}
+      {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={(r) => setSelectedResultDetail({ result: r, quiz: quizzes.find(q => q.id === r.quizId)! })} onDeleteOne={(r) => deleteResult(r.id).then(() => loadTabData('results'))} />}
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
       
@@ -331,7 +347,7 @@ const AdminDashboard: React.FC = () => {
                 <div className="px-4 py-2 bg-slate-900 text-white flex justify-between items-center border-b border-white/5">
                     <div className="flex items-center gap-2">
                         <Database size={16} className="text-blue-500"/>
-                        <h3 className="text-[11px] font-black uppercase italic">Chọn từ Ngân hàng - Khối {bGradeFilter}</h3>
+                        <h3 className="text-[11px] font-black uppercase italic">Chọn từ Ngân hàng</h3>
                     </div>
                     <button onClick={() => setIsBankOpen(false)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-red-600 text-[10px] font-black uppercase flex items-center gap-1">
                         <span>Đóng</span> <X size={14}/>
@@ -339,8 +355,9 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
                     <QuestionBank 
-                        questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                        bTypeFilter={bankTargetType !== 'all' ? bankTargetType : bTypeFilter} setBTypeFilter={setBTypeFilter}
+                        questions={allAvailableQuestions} 
+                        bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
                         bSearch={bSearch} setBSearch={setBSearch}
                         onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
                     />
