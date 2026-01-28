@@ -78,8 +78,9 @@ const QuizList: React.FC<QuizListProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {visibleQuizzes.map(q => {
-                    const quizResults = results.filter(r => r.quizId === q.id);
-                    const attempts = quizResults.length;
+                    // TỐI ƯU: Sử dụng các trường đếm đã được tính toán từ Server
+                    const count = (q as any).questionCount || 0;
+                    const attempts = (q as any).attemptCount || 0;
                     
                     return (
                         <div 
@@ -108,7 +109,7 @@ const QuizList: React.FC<QuizListProps> = ({
                             <div className="grid grid-cols-2 gap-3 mb-6">
                                 <div className={`${q.isPublished ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-200/50 border-slate-200'} rounded-xl p-2 flex flex-col items-center justify-center border`}>
                                     <FileText size={12} className={q.isPublished ? "text-blue-500" : "text-slate-400"}/>
-                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-blue-700' : 'text-slate-500'}`}>{q.questions.length} CÂU</span>
+                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-blue-700' : 'text-slate-500'}`}>{count} CÂU</span>
                                 </div>
                                 <div className="bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center border border-slate-100">
                                     <Users size={12} className="text-slate-400"/>
