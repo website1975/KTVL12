@@ -26,24 +26,23 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        const [allQuizzes, userResults, allPubs] = await Promise.all([
-            getQuizzes(), 
+        // TỐI ƯU: Chỉ lấy dữ liệu đúng khối lớp và đúng giới hạn cần thiết
+        const [filteredQuizzes, userResults, latestPubs] = await Promise.all([
+            getQuizzes(user.grade), 
             getResultsForStudent(user.id, user.studentCode), 
-            getPublishedResults()
+            getPublishedResults(20) 
         ]);
         
-        const relevantQuizzes = allQuizzes.filter(q => {
-            const isCorrectGrade = q.grade === user.grade || q.grade === 'all';
-            return isCorrectGrade && q.isPublished;
-        });
-        setQuizzes(relevantQuizzes);
+        // Quizzes đã được lọc từ server, chỉ cần lọc thêm trạng thái published
+        setQuizzes(filteredQuizzes.filter(q => q.isPublished));
 
         const sortedResults = (userResults as Result[]).sort((a, b) => 
             new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
         );
         setResults(sortedResults);
 
-        const userPubs = allPubs.filter(p => 
+        // Lọc vinh danh của cá nhân em học sinh này
+        const userPubs = latestPubs.filter(p => 
             user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
@@ -55,24 +54,18 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     }
   }, [user.id, user.studentCode, user.grade]);
 
-  // Tối ưu hóa tính toán Stats bằng useMemo để tránh lag giao diện
   const stats = useMemo(() => {
     const totalQuizzes = results.length;
     const avgScore = totalQuizzes > 0 ? (results.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
     const totalSeconds = results.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
     const effortPoints = totalSeconds / 2700; 
 
-    // Tính điểm thưởng an toàn, tránh lỗi TS2339
     const bonusPoints = results.reduce((acc, r) => {
-        // Kiểm tra xem record đã có sẵn bonusPoint từ lúc nộp bài chưa
         const bp = (r as any).bonusPoint;
         if (bp !== undefined && bp !== null) {
             return acc + Number(bp);
         }
-        // Dự phòng cho dữ liệu cũ chưa có trường bonusPoint
-        if (r.score >= 8) {
-            return acc + 1;
-        }
+        if (r.score >= 8) return acc + 1;
         return acc;
     }, 0);
 
@@ -136,7 +129,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       {isLoading && results.length === 0 && (
           <div className="py-20 text-center space-y-4">
               <Loader2 className="animate-spin text-blue-500 mx-auto" size={40}/>
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang tải dữ liệu Cloud...</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang kết nối Cloud...</p>
           </div>
       )}
 
