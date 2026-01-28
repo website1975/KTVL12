@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Question, QuestionType, Grade } from '../../types';
-import { Database, Search, CheckCircle2, CheckSquare, Square, X } from 'lucide-react';
+import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -37,7 +37,9 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
             const matchType = bTypeFilter === 'all' || qTypeRaw === targetType;
             
             // Tìm kiếm
-            const matchSearch = !bSearch || q.text.toLowerCase().includes(bSearch.toLowerCase());
+            const matchSearch = !bSearch || 
+                              q.text.toLowerCase().includes(bSearch.toLowerCase()) ||
+                              (q.quizTitle && q.quizTitle.toLowerCase().includes(bSearch.toLowerCase()));
             
             return matchGrade && matchType && matchSearch;
         });
@@ -69,7 +71,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
     const visibleQuestions = useMemo(() => filteredQuestions.slice(0, visibleCount), [filteredQuestions, visibleCount]);
 
     return (
-        <div className="space-y-4 animate-fade-in w-full max-w-full">
+        <div className="space-y-4 animate-fade-in w-full max-w-full pb-10">
             <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm sticky top-0 z-30 flex flex-col md:flex-row gap-2">
                 <div className="flex gap-2 shrink-0">
                     <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bGradeFilter} onChange={e => setBGradeFilter(e.target.value as any)}>
@@ -87,7 +89,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                 </div>
                 <div className="flex-1 flex items-center bg-slate-50 border rounded-lg px-3">
                     <Search size={14} className="text-slate-300"/>
-                    <input className="bg-transparent p-1.5 text-[11px] font-medium outline-none w-full" placeholder="Tìm kiếm nội dung..." value={bSearch} onChange={e => setBSearch(e.target.value)} />
+                    <input className="bg-transparent p-1.5 text-[11px] font-medium outline-none w-full" placeholder="Tìm câu hỏi hoặc tên đề thi..." value={bSearch} onChange={e => setBSearch(e.target.value)} />
                 </div>
                 <div className="flex items-center gap-3 shrink-0 px-2">
                     <button onClick={handleSelectAll} className="flex items-center gap-1.5 text-[9px] font-black uppercase text-slate-400 hover:text-blue-600">
@@ -104,24 +106,36 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
                 {visibleQuestions.map((bq, idx) => {
                     const isSelected = selectedIds.has(bq.id);
                     return (
-                        <div key={bq.id || idx} onClick={() => toggleSelect(bq.id)} className={`bg-white p-3 rounded-xl border flex items-start gap-4 cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/20' : 'border-slate-100 hover:border-blue-200'}`}>
-                            <div className={`mt-0.5 shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-200'}`}><CheckCircle2 size={20}/></div>
+                        <div key={bq.id || idx} onClick={() => toggleSelect(bq.id)} className={`bg-white p-4 rounded-2xl border flex items-start gap-4 cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/20' : 'border-slate-100 hover:border-blue-200'}`}>
+                            <div className={`mt-0.5 shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-200'}`}><CheckCircle2 size={24}/></div>
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded text-white ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type.includes('tf') ? 'bg-purple-500' : 'bg-orange-500'}`}>
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type.includes('tf') ? 'bg-purple-500' : 'bg-orange-500'}`}>
                                         {bq.type.toUpperCase()}
                                     </span>
                                     <span className="text-[8px] text-slate-400 font-bold uppercase">Khối {bq.quizGrade || 'all'}</span>
+                                    {bq.quizTitle && (
+                                        <span className="flex items-center gap-1 text-[8px] text-blue-400 font-black uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                            <BookOpen size={10}/> {bq.quizTitle}
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="text-slate-800 text-sm font-medium leading-relaxed overflow-x-auto"><LatexText text={bq.text}/></div>
+                                <div className="text-slate-800 text-sm font-bold leading-relaxed overflow-x-auto"><LatexText text={bq.text}/></div>
                             </div>
                         </div>
                     );
                 })}
 
+                {visibleQuestions.length === 0 && (
+                    <div className="py-20 text-center space-y-4">
+                        <X className="mx-auto text-slate-200" size={48}/>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest italic">Không tìm thấy câu hỏi nào</p>
+                    </div>
+                )}
+
                 {visibleCount < filteredQuestions.length && (
-                    <div className="py-4 text-center">
-                        <button onClick={(e) => { e.stopPropagation(); setVisibleCount(prev => prev + PAGE_SIZE); }} className="px-8 py-2 bg-white border rounded-full text-[9px] font-black uppercase text-slate-500 shadow-sm hover:bg-slate-900 hover:text-white transition-all">Tải thêm câu hỏi</button>
+                    <div className="py-6 text-center">
+                        <button onClick={(e) => { e.stopPropagation(); setVisibleCount(prev => prev + PAGE_SIZE); }} className="px-10 py-3 bg-white border-2 border-slate-100 rounded-full text-[10px] font-black uppercase text-slate-500 shadow-sm hover:bg-slate-900 hover:text-white transition-all">Tải thêm câu hỏi</button>
                     </div>
                 )}
             </div>
