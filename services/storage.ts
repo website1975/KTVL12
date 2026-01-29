@@ -278,45 +278,68 @@ export const deleteChapter = async (id: string): Promise<void> => {
 };
 
 // --- Question Bank ---
-// TỐI ƯU: Lấy câu hỏi từ cả ngân hàng VÀ từ các đề thi hiện có
-export const getAllQuestionsFromEverywhere = async (): Promise<Question[]> => {
+// TỐI ƯU: Chỉ lấy dữ liệu từ bảng ngân hàng câu hỏi
+export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
     try {
-        // 1. Lấy từ bảng ngân hàng câu hỏi (bank_questions)
-        const { data: bankData } = await supabase.from('bank_questions').select('data');
-        const bankQuestions = bankData ? bankData.map((row: any) => row.data as Question) : [];
-        
-        // 2. Lấy từ tất cả các đề thi (quizzes)
-        const { data: quizData } = await supabase.from('quizzes').select('data');
-        const quizQuestions: Question[] = [];
-        
-        if (quizData) {
-            quizData.forEach((row: any) => {
-                const quiz = row.data as Quiz;
-                if (quiz.questions && quiz.questions.length > 0) {
-                    quiz.questions.forEach(q => {
-                        quizQuestions.push({
-                            ...q,
-                            quizTitle: quiz.title, // Gắn tiêu đề đề thi vào để tìm kiếm
-                            quizGrade: quiz.grade
-                        });
-                    });
-                }
-            });
-        }
-        
-        return [...bankQuestions, ...quizQuestions];
+        const { data: bankData, error } = await supabase.from('bank_questions').select('data');
+        if (error) throw error;
+        return bankData ? bankData.map((row: any) => row.data as Question) : [];
     } catch (e) {
+        console.error("Lỗi lấy ngân hàng câu hỏi:", e);
         return [];
     }
 };
 
-export const getBankQuestions = async (): Promise<Question[]> => {
-    return getAllQuestionsFromEverywhere();
+// CÔNG CỤ ĐỒNG BỘ: Quét toàn bộ các đề thi và đẩy câu hỏi vào Ngân hàng
+export const syncQuizzesToBank = async (): Promise<{ total: number, added: number }> => {
+    if (!supabase) return { total: 0, added: 0 };
+    try {
+        // 1. Lấy tất cả đề thi
+        const { data: quizData } = await supabase.from('quizzes').select('data');
+        if (!quizData) return { total: 0, added: 0 };
+
+        // 2. Lấy danh sách ID đã có trong bank để tránh trùng (optional vì upsert đã lo)
+        const allQuestions: Question[] = [];
+        quizData.forEach((row: any) => {
+            const quiz = row.data as Quiz;
+            if (quiz.questions) {
+                quiz.questions.forEach(q => {
+                    allQuestions.push({
+                        ...q,
+                        quizTitle: quiz.title,
+                        quizGrade: quiz.grade
+                    });
+                });
+            }
+        });
+
+        if (allQuestions.length === 0) return { total: 0, added: 0 };
+
+        // 3. Đẩy vào bank_questions (Upsert theo ID)
+        // Lưu ý: Supabase giới hạn số lượng record trong một lần insert, nên chúng ta có thể chia nhỏ nếu quá lớn
+        const chunks = [];
+        const chunkSize = 50;
+        for (let i = 0; i < allQuestions.length; i += chunkSize) {
+            chunks.push(allQuestions.slice(i, i + chunkSize));
+        }
+
+        let addedCount = 0;
+        for (const chunk of chunks) {
+            const payload = chunk.map(q => ({ id: q.id, data: q }));
+            const { error } = await supabase.from('bank_questions').upsert(payload);
+            if (!error) addedCount += chunk.length;
+        }
+
+        return { total: allQuestions.length, added: addedCount };
+    } catch (e) {
+        console.error("Lỗi đồng bộ về Ngân hàng:", e);
+        return { total: 0, added: 0 };
+    }
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
-    if (supabase) await supabase.from('bank_questions').insert({ id: q.id, data: q });
+    if (supabase) await supabase.from('bank_questions').upsert({ id: q.id, data: q });
 };
 
 export const uploadQuizImage = async (file: File): Promise<string> => {
