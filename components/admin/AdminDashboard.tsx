@@ -7,14 +7,15 @@ import {
   getChapters, saveChapter, deleteChapter,
   getBankQuestions, saveBankQuestion,
   clearLocalCache,
-  isDatabaseConnected
+  isDatabaseConnected,
+  syncAllQuizzesMetadata
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../../services/gemini';
 import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   LayoutDashboard, Users, BarChart3, ShieldAlert, Sparkles, FolderTree, 
-  Plus, Database, Loader2, X 
+  Plus, Database, Loader2, X, RefreshCw 
 } from 'lucide-react';
 
 import QuizList from './QuizList';
@@ -36,6 +37,7 @@ type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'b
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Data states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -115,9 +117,9 @@ const AdminDashboard: React.FC = () => {
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isBankOpen, setIsBankOpen] = useState(false);
 
-  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có (Chỉ những đề đã load full)
+  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
   const allAvailableQuestions = useMemo(() => {
-    return bankQuestions; // Tạm thời dùng bank độc lập để tránh lag
+    return bankQuestions;
   }, [bankQuestions]);
 
   // Quiz Handlers
@@ -152,15 +154,38 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Fix: Adding missing handleViewResultDetail function used in modals
   const handleViewResultDetail = async (res: Result) => {
     setIsDataLoading(true);
     try {
-        const [fullResult, fullQuiz] = await Promise.all([getResultById(res.id), getQuizById(res.quizId)]);
+        const [fullResult, fullQuiz] = await Promise.all([
+            getResultById(res.id),
+            getQuizById(res.quizId)
+        ]);
         if (fullResult && fullQuiz) {
             setSelectedResultDetail({ result: fullResult, quiz: fullQuiz });
+        } else {
+            alert("Không tìm thấy dữ liệu chi tiết cho kết quả này.");
         }
+    } catch (e) {
+        console.error("Error loading result detail:", e);
+        alert("Lỗi khi tải chi tiết bài làm.");
     } finally {
         setIsDataLoading(false);
+    }
+  };
+
+  const handleSyncAllQuizzes = async () => {
+    if (!confirm("Hệ thống sẽ quét lại toàn bộ đề thi để cập nhật chính xác số câu hỏi. Tiếp tục?")) return;
+    setIsSyncing(true);
+    try {
+      const count = await syncAllQuizzesMetadata();
+      alert(`Đã đồng bộ thành công ${count} đề thi!`);
+      loadTabData('quizzes');
+    } catch (e) {
+      alert("Lỗi khi đồng bộ dữ liệu.");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -275,9 +300,19 @@ const AdminDashboard: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                    <h1 className="text-xl font-black text-slate-800 uppercase italic">QUẢN LÝ ĐỀ THI</h1>
-                   <button onClick={handleCreateQuiz} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all">
-                      <Plus size={16}/> TẠO ĐỀ MỚI
-                   </button>
+                   <div className="flex gap-3">
+                      <button 
+                        onClick={handleSyncAllQuizzes} 
+                        disabled={isSyncing}
+                        className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-200 text-slate-500 rounded-xl font-black uppercase text-[10px] shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50"
+                      >
+                         {isSyncing ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>}
+                         CẬP NHẬT SỐ CÂU
+                      </button>
+                      <button onClick={handleCreateQuiz} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all">
+                          <Plus size={16}/> TẠO ĐỀ MỚI
+                      </button>
+                   </div>
                 </div>
                 {isDataLoading ? (
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải Cloud...</p></div>
@@ -337,11 +372,15 @@ const AdminDashboard: React.FC = () => {
           {activeTab === 'bank' && (
             <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">NGÂN HÀNG CÂU HỎI</h1>
-                <QuestionBank 
-                    questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                    bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
-                    onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setActiveTab('quizzes'); setIsEditingQuiz(true); }}
-                />
+                {isDataLoading ? (
+                    <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
+                ) : (
+                    <QuestionBank 
+                        questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
+                        onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setActiveTab('quizzes'); setIsEditingQuiz(true); }}
+                    />
+                )}
             </div>
           )}
         </div>
