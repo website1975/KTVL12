@@ -156,11 +156,9 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 };
 
 // --- Quizzes ---
-// TỐI ƯU: Chỉ lấy Metadata + Count lượt làm bài từ Server
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    // 1. Lấy thông tin cơ bản của Quizzes
     let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->createdAt, data->category, data->durationMinutes, data->isMonitored, data->questionCount');
     if (grade && grade !== 'all') {
         query = query.or(`grade.eq.${grade},grade.eq.all`);
@@ -168,20 +166,17 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
     const { data: quizzesData, error: qError } = await query;
     if (qError) throw qError;
     
-    // 2. TỐI ƯU: Đếm số lượt làm cho mỗi đề thi ngay tại Database (Group by quiz_id)
-    // Cách này cực nhanh vì Cloud chỉ gửi về danh sách ID và số lượng (VD: {quiz1: 15, quiz2: 20})
-    const { data: countsData, error: cError } = await supabase
+    const { data: countsData } = await supabase
         .from('results')
         .select('quiz_id')
         .then((res: any) => {
-            // Tạo một map để tra cứu số lượt làm nhanh chóng
             const counts: Record<string, number> = {};
             if (res.data) {
                 res.data.forEach((r: any) => {
                     counts[r.quiz_id] = (counts[r.quiz_id] || 0) + 1;
                 });
             }
-            return { data: counts, error: null };
+            return { data: counts };
         });
 
     return quizzesData ? quizzesData.map((row: any) => ({
@@ -195,7 +190,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
         durationMinutes: row.durationMinutes,
         isMonitored: row.isMonitored,
         questionCount: row.questionCount || 0,
-        attemptCount: countsData[row.id] || 0, // Đã có số lượt làm chính xác mà không cần tải Results mảng lớn
+        attemptCount: countsData ? (countsData[row.id] || 0) : 0,
         questions: [] 
     } as any)) : [];
   } catch (e) {
@@ -241,6 +236,33 @@ export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('quizzes').delete().eq('id', id);
 };
 
+// CÔNG CỤ ĐỒNG BỘ: Quét lại toàn bộ đề thi để cập nhật số câu chính xác
+export const syncAllQuizzesMetadata = async (): Promise<number> => {
+  if (!supabase) return 0;
+  try {
+    const { data: allQuizzes, error } = await supabase.from('quizzes').select('*');
+    if (error || !allQuizzes) return 0;
+    
+    let count = 0;
+    for (const row of allQuizzes) {
+      const quiz = row.data as Quiz;
+      const questionCount = quiz.questions ? quiz.questions.length : 0;
+      const updatedQuiz = { ...quiz, questionCount };
+      
+      await supabase.from('quizzes').update({ 
+          data: updatedQuiz, 
+          grade: quiz.grade 
+      }).eq('id', row.id);
+      count++;
+    }
+    return count;
+  } catch (e) {
+    console.error("Lỗi đồng bộ Metadata:", e);
+    return 0;
+  }
+};
+
+// --- Chapters ---
 export const getChapters = async (): Promise<Chapter[]> => {
   if (!supabase) return [];
   const { data } = await supabase.from('chapters').select('data');
@@ -255,10 +277,42 @@ export const deleteChapter = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
-export const getBankQuestions = async (): Promise<Question[]> => {
+// --- Question Bank ---
+// TỐI ƯU: Lấy câu hỏi từ cả ngân hàng VÀ từ các đề thi hiện có
+export const getAllQuestionsFromEverywhere = async (): Promise<Question[]> => {
     if (!supabase) return [];
-    const { data } = await supabase.from('bank_questions').select('data');
-    return data ? data.map((row: any) => row.data as Question) : [];
+    try {
+        // 1. Lấy từ bảng ngân hàng câu hỏi (bank_questions)
+        const { data: bankData } = await supabase.from('bank_questions').select('data');
+        const bankQuestions = bankData ? bankData.map((row: any) => row.data as Question) : [];
+        
+        // 2. Lấy từ tất cả các đề thi (quizzes)
+        const { data: quizData } = await supabase.from('quizzes').select('data');
+        const quizQuestions: Question[] = [];
+        
+        if (quizData) {
+            quizData.forEach((row: any) => {
+                const quiz = row.data as Quiz;
+                if (quiz.questions && quiz.questions.length > 0) {
+                    quiz.questions.forEach(q => {
+                        quizQuestions.push({
+                            ...q,
+                            quizTitle: quiz.title, // Gắn tiêu đề đề thi vào để tìm kiếm
+                            quizGrade: quiz.grade
+                        });
+                    });
+                }
+            });
+        }
+        
+        return [...bankQuestions, ...quizQuestions];
+    } catch (e) {
+        return [];
+    }
+};
+
+export const getBankQuestions = async (): Promise<Question[]> => {
+    return getAllQuestionsFromEverywhere();
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
