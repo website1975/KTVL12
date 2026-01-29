@@ -25,6 +25,7 @@ import ResultsBoard from './ResultsBoard';
 import ExamMonitor from './ExamMonitor';
 import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
+import AIRenderer from './AIRenderer';
 
 import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
@@ -32,7 +33,7 @@ import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 
-type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank';
+type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
@@ -67,6 +68,9 @@ const AdminDashboard: React.FC = () => {
       } else if (tab === 'bank') {
         const b = await getBankQuestions();
         setBankQuestions(b);
+      } else if (tab === 'chapters') {
+        const c = await getChapters();
+        setChapters(c);
       }
     } finally {
       setIsDataLoading(false);
@@ -127,6 +131,7 @@ const AdminDashboard: React.FC = () => {
     setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
     setIsPublished(false); setIsMonitored(false); setDuration(45); setCategory('');
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
+    setActiveTab('quizzes');
   };
 
   const handleEditQuiz = async (quiz: Quiz) => {
@@ -138,6 +143,7 @@ const AdminDashboard: React.FC = () => {
             setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
             setDuration(fullQuiz.durationMinutes); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
             setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
+            setActiveTab('quizzes');
         }
     } finally {
         setIsDataLoading(false);
@@ -154,7 +160,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Fix: Adding missing handleViewResultDetail function used in modals
   const handleViewResultDetail = async (res: Result) => {
     setIsDataLoading(true);
     try {
@@ -186,6 +191,38 @@ const AdminDashboard: React.FC = () => {
       alert("Lỗi khi đồng bộ dữ liệu.");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleAiGenerate = async (topic: string, p1: number, p2: number, p3: number, target: 'editor' | 'bank') => {
+    setIsAiLoading(true);
+    try {
+      const newQs = await generateQuizFromPrompt({
+        topic,
+        grade: quizGrade,
+        part1Count: p1,
+        part2Count: p2,
+        part3Count: p3
+      });
+      
+      if (target === 'editor') {
+        // Nếu chọn editor: Chuyển sang tab Đề thi và chèn câu hỏi vào
+        setQuestions([...questions, ...newQs]);
+        setActiveTab('quizzes');
+        setIsEditingQuiz(true);
+        if (!quizTitle) setQuizTitle(topic.slice(0, 50).toUpperCase());
+      } else {
+        // Nếu chọn bank: Lưu thẳng vào bank_questions từng câu một
+        for (const q of newQs) {
+          await saveBankQuestion(q);
+        }
+        alert(`Đã lưu ${newQs.length} câu hỏi mới vào Ngân hàng!`);
+        loadTabData('bank');
+      }
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -261,6 +298,7 @@ const AdminDashboard: React.FC = () => {
         <nav className="flex-1 p-2 lg:p-4 space-y-1 mt-4">
           {[
             { id: 'quizzes', icon: LayoutDashboard, label: 'Đề thi' },
+            { id: 'ai', icon: Sparkles, label: 'AI Soạn đề' },
             { id: 'students', icon: Users, label: 'Học sinh' },
             { id: 'results', icon: BarChart3, label: 'Bảng điểm' },
             { id: 'monitor', icon: ShieldAlert, label: 'Giám sát' },
@@ -326,6 +364,19 @@ const AdminDashboard: React.FC = () => {
                 )}
               </div>
             )
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="space-y-6">
+                <h1 className="text-xl font-black text-slate-800 uppercase italic">SOẠN ĐỀ THÔNG MINH</h1>
+                <AIRenderer 
+                    grade={quizGrade} 
+                    setGrade={setQuizGrade} 
+                    onGenerate={handleAiGenerate}
+                    isLoading={isAiLoading}
+                    hasQuestionsInEditor={questions.length > 0}
+                />
+            </div>
           )}
 
           {activeTab === 'students' && (
