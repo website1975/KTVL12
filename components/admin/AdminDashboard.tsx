@@ -1,5 +1,4 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   getQuizzesMetadata, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
   getUsers, saveUser, deleteUser, changePassword,
@@ -8,11 +7,13 @@ import {
   getBankQuestions, saveBankQuestion,
   clearLocalCache,
   isDatabaseConnected,
-  syncAllQuizzesMetadata
+  syncAllQuizzesMetadata,
+  syncQuizzesToBank
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../../services/gemini';
 import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BarChart3, ShieldAlert, Sparkles, FolderTree, 
   Plus, Database, Loader2, X, RefreshCw 
@@ -194,6 +195,20 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleSyncBank = async () => {
+    if (!confirm("Hệ thống sẽ quét toàn bộ câu hỏi trong tất cả đề thi và đẩy vào kho tổng (Bank). Tiếp tục?")) return;
+    setIsSyncing(true);
+    try {
+      const stats = await syncQuizzesToBank();
+      alert(`Đã hoàn tất! Quét được ${stats.total} câu hỏi, đã đồng bộ thành công ${stats.added} câu vào Ngân hàng.`);
+      loadTabData('bank');
+    } catch (e) {
+      alert("Lỗi khi đồng bộ Ngân hàng.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleAiGenerate = async (topic: string, p1: number, p2: number, p3: number, target: 'editor' | 'bank') => {
     setIsAiLoading(true);
     try {
@@ -284,6 +299,26 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteStudent = async (id: string, name: string) => {
     if (confirm(`Xóa học sinh ${name}?`)) { await deleteUser(id); loadTabData('students'); }
+  };
+
+  const handleResetPassword = async (student: User) => {
+    const defaultPass = '123';
+    if (confirm(`Đặt lại mật khẩu cho học sinh "${student.fullName}" về mặc định "${defaultPass}"?`)) {
+      setIsDataLoading(true);
+      try {
+        const success = await changePassword(student.id, defaultPass);
+        if (success) {
+          alert(`Đã đặt lại mật khẩu cho ${student.fullName} thành công!`);
+          loadTabData('students');
+        } else {
+          alert("Có lỗi xảy ra khi đặt lại mật khẩu trên Cloud.");
+        }
+      } catch (e: any) {
+        alert("Lỗi: " + e.message);
+      } finally {
+        setIsDataLoading(false);
+      }
+    }
   };
 
   return (
@@ -391,7 +426,7 @@ const AdminDashboard: React.FC = () => {
                         onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
                         onImportCsv={() => {}} onViewDetail={setViewingStudent}
                         onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
-                        onDelete={handleDeleteStudent} onResetPassword={() => {}}
+                        onDelete={handleDeleteStudent} onResetPassword={handleResetPassword}
                     />
                 )}
             </div>
@@ -422,7 +457,17 @@ const AdminDashboard: React.FC = () => {
           )}
           {activeTab === 'bank' && (
             <div className="space-y-6">
-                <h1 className="text-xl font-black text-slate-800 uppercase italic">NGÂN HÀNG CÂU HỎI</h1>
+                <div className="flex justify-between items-center">
+                   <h1 className="text-xl font-black text-slate-800 uppercase italic">NGÂN HÀNG CÂU HỎI</h1>
+                   <button 
+                      onClick={handleSyncBank} 
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-200 text-blue-600 rounded-xl font-black uppercase text-[10px] shadow-sm hover:bg-blue-50 transition-all disabled:opacity-50"
+                   >
+                      {isSyncing ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>}
+                      CẬP NHẬT TỪ ĐỀ THI
+                   </button>
+                </div>
                 {isDataLoading ? (
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
