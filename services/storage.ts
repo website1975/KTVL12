@@ -97,7 +97,10 @@ export const saveResult = async (result: Result): Promise<void> => {
 };
 
 export const deleteResult = async (id: string): Promise<void> => {
-    if (supabase) await supabase.from('results').delete().eq('id', id);
+    if (supabase) {
+        const { error } = await supabase.from('results').delete().eq('id', id);
+        handleSupabaseError(error, "Xóa kết quả");
+    }
 };
 
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
@@ -143,7 +146,10 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  if (supabase) await supabase.from('users').delete().eq('id', id);
+  if (supabase) {
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      handleSupabaseError(error, "Xóa người dùng");
+  }
 };
 
 export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
@@ -221,19 +227,24 @@ export const getQuizById = async (id: string): Promise<Quiz | null> => {
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
-  if (!supabase) return;
+  if (!supabase) throw new Error("Mất kết nối Database");
   const enrichedQuiz = { ...quiz, questionCount: quiz.questions.length };
-  await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
+  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
+  handleSupabaseError(error, "Lưu đề thi mới");
 };
 
 export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
-  if (!supabase) return;
+  if (!supabase) throw new Error("Mất kết nối Database");
   const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
-  await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
+  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
+  handleSupabaseError(error, "Cập nhật đề thi");
 };
 
 export const deleteQuiz = async (id: string): Promise<void> => {
-  if (supabase) await supabase.from('quizzes').delete().eq('id', id);
+  if (supabase) {
+      const { error } = await supabase.from('quizzes').delete().eq('id', id);
+      handleSupabaseError(error, "Xóa đề thi");
+  }
 };
 
 // CÔNG CỤ ĐỒNG BỘ: Quét lại toàn bộ đề thi để cập nhật số câu chính xác
@@ -278,7 +289,6 @@ export const deleteChapter = async (id: string): Promise<void> => {
 };
 
 // --- Question Bank ---
-// TỐI ƯU: Chỉ lấy dữ liệu từ bảng ngân hàng câu hỏi
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
     try {
@@ -291,15 +301,12 @@ export const getBankQuestions = async (): Promise<Question[]> => {
     }
 };
 
-// CÔNG CỤ ĐỒNG BỘ: Quét toàn bộ các đề thi và đẩy câu hỏi vào Ngân hàng
 export const syncQuizzesToBank = async (): Promise<{ total: number, added: number }> => {
     if (!supabase) return { total: 0, added: 0 };
     try {
-        // 1. Lấy tất cả đề thi
         const { data: quizData } = await supabase.from('quizzes').select('data');
         if (!quizData) return { total: 0, added: 0 };
 
-        // 2. Lấy danh sách ID đã có trong bank để tránh trùng (optional vì upsert đã lo)
         const allQuestions: Question[] = [];
         quizData.forEach((row: any) => {
             const quiz = row.data as Quiz;
@@ -316,8 +323,6 @@ export const syncQuizzesToBank = async (): Promise<{ total: number, added: numbe
 
         if (allQuestions.length === 0) return { total: 0, added: 0 };
 
-        // 3. Đẩy vào bank_questions (Upsert theo ID)
-        // Lưu ý: Supabase giới hạn số lượng record trong một lần insert, nên chúng ta có thể chia nhỏ nếu quá lớn
         const chunks = [];
         const chunkSize = 50;
         for (let i = 0; i < allQuestions.length; i += chunkSize) {
