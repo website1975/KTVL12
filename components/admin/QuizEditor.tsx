@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -31,6 +31,7 @@ interface QuizEditorProps {
     onSave: () => void;
     onOpenBank: (type: QuestionType) => void;
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onTextExtract: (text: string) => void;
     onUploadImage: (qId: string, file: File) => void;
     uploadingId: string | null;
     isAiLoading?: boolean;
@@ -93,7 +94,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 
     return (
         <div className="space-y-6 mt-10">
-            {/* Thanh công cụ Phần */}
             <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm gap-4">
                 <div className="flex items-center gap-4">
                     <div className={`p-4 rounded-2xl ${type === 'mcq' ? 'bg-blue-600 text-white' : type === 'group-tf' ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white shadow-lg'}`}>
@@ -135,7 +135,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     </div>
 
-                    {/* Nội dung câu hỏi */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nội dung đề (LaTeX: $...$)</label>
@@ -147,7 +146,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     </div>
 
-                    {/* Quản lý Ảnh */}
                     <div className="mb-8 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col md:flex-row items-center gap-8">
                         <div className="shrink-0 relative">
                             {q.imageUrl ? (
@@ -180,7 +178,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     </div>
 
-                    {/* Phần MCQ (Trắc nghiệm I) */}
                     {type === 'mcq' && q.options && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                             {q.options.map((opt, oi) => (
@@ -195,7 +192,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     )}
 
-                    {/* Phần True/False (Trắc nghiệm II) */}
                     {type === 'group-tf' && q.subQuestions && (
                         <div className="space-y-3 mb-8">
                             {q.subQuestions.map((sq, si) => (
@@ -212,7 +208,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     )}
 
-                    {/* Phần Short (Trắc nghiệm III) */}
                     {type === 'short' && (
                         <div className="mb-8 flex items-center gap-4 bg-blue-50/50 p-6 rounded-[2rem] border-2 border-blue-100">
                             <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-white px-4 py-2 rounded-xl shadow-sm">Đáp số đúng:</span>
@@ -220,7 +215,6 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     )}
 
-                    {/* Lời giải chi tiết */}
                     <div className="pt-8 border-t-2 border-slate-100 grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="space-y-3">
                             <div className="flex items-center gap-2 ml-2">
@@ -244,14 +238,23 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 };
 
 const QuizEditor: React.FC<QuizEditorProps> = (props) => {
+    const [isTextInputOpen, setIsTextInputOpen] = useState(false);
+    const [pastedText, setPastedText] = useState('');
+
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
     const relevantChapters = props.chapters.filter(c => c.grade === props.grade);
 
+    const handleConfirmTextExtract = () => {
+        if (!pastedText.trim()) return;
+        props.onTextExtract(pastedText);
+        setPastedText('');
+        setIsTextInputOpen(false);
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in relative">
-            {/* Overlay AI Loading */}
             {props.isAiLoading && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[2000] flex items-center justify-center p-6 animate-fade-in">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[2100] flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl text-center space-y-8 max-w-sm w-full border-8 border-blue-100">
                         <div className="relative w-24 h-24 mx-auto">
                             <div className="absolute inset-0 border-8 border-blue-50 rounded-full"></div>
@@ -261,14 +264,42 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                             </div>
                         </div>
                         <div className="space-y-3">
-                            <h3 className="text-xl font-black uppercase text-slate-800 tracking-tight leading-none">AI Đang soạn đề...</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed px-4">Đang trích xuất câu hỏi từ tài liệu bằng Gemini 3 Flash. Vui lòng đợi trong giây lát.</p>
+                            <h3 className="text-xl font-black uppercase text-slate-800 tracking-tight leading-none">AI Đang bóc tách...</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed px-4">Đang trích xuất câu hỏi, đáp án và lời giải bằng Gemini 3 Flash.</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Header & Thông tin chung */}
+            {isTextInputOpen && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[2000] flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border-8 border-white">
+                        <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <TypeIcon size={24} className="text-blue-500"/>
+                                <h3 className="text-lg font-black uppercase tracking-tight">Dán văn bản đề thi</h3>
+                            </div>
+                            <button onClick={() => setIsTextInputOpen(false)} className="p-3 hover:bg-red-600 rounded-xl transition-colors"><X/></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+                                Copy nội dung đề từ Word hoặc Web dán vào đây. Hệ thống AI sẽ tự nhận diện Câu hỏi, Đáp án và Lời giải.
+                            </p>
+                            <textarea 
+                                className="w-full h-80 p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none font-medium text-sm focus:border-blue-400 transition-all"
+                                placeholder="Dán nội dung tại đây..."
+                                value={pastedText}
+                                onChange={e => setPastedText(e.target.value)}
+                            />
+                            <div className="flex gap-4">
+                                <button onClick={() => setIsTextInputOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all">Hủy bỏ</button>
+                                <button onClick={handleConfirmTextExtract} className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-200 hover:bg-black transition-all">Bắt đầu bóc tách</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-50 shadow-sm space-y-10 relative overflow-hidden">
                 <div className={`absolute top-0 right-16 px-8 py-3 rounded-b-3xl font-black text-xs uppercase shadow-xl z-10 transition-colors ${totalPoints === 10 ? 'bg-emerald-600' : 'bg-orange-500'} text-white`}>
                     Tổng điểm đề: {totalPoints.toFixed(2)}đ
@@ -279,10 +310,18 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Tiêu đề đề thi</label>
                         <input type="text" className="text-3xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-100 focus:text-blue-600 transition-colors" placeholder="VD: KIỂM TRA CHƯƠNG I ĐẠO HÀM..." value={props.title} onChange={e => props.setTitle(e.target.value)} />
                     </div>
-                    <label className={`flex items-center gap-3 px-8 py-5 bg-slate-900 text-white rounded-[2rem] text-xs font-black uppercase cursor-pointer hover:bg-black transition-all shadow-2xl active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        <FileUp size={20}/> NHẬP TỪ PDF (AI)
-                        <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
-                    </label>
+                    <div className="flex flex-wrap gap-3">
+                        <button 
+                            onClick={() => setIsTextInputOpen(true)}
+                            className={`flex items-center gap-3 px-6 py-5 bg-blue-600 text-white rounded-[2rem] text-xs font-black uppercase hover:bg-black transition-all shadow-2xl active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <TypeIcon size={20}/> NHẬP TỪ VĂN BẢN (AI)
+                        </button>
+                        <label className={`flex items-center gap-3 px-6 py-5 bg-slate-900 text-white rounded-[2rem] text-xs font-black uppercase cursor-pointer hover:bg-black transition-all shadow-2xl active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <FileUp size={20}/> NHẬP TỪ PDF (AI)
+                            <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
+                        </label>
+                    </div>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -344,7 +383,6 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                 <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-sm flex items-center justify-center gap-4 hover:bg-black transition-all shadow-2xl active:scale-[0.98] mt-6"><Save size={24}/> LƯU TOÀN BỘ ĐỀ THI VÀO DATABASE</button>
             </div>
 
-            {/* Các phần câu hỏi */}
             <QuestionSection sectionTitle="PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN" type="mcq" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
             <QuestionSection sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" type="group-tf" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
             <QuestionSection sectionTitle="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
