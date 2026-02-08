@@ -10,7 +10,7 @@ import {
   syncAllQuizzesMetadata,
   syncQuizzesToBank
 } from '../../services/storage';
-import { generateQuizFromPrompt, parseQuestionsFromPDF } from '../../services/gemini';
+import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -40,6 +40,7 @@ const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSavingInProgress, setIsSavingInProgress] = useState(false);
 
   // Data states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -122,7 +123,6 @@ const AdminDashboard: React.FC = () => {
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isBankOpen, setIsBankOpen] = useState(false);
 
-  // Gộp tất cả câu hỏi từ Bank và từ các Đề thi đang có
   const allAvailableQuestions = useMemo(() => {
     return bankQuestions;
   }, [bankQuestions]);
@@ -221,13 +221,11 @@ const AdminDashboard: React.FC = () => {
       });
       
       if (target === 'editor') {
-        // Nếu chọn editor: Chuyển sang tab Đề thi và chèn câu hỏi vào
         setQuestions([...questions, ...newQs]);
         setActiveTab('quizzes');
         setIsEditingQuiz(true);
         if (!quizTitle) setQuizTitle(topic.slice(0, 50).toUpperCase());
       } else {
-        // Nếu chọn bank: Lưu thẳng vào bank_questions từng câu một
         for (const q of newQs) {
           await saveBankQuestion(q);
         }
@@ -243,21 +241,44 @@ const AdminDashboard: React.FC = () => {
 
   const handleSaveQuiz = async () => {
     if (!quizTitle) return alert("Vui lòng nhập tiêu đề đề thi!");
+    if (questions.length === 0) return alert("Đề thi chưa có câu hỏi nào!");
+    
+    setIsSavingInProgress(true);
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
       isPublished, isMonitored, durationMinutes: duration, category, startTime, endTime,
       questions, createdAt: new Date().toISOString(), description: ''
     };
+    
     try {
-      if (editingQuizId) await updateQuiz(quiz);
-      else await saveQuiz(quiz);
+      if (editingQuizId) {
+          await updateQuiz(quiz);
+      } else {
+          await saveQuiz(quiz);
+      }
       setIsEditingQuiz(false);
-      loadTabData('quizzes');
-    } catch (e) { alert("Lỗi lưu đề thi"); }
+      await loadTabData('quizzes');
+      alert("Đã lưu đề thi thành công vào Database Cloud!");
+    } catch (e: any) { 
+      alert("Lỗi khi lưu đề thi: " + (e.message || "Không xác định"));
+    } finally {
+      setIsSavingInProgress(false);
+    }
   };
 
   const handleDeleteQuiz = async (id: string) => {
-    if (confirm("Xóa đề thi này?")) { await deleteQuiz(id); loadTabData('quizzes'); }
+    if (confirm("Bạn có chắc chắn muốn xóa vĩnh viễn đề thi này không?")) { 
+        setIsDataLoading(true);
+        try {
+            await deleteQuiz(id); 
+            await loadTabData('quizzes');
+            alert("Đã xóa đề thi thành công.");
+        } catch (e: any) {
+            alert("Lỗi khi xóa đề thi: " + (e.message || "Không xác định"));
+        } finally {
+            setIsDataLoading(false);
+        }
+    }
   };
 
   const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -274,6 +295,19 @@ const AdminDashboard: React.FC = () => {
       };
       reader.readAsDataURL(file);
     } catch (error: any) { alert(error.message); setIsAiLoading(false); }
+  };
+
+  const handleTextExtract = async (text: string) => {
+      if (!text.trim()) return;
+      setIsAiLoading(true);
+      try {
+          const newQs = await parseQuestionsFromText(text);
+          setQuestions([...questions, ...newQs]);
+      } catch (error: any) {
+          alert(error.message);
+      } finally {
+          setIsAiLoading(false);
+      }
   };
 
   const handleUploadImage = async (id: string, f: File) => {
@@ -355,20 +389,30 @@ const AdminDashboard: React.FC = () => {
         <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
           {activeTab === 'quizzes' && (
             isEditingQuiz ? (
-              <QuizEditor
-                editingId={editingQuizId} title={quizTitle} setTitle={setQuizTitle}
-                grade={quizGrade} setGrade={setQuizGrade} quizType={quizType} setQuizType={setQuizType}
-                isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
-                duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
-                startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
-                questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
-                onOpenBank={(type) => { 
-                    setBTypeFilter(type); 
-                    setBGradeFilter(quizGrade); 
-                    setIsBankOpen(true); 
-                }}
-                onPdfExtract={handlePdfExtract} onUploadImage={handleUploadImage} uploadingId={uploadingId} isAiLoading={isAiLoading}
-              />
+              <>
+                {isSavingInProgress && (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[3000] flex items-center justify-center">
+                        <div className="bg-white p-10 rounded-[2rem] shadow-2xl flex flex-col items-center gap-4">
+                            <Loader2 className="animate-spin text-blue-600" size={48}/>
+                            <p className="font-black uppercase text-xs tracking-widest text-slate-800">Đang ghi dữ liệu vào Cloud...</p>
+                        </div>
+                    </div>
+                )}
+                <QuizEditor
+                    editingId={editingQuizId} title={quizTitle} setTitle={setQuizTitle}
+                    grade={quizGrade} setGrade={setQuizGrade} quizType={quizType} setQuizType={setQuizType}
+                    isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
+                    duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
+                    startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
+                    questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
+                    onOpenBank={(type) => { 
+                        setBTypeFilter(type); 
+                        setBGradeFilter(quizGrade); 
+                        setIsBankOpen(true); 
+                    }}
+                    onPdfExtract={handlePdfExtract} onTextExtract={handleTextExtract} onUploadImage={handleUploadImage} uploadingId={uploadingId} isAiLoading={isAiLoading}
+                />
+              </>
             ) : (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
@@ -489,7 +533,6 @@ const AdminDashboard: React.FC = () => {
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
       
-      {/* Ngân hàng Full-screen overlay */}
       {isBankOpen && (
         <div className="fixed inset-0 bg-slate-900/40 z-[2000] flex items-stretch justify-end">
              <div className="bg-white w-full h-full flex flex-col overflow-hidden shadow-2xl">
