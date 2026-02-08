@@ -7,15 +7,24 @@ const cleanJsonString = (str: string): string => {
     return str.replace(/```json/gi, "").replace(/```/gi, "").trim();
 };
 
-/**
- * Hàm xóa các nhãn đầu dòng như "A. ", "B. ", "a) ", "1. "...
- * Giúp tránh lặp nhãn khi hiển thị trên giao diện
- */
 const stripOptionLabel = (text: string): string => {
     if (!text) return "";
-    // Regex này xóa các ký tự ở đầu như: A. , A/ , A) , 1. , a. , a) , *A.
     return text.replace(/^(\*?[A-Za-z0-9][\.\)\/\-]\s*)/g, "").trim();
 };
+
+const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa).
+NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn 3 phần:
+1. 'mcq': Trắc nghiệm 4 lựa chọn.
+2. 'group-tf': Trắc nghiệm Đúng/Sai (thường có 4 ý a,b,c,d).
+3. 'short': Trắc nghiệm trả lời ngắn (điền số).
+
+QUY TẮC TRÍCH XUẤT ĐÁP ÁN VÀ LỜI GIẢI (CỰC KỲ QUAN TRỌNG):
+- ƯU TIÊN TUYỆT ĐỐI ĐÁP ÁN CÓ SẴN: Quét toàn bộ nội dung để tìm đáp án hoặc lời giải của tác giả (VD: "Đáp án: A", "Chọn A", "1-A, 2-C...", "Lời giải:...", "Giải:...", "Hướng dẫn:...").
+- Nếu tìm thấy đáp án/lời giải trong tài liệu, BẮT BUỘC phải lấy dữ liệu đó. Tuyệt đối không được tự ý giải lại nếu tài liệu đã có đáp án.
+- CHỈ KHI KHÔNG CÓ ĐÁP ÁN: Nếu tài liệu hoàn toàn không đề cập đến đáp án hay hướng dẫn giải, bạn mới được thực hiện giải toán và cung cấp lời giải của riêng mình.
+- LaTeX: Mọi công thức, ký hiệu toán học phải bọc trong $...$.
+- LÀM SẠCH: Xóa bỏ các nhãn "A.", "B.", "a)", "b)" ở đầu nội dung phương án/ý hỏi.
+- MCQ: Nếu đáp án đúng trong tài liệu được đánh dấu bằng dấu sao hoặc gạch chân (VD: *A. Nội dung), hãy trích xuất đó là correctAnswer.`;
 
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -28,9 +37,9 @@ Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf
 
 QUY TẮC BẮT BUỘC:
 1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. 
-2. Solution (Lời giải): Phải có lời giải chi tiết, bọc công thức trong $...$.
+2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức trong $...$.
 3. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B." vào nội dung phương án.
-4. Cấu trúc JSON phải chuẩn xác.`;
+4. Cấu trúc JSON phải chuẩn xác theo schema.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -79,7 +88,7 @@ QUY TẮC BẮT BUỘC:
                 ...sq, 
                 id: uuidv4(),
                 text: stripOptionLabel(sq.text),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ') ? 'True' : 'False'
+                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T') ? 'True' : 'False'
             })) : undefined
         }));
     } catch (error: any) {
@@ -90,34 +99,13 @@ QUY TẮC BẮT BUỘC:
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `PHÂN TÍCH FILE PDF ĐỀ THI VẬT LÝ/TOÁN HỌC. 
-QUY TẮC PHÂN LOẠI VÀ LÀM SẠCH DỮ LIỆU:
-
-1. PHẦN I (Trắc nghiệm 4 lựa chọn): 
-   - Nhận diện "Câu 1", "Câu 2"...
-   - QUAN TRỌNG: Khi trích xuất các phương án, hãy XÓA BỎ các nhãn "A.", "B.", "C.", "D." ở đầu phương án. Chỉ lấy nội dung.
-   - Ví dụ: "A. Lực từ" -> lấy "Lực từ".
-   - Nhận diện dấu "*" ở đầu nhãn (VD: *D.) để biết đáp án đúng, sau đó cũng xóa nhãn đó đi.
-
-2. PHẦN II (Trắc nghiệm Đúng/Sai):
-   - Gom 4 ý a,b,c,d vào 'subQuestions'.
-   - XÓA BỎ nhãn "a)", "b)", "c)", "d)" ở đầu mỗi ý.
-
-3. PHẦN III (Trả lời ngắn):
-   - Nhận diện câu yêu cầu điền số.
-
-4. ĐỊNH DẠNG:
-   - Bọc công thức vật lý vào $...$.
-
-HÃY ĐẢM BẢO CÁC PHƯƠNG ÁN TRẢ VỀ LÀ NỘI DUNG THUẦN, KHÔNG CÓ NHÃN THỰC TỰ.`;
-
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
           parts: [
               { inlineData: { mimeType: "application/pdf", data: base64Data } },
-              { text: prompt }
+              { text: EXTRACTION_INSTRUCTION }
           ]
       },
       config: { 
@@ -127,7 +115,7 @@ HÃY ĐẢM BẢO CÁC PHƯƠNG ÁN TRẢ VỀ LÀ NỘI DUNG THUẦN, KHÔNG C�
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    type: { type: Type.STRING, description: "Phải là 'mcq', 'group-tf' hoặc 'short'" },
+                    type: { type: Type.STRING },
                     text: { type: Type.STRING },
                     points: { type: Type.NUMBER },
                     options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
@@ -140,7 +128,7 @@ HÃY ĐẢM BẢO CÁC PHƯƠNG ÁN TRẢ VỀ LÀ NỘI DUNG THUẦN, KHÔNG C�
                             type: Type.OBJECT,
                             properties: {
                                 text: { type: Type.STRING },
-                                correctAnswer: { type: Type.STRING, description: "Chỉ được là 'True' hoặc 'False'" }
+                                correctAnswer: { type: Type.STRING }
                             },
                             required: ["text", "correctAnswer"]
                         }
@@ -160,17 +148,75 @@ HÃY ĐẢM BẢO CÁC PHƯƠNG ÁN TRẢ VỀ LÀ NỘI DUNG THUẦN, KHÔNG C�
         id: uuidv4(),
         points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
         options: item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined,
-        // Nếu là MCQ, đáp án đúng cũng cần được làm sạch nhãn nếu AI trả về nhãn thay vì nội dung
         correctAnswer: (item.type === 'mcq' && item.correctAnswer) ? stripOptionLabel(item.correctAnswer) : item.correctAnswer,
         subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
             ...sq, 
             id: uuidv4(),
             text: stripOptionLabel(sq.text),
-            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'true') ? 'True' : 'False'
+            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
         })) : undefined
     }));
   } catch (error: any) {
-    console.error("Lỗi AI trích xuất:", error);
     throw new Error("Lỗi đọc PDF: " + error.message);
   }
+};
+
+export const parseQuestionsFromText = async (rawText: string): Promise<Question[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT:\n${rawText}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            type: { type: Type.STRING },
+                            text: { type: Type.STRING },
+                            points: { type: Type.NUMBER },
+                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                            correctAnswer: { type: Type.STRING, nullable: true },
+                            solution: { type: Type.STRING, nullable: true },
+                            subQuestions: {
+                                type: Type.ARRAY,
+                                nullable: true,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        text: { type: Type.STRING },
+                                        correctAnswer: { type: Type.STRING }
+                                    },
+                                    required: ["text", "correctAnswer"]
+                                }
+                            }
+                        },
+                        required: ["type", "text"]
+                    }
+                }
+            }
+        });
+
+        const textOutput = response.text || "[]";
+        const rawData = JSON.parse(cleanJsonString(textOutput));
+        
+        return rawData.map((item: any) => ({
+            ...item,
+            id: uuidv4(),
+            points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
+            options: item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined,
+            correctAnswer: (item.type === 'mcq' && item.correctAnswer) ? stripOptionLabel(item.correctAnswer) : item.correctAnswer,
+            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
+                ...sq, 
+                id: uuidv4(),
+                text: stripOptionLabel(sq.text),
+                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
+            })) : undefined
+        }));
+    } catch (error: any) {
+        throw new Error("Lỗi bóc tách văn bản: " + error.message);
+    }
 };
