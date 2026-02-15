@@ -3,9 +3,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
 import { getQuizzes, getResultsForStudent, getPublishedResults } from '../services/storage';
 import QuizTaker from './QuizTaker';
+import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -18,6 +19,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [results, setResults] = useState<Result[]>([]);
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+  const [activePracticeQuiz, setActivePracticeQuiz] = useState<Quiz | null>(null);
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
   const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
@@ -26,14 +28,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        // TỐI ƯU: Chỉ lấy dữ liệu đúng khối lớp và đúng giới hạn cần thiết
         const [filteredQuizzes, userResults, latestPubs] = await Promise.all([
             getQuizzes(user.grade), 
             getResultsForStudent(user.id, user.studentCode), 
             getPublishedResults(20) 
         ]);
         
-        // Quizzes đã được lọc từ server, chỉ cần lọc thêm trạng thái published
         setQuizzes(filteredQuizzes.filter(q => q.isPublished));
 
         const sortedResults = (userResults as Result[]).sort((a, b) => 
@@ -41,7 +41,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         );
         setResults(sortedResults);
 
-        // Lọc vinh danh của cá nhân em học sinh này
         const userPubs = latestPubs.filter(p => 
             user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
         ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
@@ -87,6 +86,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   const handleExitQuiz = () => {
     setActiveQuiz(null);
+    setActivePracticeQuiz(null);
     setTimeout(() => refreshData(), 500);
   };
 
@@ -98,6 +98,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   if (activeQuiz) {
     return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
+  }
+
+  if (activePracticeQuiz) {
+    return <QuickPractice quiz={activePracticeQuiz} student={user} onExit={handleExitQuiz} />;
   }
 
   const now = new Date();
@@ -255,8 +259,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                             <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 mt-auto">
-                          <button onClick={() => setPreviewQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-100 text-slate-600 py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all"><Eye size={16}/> Xem đề</button>
-                          <button onClick={() => setActiveQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Vào học</button>
+                          <button onClick={() => setActivePracticeQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
+                          <button onClick={() => setActiveQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
                         </div>
                       </div>
                     );
