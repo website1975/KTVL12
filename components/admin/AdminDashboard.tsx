@@ -49,27 +49,39 @@ const AdminDashboard: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
-  // Lazy loading data
+  // Lazy loading data - Tối ưu hóa để tránh điểm bằng 0
   const loadTabData = useCallback(async (tab: AdminTab) => {
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
-        const [q, c] = await Promise.all([getQuizzesMetadata(), getChapters()]);
+        const [q, c, r] = await Promise.all([
+          getQuizzesMetadata(), 
+          getChapters(),
+          getResultsMetadata() // Tải kèm kết quả để hiển thị số lượt làm bài chính xác ngay từ đầu
+        ]);
         setQuizzes(q);
         setChapters(c);
+        setResults(r);
       } else if (tab === 'students') {
-        const u = await getUsers();
+        // TẢI SONG SONG: Đảm bảo có cả User, Results và Quizzes trước khi render StudentManager
+        const [u, r, q] = await Promise.all([
+          getUsers(), 
+          getResultsMetadata(),
+          quizzes.length === 0 ? getQuizzesMetadata() : Promise.resolve(quizzes)
+        ]);
+        
         setStudents(u.filter(user => user.role === 'student'));
-        // Load kết quả để StudentManager tính điểm tích lũy chính xác
-        const r = await getResultsMetadata();
         setResults(r);
+        if (quizzes.length === 0) setQuizzes(q);
       } else if (tab === 'results') {
-        if (quizzes.length === 0) {
-            const q = await getQuizzesMetadata();
-            setQuizzes(q);
-        }
-        const r = await getResultsMetadata();
+        const [r, q, u] = await Promise.all([
+          getResultsMetadata(),
+          quizzes.length === 0 ? getQuizzesMetadata() : Promise.resolve(quizzes),
+          students.length === 0 ? getUsers() : Promise.resolve(students)
+        ]);
         setResults(r);
+        if (quizzes.length === 0) setQuizzes(q);
+        if (students.length === 0) setStudents(u.filter(user => user.role === 'student'));
       } else if (tab === 'bank') {
         const b = await getBankQuestions();
         setBankQuestions(b);
@@ -77,10 +89,12 @@ const AdminDashboard: React.FC = () => {
         const c = await getChapters();
         setChapters(c);
       }
+    } catch (e) {
+      console.error("Lỗi tải dữ liệu tab:", tab, e);
     } finally {
       setIsDataLoading(false);
     }
-  }, [quizzes.length]);
+  }, [quizzes.length, students.length]);
 
   useEffect(() => {
     loadTabData(activeTab);
