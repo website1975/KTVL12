@@ -147,6 +147,13 @@ export const findUser = async (username: string): Promise<User | undefined> => {
 
 export const deleteUser = async (id: string): Promise<void> => {
   if (supabase) {
+      // 1. Xóa tất cả các kết quả thi của người dùng này trước để tránh dữ liệu mồ côi
+      const { error: resultsError } = await supabase.from('results').delete().eq('student_id', id);
+      if (resultsError) {
+          console.warn("Cảnh báo: Không thể xóa sạch kết quả thi của người dùng, nhưng vẫn tiến hành xóa tài khoản.", resultsError);
+      }
+
+      // 2. Xóa thông tin người dùng
       const { error } = await supabase.from('users').delete().eq('id', id);
       handleSupabaseError(error, "Xóa người dùng");
   }
