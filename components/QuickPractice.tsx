@@ -81,7 +81,6 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
         <div className="flex-[1.5] bg-white rounded-[2.5rem] shadow-xl border-4 border-white flex flex-col overflow-hidden relative min-h-[400px]">
           <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
              <div className="flex items-center gap-3">
-                <div className="px-4 py-1.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter italic">Dễ</div>
                 <div className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-tighter">TN</div>
              </div>
              <h2 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">{quiz.category || 'LUYỆN TẬP'}</h2>
@@ -93,7 +92,7 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
           <div className="flex-1 p-10 flex flex-col items-center justify-center text-center">
             {showContent ? (
               <div className="space-y-6 animate-fade-in w-full">
-                <div className="text-2xl md:text-3xl font-black text-slate-700 leading-tight">
+                <div className="text-lg md:text-xl font-medium text-slate-700 leading-tight">
                   <LatexText text={currentQuestion.text} />
                 </div>
                 {currentQuestion.imageUrl && (
