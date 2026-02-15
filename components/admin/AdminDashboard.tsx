@@ -60,6 +60,9 @@ const AdminDashboard: React.FC = () => {
       } else if (tab === 'students') {
         const u = await getUsers();
         setStudents(u.filter(user => user.role === 'student'));
+        // Load kết quả để StudentManager tính điểm tích lũy chính xác
+        const r = await getResultsMetadata();
+        setResults(r);
       } else if (tab === 'results') {
         if (quizzes.length === 0) {
             const q = await getQuizzesMetadata();
@@ -332,7 +335,19 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteStudent = async (id: string, name: string) => {
-    if (confirm(`Xóa học sinh ${name}?`)) { await deleteUser(id); loadTabData('students'); }
+    if (confirm(`CẢNH BÁO: Xóa học sinh "${name}" sẽ xóa vĩnh viễn toàn bộ lịch sử bài làm của học sinh này trên Database. Tiếp tục?`)) { 
+      setIsDataLoading(true);
+      try {
+        await deleteUser(id); 
+        // Load lại cả hai tab dữ liệu để đồng bộ UI
+        await loadTabData('students'); 
+        alert("Đã xóa học sinh và toàn bộ kết quả liên quan thành công.");
+      } catch (e: any) {
+        alert("Lỗi khi xóa học sinh: " + e.message);
+      } finally {
+        setIsDataLoading(false);
+      }
+    }
   };
 
   const handleResetPassword = async (student: User) => {
