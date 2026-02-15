@@ -12,15 +12,28 @@ interface QuickPracticeProps {
 
 const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState<any>(null); // Lưu đáp án chọn (string cho mcq/short, object cho tf)
   const [isAnswered, setIsAnswered] = useState(false);
   const [showContent, setShowContent] = useState(true);
-  const [memoryTimer, setMemoryTimer] = useState(10); // 10 giây để ghi nhớ
+  const [memoryTimer, setMemoryTimer] = useState(10); 
 
   const currentQuestion = quiz.questions[currentIndex];
-  const isCorrect = selectedOption === currentQuestion.correctAnswer;
 
-  // Xử lý đếm ngược ghi nhớ (Memory Mode)
+  // Tính toán đúng/sai
+  const checkIsCorrect = () => {
+    if (currentQuestion.type === 'mcq') {
+      return selectedOption === currentQuestion.correctAnswer;
+    } else if (currentQuestion.type === 'short') {
+      return String(selectedOption || '').trim().toLowerCase() === String(currentQuestion.correctAnswer || '').trim().toLowerCase();
+    } else if (currentQuestion.type === 'group-tf') {
+      if (!selectedOption || !currentQuestion.subQuestions) return false;
+      return currentQuestion.subQuestions.every((sq, i) => selectedOption[i] === sq.correctAnswer);
+    }
+    return false;
+  };
+
+  const isCorrect = checkIsCorrect();
+
   useEffect(() => {
     if (!isAnswered && showContent) {
       const timer = setInterval(() => {
@@ -38,9 +51,9 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
   }, [currentIndex, isAnswered, showContent]);
 
   const handleConfirm = () => {
-    if (selectedOption) {
+    if (selectedOption !== null) {
       setIsAnswered(true);
-      setShowContent(true); // Hiện lại nội dung khi đã trả lời xong để xem lời giải
+      setShowContent(true);
     }
   };
 
@@ -56,9 +69,17 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
     }
   };
 
+  // Kiểm tra nút xác nhận có được bấm hay không
+  const canConfirm = useMemo(() => {
+    if (!selectedOption) return false;
+    if (currentQuestion.type === 'group-tf') {
+      return Object.keys(selectedOption).length === (currentQuestion.subQuestions?.length || 0);
+    }
+    return true;
+  }, [selectedOption, currentQuestion]);
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col p-4 md:p-6 animate-fade-in">
-      {/* Header Progress Bar */}
       <div className="max-w-7xl mx-auto w-full mb-4">
         <div className="bg-white rounded-full h-8 p-1 flex items-center shadow-sm relative overflow-hidden border">
            <div 
@@ -76,120 +97,164 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col lg:flex-row gap-4">
-        {/* Left Side: Question Content */}
-        <div className="flex-[1.5] bg-white rounded-[2rem] shadow-xl border-4 border-white flex flex-col overflow-hidden relative min-h-[400px]">
-          <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col lg:flex-row gap-4 overflow-hidden">
+        {/* Vế Trái: Nội dung */}
+        <div className="flex-[1.2] bg-white rounded-[2rem] shadow-xl border-4 border-white flex flex-col overflow-hidden relative">
+          <div className="p-5 border-b bg-slate-50 flex justify-between items-center">
              <div className="flex items-center gap-3">
-                <div className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-tighter">TN</div>
+                <div className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase">
+                  {currentQuestion.type === 'mcq' ? 'PHẦN I' : currentQuestion.type === 'group-tf' ? 'PHẦN II' : 'PHẦN III'}
+                </div>
              </div>
-             <h2 className="text-xl font-black italic uppercase text-slate-800 tracking-tighter">{quiz.category || 'LUYỆN TẬP'}</h2>
-             <button onClick={() => setShowContent(!showContent)} className="p-2 bg-white rounded-lg border shadow-sm text-blue-500 hover:bg-blue-50 transition-all">
-                <Zap size={18}/>
+             <h2 className="text-lg font-black italic uppercase text-slate-800 tracking-tight">{quiz.category || 'LUYỆN TẬP'}</h2>
+             <button onClick={() => setShowContent(!showContent)} className="p-2 bg-white rounded-lg border shadow-sm text-blue-500">
+                <Zap size={16}/>
              </button>
           </div>
 
-          <div className="flex-1 p-8 flex flex-col items-center justify-start text-center pt-12">
+          <div className="flex-1 p-6 flex flex-col items-center justify-start text-center pt-10 overflow-y-auto custom-scrollbar">
             {showContent ? (
               <div className="space-y-6 animate-fade-in w-full">
-                <div className="text-lg md:text-xl font-medium text-slate-700 leading-tight px-4">
+                <div className="text-lg font-medium text-slate-700 leading-snug px-2">
                   <LatexText text={currentQuestion.text} />
                 </div>
                 {currentQuestion.imageUrl && (
-                  <img src={currentQuestion.imageUrl} className="max-h-56 mx-auto rounded-2xl shadow-md border-4 border-white" alt="q" />
+                  <img src={currentQuestion.imageUrl} className="max-h-48 mx-auto rounded-xl shadow-sm border" alt="q" />
                 )}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-6 animate-pulse pt-20">
-                 <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center text-red-500">
-                    <Brain size={48} />
+                 <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-500">
+                    <Brain size={40} />
                  </div>
-                 <div className="space-y-2">
-                    <h4 className="text-xl font-black uppercase text-slate-400">Nội dung đã bị ẩn!</h4>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-300 italic">Sử dụng trí nhớ của bạn để chọn đáp án.</p>
+                 <div className="space-y-1">
+                    <h4 className="text-lg font-black uppercase text-slate-400">Nội dung đã bị ẩn!</h4>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 italic">Dùng trí nhớ để chọn đáp án.</p>
                  </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Side: Response Area */}
-        <div className="flex-1 bg-white rounded-[2rem] shadow-xl border-4 border-white flex flex-col p-6 md:p-8 relative">
+        {/* Vế Phải: Phản ứng */}
+        <div className="flex-1 bg-white rounded-[2rem] shadow-xl border-4 border-white flex flex-col p-6 relative overflow-hidden">
           {!isAnswered ? (
             <>
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 italic">Khu vực phản ứng:</h3>
-                <button className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-700 rounded-2xl text-[10px] font-black uppercase hover:bg-yellow-200 transition-all">
-                  Trợ giúp <Lightbulb size={14}/>
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Khu vực phản ứng:</h3>
+                <button className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-xl text-[9px] font-black uppercase">
+                  Trợ giúp <Lightbulb size={12}/>
                 </button>
               </div>
 
-              <div className="flex-1 space-y-2">
-                <p className="text-[10px] font-black text-slate-300 uppercase italic mb-1">Chọn đáp án đúng:</p>
-                {currentQuestion.options?.map((opt, i) => (
+              <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1">
+                <p className="text-[9px] font-black text-slate-300 uppercase italic mb-1">Thực hiện trả lời:</p>
+                
+                {/* Dạng Trắc nghiệm (MCQ) */}
+                {currentQuestion.type === 'mcq' && currentQuestion.options?.map((opt, i) => (
                   <button
                     key={i}
                     onClick={() => setSelectedOption(opt)}
-                    className={`w-full p-3 rounded-[1.2rem] border-2 text-left flex items-center gap-4 transition-all group ${
+                    className={`w-full p-2.5 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${
                       selectedOption === opt 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-[1.01]' 
-                      : 'bg-white border-slate-100 hover:border-blue-200 text-slate-600'
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                      : 'bg-white border-slate-100 hover:border-blue-100 text-slate-600'
                     }`}
                   >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-base shrink-0 ${
-                      selectedOption === opt ? 'bg-white/20' : 'bg-slate-50 text-slate-400 border group-hover:bg-blue-50 transition-colors'
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-sm shrink-0 ${
+                      selectedOption === opt ? 'bg-white/20' : 'bg-slate-50 text-slate-400 border'
                     }`}>
                       {String.fromCharCode(65+i)}
                     </div>
-                    <div className="font-bold text-sm"><LatexText text={opt}/></div>
+                    <div className="font-bold text-xs"><LatexText text={opt}/></div>
                   </button>
                 ))}
+
+                {/* Dạng Đúng/Sai (Group-TF) */}
+                {currentQuestion.type === 'group-tf' && currentQuestion.subQuestions?.map((sq, i) => (
+                  <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                    <div className="flex gap-2">
+                      <span className="text-[10px] font-black text-blue-500 uppercase">{String.fromCharCode(97+i)})</span>
+                      <p className="text-xs font-bold text-slate-600"><LatexText text={sq.text}/></p>
+                    </div>
+                    <div className="flex gap-2">
+                      {['True', 'False'].map(v => (
+                        <button 
+                          key={v}
+                          onClick={() => setSelectedOption({...selectedOption, [i]: v})}
+                          className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase border-2 transition-all ${
+                            selectedOption?.[i] === v 
+                            ? (v === 'True' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-red-600 border-red-600 text-white')
+                            : 'bg-white text-slate-400 border-slate-100'
+                          }`}
+                        >
+                          {v === 'True' ? 'Đúng' : 'Sai'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Dạng Trả lời ngắn (Short) */}
+                {currentQuestion.type === 'short' && (
+                  <div className="space-y-2">
+                    <input 
+                      type="text" 
+                      className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-blue-600 text-center text-lg focus:border-blue-400 transition-all"
+                      placeholder="Nhập đáp số..."
+                      value={selectedOption || ''}
+                      onChange={e => setSelectedOption(e.target.value)}
+                    />
+                    <p className="text-[9px] text-center font-bold text-slate-400 uppercase italic">Điền số hoặc từ khóa ngắn gọn</p>
+                  </div>
+                )}
               </div>
 
               <button
-                disabled={!selectedOption}
+                disabled={!canConfirm}
                 onClick={handleConfirm}
-                className={`mt-6 w-full py-5 rounded-2xl font-black uppercase text-sm italic flex items-center justify-center gap-3 transition-all ${
-                  selectedOption 
-                  ? 'bg-slate-100 text-slate-500 shadow-inner hover:bg-slate-200 active:scale-95' 
+                className={`mt-4 w-full py-4 rounded-2xl font-black uppercase text-xs italic flex items-center justify-center gap-3 transition-all ${
+                  canConfirm 
+                  ? 'bg-slate-900 text-white shadow-xl active:scale-95' 
                   : 'bg-slate-50 text-slate-200 cursor-not-allowed'
                 }`}
               >
-                Xác nhận đáp án <CheckCircle2 size={24} className={selectedOption ? 'text-emerald-500' : ''}/>
+                Xác nhận đáp án <CheckCircle2 size={20} className={canConfirm ? 'text-emerald-400' : ''}/>
               </button>
             </>
           ) : (
-            <div className="flex-1 flex flex-col animate-fade-in-up">
-               <div className="flex items-center gap-4 mb-4">
+            <div className="flex-1 flex flex-col animate-fade-in-up overflow-y-auto custom-scrollbar">
+               <div className="flex items-center gap-3 mb-4">
                   {isCorrect ? (
-                    <CheckCircle2 size={40} className="text-emerald-500" />
+                    <CheckCircle2 size={32} className="text-emerald-500" />
                   ) : (
-                    <XCircle size={40} className="text-red-500" />
+                    <XCircle size={32} className="text-red-500" />
                   )}
-                  <h3 className={`text-3xl font-black italic uppercase ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
+                  <h3 className={`text-2xl font-black italic uppercase ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
                     {isCorrect ? 'CHÍNH XÁC!' : 'RẤT TIẾC!'}
                   </h3>
                </div>
 
-               <div className="bg-slate-50 p-4 rounded-[1.5rem] border-2 border-slate-100 mb-4">
-                  <p className="font-black text-slate-700 text-sm">
-                    {isCorrect ? 'ĐÚNG RỒI! (+1đ)' : `SAI RỒI! (0đ). Đáp án là: ${currentQuestion.correctAnswer}`}
+               <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-100 mb-4 text-center">
+                  <p className="font-black text-slate-700 text-xs">
+                    {isCorrect ? 'Tuyệt vời! Bạn đã làm rất tốt.' : 'Đừng nản chí, hãy xem lại lời giải nhé!'}
                   </p>
+                  <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Đáp án đúng: {currentQuestion.correctAnswer || '(Xem phía dưới)'}</p>
                </div>
 
-               <div className="flex-1 bg-emerald-50/50 p-6 rounded-[1.5rem] border-2 border-emerald-100 relative overflow-hidden group">
-                  <div className="absolute top-4 right-6 text-emerald-100 group-hover:text-emerald-200 transition-all"><BookOpen size={40}/></div>
-                  <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-3 italic">Phân tích chuyên sâu:</h4>
-                  <div className="text-slate-600 text-sm italic font-medium leading-relaxed max-h-[220px] overflow-y-auto custom-scrollbar">
-                    <LatexText text={currentQuestion.solution || 'Dữ liệu đang được hệ thống AI cập nhật thêm...'} />
+               <div className="flex-1 bg-emerald-50/50 p-5 rounded-xl border-2 border-emerald-100 relative overflow-hidden">
+                  <div className="absolute top-4 right-4 text-emerald-100 opacity-50"><BookOpen size={32}/></div>
+                  <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3 italic">Phân tích chuyên sâu:</h4>
+                  <div className="text-slate-600 text-xs italic font-medium leading-relaxed max-h-[180px] overflow-y-auto custom-scrollbar">
+                    <LatexText text={currentQuestion.solution || 'Hệ thống đang cập nhật lời giải cho câu hỏi này...'} />
                   </div>
                </div>
 
-               <div className="mt-6 flex gap-3">
-                  <button onClick={onExit} className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-black transition-all">
+               <div className="mt-5 flex gap-2">
+                  <button onClick={onExit} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-black uppercase text-[9px] flex items-center justify-center gap-2 hover:bg-slate-200 transition-all">
                      <Home size={14}/> Thoát
                   </button>
-                  <button onClick={handleNext} className="flex-[2] py-4 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 shadow-xl hover:bg-blue-700 transition-all group">
+                  <button onClick={handleNext} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] flex items-center justify-center gap-2 shadow-lg hover:bg-blue-700 transition-all group">
                      Tiếp tục <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform"/>
                   </button>
                </div>
@@ -199,7 +264,7 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
       </div>
 
       <div className="max-w-7xl mx-auto w-full mt-4 text-center">
-         <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Hệ thống luyện tập thông minh • EduQuiz PRO</p>
+         <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest italic">Luyện tập thông minh cùng EduQuiz System</p>
       </div>
     </div>
   );
