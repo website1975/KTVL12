@@ -13,9 +13,18 @@ const App: React.FC = () => {
     isAuthenticated: false,
   });
   const [isChecking, setIsChecking] = useState(true);
+  const [targetQuizId, setTargetQuizId] = useState<string | null>(null);
 
   useEffect(() => {
     initStorage();
+    
+    // Kiểm tra link đề thi từ URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const quizId = urlParams.get('quiz');
+    if (quizId) {
+        setTargetQuizId(quizId);
+    }
+    
     checkPersistentLogin();
   }, []);
 
@@ -75,7 +84,7 @@ const App: React.FC = () => {
       {auth.user.role === 'admin' ? (
         <AdminDashboard />
       ) : (
-        <StudentDashboard user={auth.user as User} />
+        <StudentDashboard user={auth.user as User} targetQuizId={targetQuizId} />
       )}
     </Layout>
   );
