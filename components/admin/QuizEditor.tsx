@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X } from 'lucide-react';
+import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, EyeOff } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 
@@ -17,6 +17,8 @@ interface QuizEditorProps {
     setIsPublished: (val: boolean) => void;
     isMonitored?: boolean;
     setIsMonitored: (val: boolean) => void;
+    isUnlisted?: boolean;
+    setIsUnlisted: (val: boolean) => void;
     duration: number;
     setDuration: (val: number) => void;
     category: string;
@@ -357,7 +359,7 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-blue-600 uppercase ml-2 flex items-center gap-1"><Zap size={12}/> Hạn chót nộp bài</label>
                         <input type="datetime-local" className="w-full border-2 border-blue-100 rounded-[1.5rem] p-4 text-xs font-black bg-blue-50/20 focus:bg-white outline-none" value={props.quizType === 'test' ? props.startTime : props.endTime} onChange={e => props.quizType === 'test' ? props.setStartTime(e.target.value) : props.setEndTime(e.target.value)} />
@@ -369,13 +371,23 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                             className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-3 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200 shadow-lg shadow-red-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
                         >
                             {props.isMonitored ? <ShieldCheck size={16}/> : <ShieldAlert size={16}/>}
-                            {props.isMonitored ? 'ĐÃ BẬT CHỐNG GIAN LẬN' : 'KHÔNG GIÁM SÁT (TỰ DO)'}
+                            {props.isMonitored ? 'ĐÃ BẬT CHỐNG GIAN LẬN' : 'KHÔNG GIÁM SÁT'}
+                        </button>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-indigo-600 uppercase ml-2 flex items-center gap-1"><EyeOff size={12}/> Chế độ riêng tư</label>
+                        <button 
+                            onClick={() => props.setIsUnlisted(!props.isUnlisted)} 
+                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-3 ${props.isUnlisted ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-lg shadow-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                        >
+                            {props.isUnlisted ? <LinkIcon size={16}/> : <Eye size={16}/>}
+                            {props.isUnlisted ? 'CHỈ LÀM QUA LINK' : 'HIỆN CÔNG KHAI'}
                         </button>
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Trạng thái phát hành</label>
                         <button onClick={() => props.setIsPublished(!props.isPublished)} className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all shadow-md ${props.isPublished ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-slate-200 text-slate-500 border-slate-300'}`}>
-                            {props.isPublished ? 'ĐÃ CÔNG KHAI (HỌC SINH THẤY)' : 'BẢN NHÁP (ĐANG ẨN)'}
+                            {props.isPublished ? 'ĐÃ CÔNG KHAI' : 'BẢN NHÁP (ẨN)'}
                         </button>
                     </div>
                 </div>
