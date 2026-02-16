@@ -172,7 +172,8 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->createdAt, data->category, data->durationMinutes, data->isMonitored, data->questionCount');
+    // THÊM: data->isUnlisted VÀO TRUY VẤN
+    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->isUnlisted, data->createdAt, data->category, data->durationMinutes, data->isMonitored, data->questionCount');
     if (grade && grade !== 'all') {
         query = query.or(`grade.eq.${grade},grade.eq.all`);
     }
@@ -198,6 +199,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
         title: row.title,
         type: row.type,
         isPublished: row.isPublished,
+        isUnlisted: row.isUnlisted || false, // Đảm bảo gán đúng giá trị
         createdAt: row.createdAt,
         category: row.category,
         durationMinutes: row.durationMinutes,
