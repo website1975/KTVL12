@@ -54,10 +54,11 @@ export interface Quiz {
   durationMinutes: number;
   questions: Question[];
   questionCount?: number; 
-  attemptCount?: number; // Đã thêm: Quản lý số lượt làm bài
+  attemptCount?: number;
   createdAt: string;
   isPublished: boolean;
   isMonitored?: boolean;
+  isUnlisted?: boolean; // Thuộc tính mới cho đề thi ẩn
 }
 
 export interface Result {
