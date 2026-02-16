@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
-import { getQuizzes, getResultsForStudent, getPublishedResults } from '../services/storage';
+import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
@@ -12,9 +12,10 @@ import LatexText from './LatexText';
 
 interface StudentDashboardProps {
   user: User;
+  targetQuizId?: string | null;
 }
 
-const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
+const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId }) => {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
@@ -28,13 +29,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        const [filteredQuizzes, userResults, latestPubs] = await Promise.all([
+        const [allQuizzes, userResults, latestPubs] = await Promise.all([
             getQuizzes(user.grade), 
             getResultsForStudent(user.id, user.studentCode), 
             getPublishedResults(20) 
         ]);
         
-        setQuizzes(filteredQuizzes.filter(q => q.isPublished));
+        // CHỈ HIỆN ĐỀ CÔNG KHAI (KHÔNG PHẢI UNLISTED) TRÊN DASHBOARD
+        setQuizzes(allQuizzes.filter(q => q.isPublished && !q.isUnlisted));
 
         const sortedResults = (userResults as Result[]).sort((a, b) => 
             new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
@@ -52,6 +54,31 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         setIsLoading(false);
     }
   }, [user.id, user.studentCode, user.grade]);
+
+  // Xử lý tự động mở đề thi từ link ẩn
+  useEffect(() => {
+    if (targetQuizId) {
+        const checkTargetQuiz = async () => {
+            setIsLoading(true);
+            try {
+                const quiz = await getQuizById(targetQuizId);
+                if (quiz && quiz.isPublished) {
+                    // Nếu là đề thi có link, ta mở lên làm bài luôn
+                    setActiveQuiz(quiz);
+                    // Xóa param trên URL để không bị loop
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                } else {
+                    alert("Đề thi này không tồn tại hoặc chưa được phát hành.");
+                }
+            } catch (e) {
+                console.error("Lỗi lấy đề thi từ link:", e);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        checkTargetQuiz();
+    }
+  }, [targetQuizId]);
 
   const stats = useMemo(() => {
     const totalQuizzes = results.length;
