@@ -49,7 +49,7 @@ const AdminDashboard: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
-  // Lazy loading data - Tối ưu hóa để tránh điểm bằng 0
+  // Lazy loading data
   const loadTabData = useCallback(async (tab: AdminTab) => {
     setIsDataLoading(true);
     try {
@@ -57,13 +57,12 @@ const AdminDashboard: React.FC = () => {
         const [q, c, r] = await Promise.all([
           getQuizzesMetadata(), 
           getChapters(),
-          getResultsMetadata() // Tải kèm kết quả để hiển thị số lượt làm bài chính xác ngay từ đầu
+          getResultsMetadata() 
         ]);
         setQuizzes(q);
         setChapters(c);
         setResults(r);
       } else if (tab === 'students') {
-        // TẢI SONG SONG: Đảm bảo có cả User, Results và Quizzes trước khi render StudentManager
         const [u, r, q] = await Promise.all([
           getUsers(), 
           getResultsMetadata(),
@@ -108,6 +107,7 @@ const AdminDashboard: React.FC = () => {
   const [quizType, setQuizType] = useState<QuizType>('test');
   const [isPublished, setIsPublished] = useState(false);
   const [isMonitored, setIsMonitored] = useState(false);
+  const [isUnlisted, setIsUnlisted] = useState(false);
   const [duration, setDuration] = useState(45);
   const [category, setCategory] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -147,7 +147,7 @@ const AdminDashboard: React.FC = () => {
   // Quiz Handlers
   const handleCreateQuiz = () => {
     setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
-    setIsPublished(false); setIsMonitored(false); setDuration(45); setCategory('');
+    setIsPublished(false); setIsMonitored(false); setIsUnlisted(false); setDuration(45); setCategory('');
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
     setActiveTab('quizzes');
   };
@@ -159,6 +159,7 @@ const AdminDashboard: React.FC = () => {
         if (fullQuiz) {
             setEditingQuizId(fullQuiz.id); setQuizTitle(fullQuiz.title); setQuizGrade(fullQuiz.grade);
             setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
+            setIsUnlisted(fullQuiz.isUnlisted || false);
             setDuration(fullQuiz.durationMinutes); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
             setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
             setActiveTab('quizzes');
@@ -263,7 +264,7 @@ const AdminDashboard: React.FC = () => {
     setIsSavingInProgress(true);
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
-      isPublished, isMonitored, durationMinutes: duration, category, startTime, endTime,
+      isPublished, isMonitored, isUnlisted, durationMinutes: duration, category, startTime, endTime,
       questions, createdAt: new Date().toISOString(), description: ''
     };
     
@@ -353,7 +354,6 @@ const AdminDashboard: React.FC = () => {
       setIsDataLoading(true);
       try {
         await deleteUser(id); 
-        // Load lại cả hai tab dữ liệu để đồng bộ UI
         await loadTabData('students'); 
         alert("Đã xóa học sinh và toàn bộ kết quả liên quan thành công.");
       } catch (e: any) {
@@ -431,6 +431,7 @@ const AdminDashboard: React.FC = () => {
                     editingId={editingQuizId} title={quizTitle} setTitle={setQuizTitle}
                     grade={quizGrade} setGrade={setQuizGrade} quizType={quizType} setQuizType={setQuizType}
                     isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
+                    isUnlisted={isUnlisted} setIsUnlisted={setIsUnlisted}
                     duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
                     startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
                     questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
