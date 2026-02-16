@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Quiz, Result, Grade, Chapter } from '../../types';
-import { Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown } from 'lucide-react';
+import { Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, Link as LinkIcon, EyeOff, ShieldCheck } from 'lucide-react';
 
 interface QuizListProps {
     quizzes: Quiz[];
@@ -39,6 +39,13 @@ const QuizList: React.FC<QuizListProps> = ({
 
     const visibleQuizzes = filtered.slice(0, visibleCount);
     const relevantChapters = chapters.filter(c => qGradeFilter === 'all' || c.grade === qGradeFilter);
+
+    const copyQuizLink = (quizId: string) => {
+        const url = `${window.location.origin}/?quiz=${quizId}`;
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Đã sao chép đường dẫn đề thi ẩn!\nGiáo viên hãy gửi link này cho nhóm học sinh chỉ định.');
+        });
+    };
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -78,25 +85,41 @@ const QuizList: React.FC<QuizListProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {visibleQuizzes.map(q => {
-                    // TỐI ƯU: Sử dụng các trường đếm đã được tính toán từ Server
                     const count = (q as any).questionCount || 0;
                     const attempts = (q as any).attemptCount || 0;
                     
                     return (
                         <div 
                             key={q.id} 
-                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-4 ${q.isPublished 
-                                ? 'bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 border-b-blue-600 border-slate-100' 
+                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${q.isPublished 
+                                ? (q.isUnlisted ? 'bg-indigo-50/30 border-b-indigo-500 border-indigo-100 shadow-sm' : 'bg-white shadow-sm border-b-blue-600 border-slate-100') 
                                 : 'bg-slate-50 border-dashed border-slate-300 opacity-75'}`}
                         >
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex flex-col gap-1">
-                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? 'bg-blue-50 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
-                                        KHỐI {q.grade}
-                                    </span>
-                                    {q.category && <span className={`text-[8px] font-bold uppercase truncate max-w-[120px] ${q.isPublished ? 'text-blue-500' : 'text-slate-400'}`}>{q.category}</span>}
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600') : 'bg-slate-200 text-slate-500'}`}>
+                                            KHỐI {q.grade}
+                                        </span>
+                                        {q.isPublished && q.isUnlisted && (
+                                            <span className="px-2 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                                <EyeOff size={10}/> RIÊNG TƯ
+                                            </span>
+                                        )}
+                                        {q.isMonitored && (
+                                            <span className="p-1 bg-red-50 text-red-500 rounded-md" title="Có giám sát">
+                                                <ShieldCheck size={10}/>
+                                            </span>
+                                        )}
+                                    </div>
+                                    {q.category && <span className={`text-[8px] font-bold uppercase truncate max-w-[120px] ${q.isPublished ? 'text-slate-400' : 'text-slate-400'}`}>{q.category}</span>}
                                 </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                                    {q.isUnlisted && (
+                                        <button onClick={() => copyQuizLink(q.id)} className="p-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg hover:bg-black shadow-lg transition-colors" title="Copy Link Riêng Tư">
+                                            <LinkIcon size={14}/>
+                                        </button>
+                                    )}
                                     <button onClick={() => onEdit(q)} className="p-2 bg-white border rounded-lg hover:bg-slate-900 hover:text-white shadow-sm transition-colors" title="Sửa đề"><Edit size={14}/></button>
                                     <button onClick={() => onDelete(q.id)} className="p-2 bg-red-50 border border-red-100 rounded-lg hover:bg-red-500 hover:text-white shadow-sm transition-colors" title="Xóa đề"><Trash2 size={14}/></button>
                                 </div>
@@ -107,11 +130,11 @@ const QuizList: React.FC<QuizListProps> = ({
                             </h3>
                             
                             <div className="grid grid-cols-2 gap-3 mb-6">
-                                <div className={`${q.isPublished ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-200/50 border-slate-200'} rounded-xl p-2 flex flex-col items-center justify-center border`}>
-                                    <FileText size={12} className={q.isPublished ? "text-blue-500" : "text-slate-400"}/>
-                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-blue-700' : 'text-slate-500'}`}>{count} CÂU</span>
+                                <div className={`${q.isPublished ? 'bg-white border-slate-100' : 'bg-slate-200/50 border-slate-200'} rounded-xl p-2 flex flex-col items-center justify-center border shadow-sm`}>
+                                    <FileText size={12} className={q.isUnlisted ? "text-indigo-500" : "text-blue-500"}/>
+                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-slate-700' : 'text-slate-500'}`}>{count} CÂU</span>
                                 </div>
-                                <div className="bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center border border-slate-100">
+                                <div className="bg-white rounded-xl p-2 flex flex-col items-center justify-center border border-slate-100 shadow-sm">
                                     <Users size={12} className="text-slate-400"/>
                                     <span className="text-[9px] font-black text-slate-700">{attempts} LƯỢT</span>
                                 </div>
@@ -121,7 +144,7 @@ const QuizList: React.FC<QuizListProps> = ({
                                 <button 
                                     onClick={() => onPreview(q)} 
                                     className={`w-full py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${q.isPublished 
-                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                        ? (q.isUnlisted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-blue-600 text-white hover:bg-blue-700') 
                                         : 'bg-slate-800 text-white hover:bg-black'}`}
                                 >
                                     <Eye size={14}/> Xem & Xuất Word
