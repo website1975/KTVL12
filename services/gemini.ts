@@ -24,7 +24,49 @@ QUY TẮC TRÍCH XUẤT ĐÁP ÁN VÀ LỜI GIẢI (CỰC KỲ QUAN TRỌNG):
 - CHỈ KHI KHÔNG CÓ ĐÁP ÁN: Nếu tài liệu hoàn toàn không đề cập đến đáp án hay hướng dẫn giải, bạn mới được thực hiện giải toán và cung cấp lời giải của riêng mình.
 - LaTeX: Mọi công thức, ký hiệu toán học phải bọc trong $...$.
 - LÀM SẠCH: Xóa bỏ các nhãn "A.", "B.", "a)", "b)" ở đầu nội dung phương án/ý hỏi.
-- MCQ: Nếu đáp án đúng trong tài liệu được đánh dấu bằng dấu sao hoặc gạch chân (VD: *A. Nội dung), hãy trích xuất đó là correctAnswer.`;
+
+QUY TẮC RIÊNG CHO TỪNG LOẠI CÂU HỎI:
+- MCQ: BẮT BUỘC phải có 'correctAnswer'. Nếu tài liệu không đánh dấu trực tiếp (như dấu sao *), hãy dựa vào 'solution' hoặc nội dung câu hỏi để xác định đáp án đúng và điền vào 'correctAnswer'.
+- GROUP-TF: BẮT BUỘC phải có 'solution' chi tiết cho từng ý a, b, c, d. Lời giải phải trình bày theo định dạng sau:
+  a) [Đúng/Sai] : Vì [Giải thích chi tiết]
+  b) [Đúng/Sai] : Vì [Giải thích chi tiết]
+  c) [Đúng/Sai] : Vì [Giải thích chi tiết]
+  d) [Đúng/Sai] : Vì [Giải thích chi tiết]
+- SHORT: 'correctAnswer' phải là con số cụ thể.`;
+
+const processAIQuestions = (rawData: any[]): Question[] => {
+    return rawData.map((item: any) => {
+        const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined;
+        let finalCorrectAnswer = item.correctAnswer;
+
+        if (item.type === 'mcq' && item.correctAnswer && item.options) {
+            const label = item.correctAnswer.trim().toUpperCase().replace(/[\.\)\:\s]/g, "");
+            // Nếu AI trả về nhãn (A, B, C, D) thay vì nội dung đầy đủ
+            if (label.length === 1 && /^[A-D]$/.test(label)) {
+                const index = label.charCodeAt(0) - 65;
+                if (item.options[index]) {
+                    finalCorrectAnswer = stripOptionLabel(item.options[index]);
+                }
+            } else {
+                finalCorrectAnswer = stripOptionLabel(item.correctAnswer);
+            }
+        }
+
+        return {
+            ...item,
+            id: uuidv4(),
+            points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
+            options: strippedOptions,
+            correctAnswer: finalCorrectAnswer,
+            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
+                ...sq, 
+                id: uuidv4(),
+                text: stripOptionLabel(sq.text),
+                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
+            })) : undefined
+        };
+    });
+};
 
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -38,8 +80,14 @@ Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf
 QUY TẮC BẮT BUỘC:
 1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. 
 2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức trong $...$.
-3. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B." vào nội dung phương án.
-4. Cấu trúc JSON phải chuẩn xác theo schema.`;
+3. MCQ: Phải xác định rõ 'correctAnswer' và điền vào.
+4. GROUP-TF: 'solution' phải giải thích chi tiết cho từng ý a, b, c, d theo định dạng:
+   a) [Đúng/Sai] : Vì [Giải thích]
+   b) [Đúng/Sai] : Vì [Giải thích]
+   c) [Đúng/Sai] : Vì [Giải thích]
+   d) [Đúng/Sai] : Vì [Giải thích]
+5. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B." vào nội dung phương án.
+6. Cấu trúc JSON phải chuẩn xác theo schema.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -80,17 +128,7 @@ QUY TẮC BẮT BUỘC:
         const textOutput = response.text || "[]";
         const rawData = JSON.parse(cleanJsonString(textOutput));
         
-        return rawData.map((item: any) => ({
-            ...item,
-            id: uuidv4(),
-            options: item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined,
-            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
-                ...sq, 
-                id: uuidv4(),
-                text: stripOptionLabel(sq.text),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T') ? 'True' : 'False'
-            })) : undefined
-        }));
+        return processAIQuestions(rawData);
     } catch (error: any) {
         throw new Error("AI không thể tạo đề: " + error.message);
     }
@@ -143,19 +181,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
     const textOutput = response.text || "[]";
     const rawData = JSON.parse(cleanJsonString(textOutput));
     
-    return rawData.map((item: any) => ({
-        ...item,
-        id: uuidv4(),
-        points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
-        options: item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined,
-        correctAnswer: (item.type === 'mcq' && item.correctAnswer) ? stripOptionLabel(item.correctAnswer) : item.correctAnswer,
-        subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
-            ...sq, 
-            id: uuidv4(),
-            text: stripOptionLabel(sq.text),
-            correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
-        })) : undefined
-    }));
+    return processAIQuestions(rawData);
   } catch (error: any) {
     throw new Error("Lỗi đọc PDF: " + error.message);
   }
@@ -203,19 +229,7 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
         const textOutput = response.text || "[]";
         const rawData = JSON.parse(cleanJsonString(textOutput));
         
-        return rawData.map((item: any) => ({
-            ...item,
-            id: uuidv4(),
-            points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
-            options: item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined,
-            correctAnswer: (item.type === 'mcq' && item.correctAnswer) ? stripOptionLabel(item.correctAnswer) : item.correctAnswer,
-            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
-                ...sq, 
-                id: uuidv4(),
-                text: stripOptionLabel(sq.text),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
-            })) : undefined
-        }));
+        return processAIQuestions(rawData);
     } catch (error: any) {
         throw new Error("Lỗi bóc tách văn bản: " + error.message);
     }
