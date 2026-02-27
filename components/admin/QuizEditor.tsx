@@ -31,6 +31,7 @@ interface QuizEditorProps {
     setQuestions: (val: Question[]) => void;
     chapters: Chapter[];
     onSave: () => void;
+    onCleanLabels: () => void;
     onOpenBank: (type: QuestionType) => void;
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onTextExtract: (text: string) => void;
@@ -92,6 +93,21 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
             nl[i].imageUrl = undefined;
             setQuestions(nl);
         }
+    };
+
+    const stripLabel = (text: string): string => {
+        if (!text) return "";
+        let cleaned = text.trim();
+        const labelRegex = /^(\*?[A-Za-z0-9][\.\)\/\-:\s]\s*)/g;
+        while (labelRegex.test(cleaned)) {
+            cleaned = cleaned.replace(labelRegex, "").trim();
+        }
+        return cleaned;
+    };
+
+    const isCorrectMCQ = (q: Question, opt: string) => {
+        if (!q.correctAnswer || !opt) return false;
+        return stripLabel(q.correctAnswer) === stripLabel(opt);
     };
 
     return (
@@ -183,9 +199,9 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                     {type === 'mcq' && q.options && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                             {q.options.map((opt, oi) => (
-                                <div key={oi} className={`flex items-center gap-4 p-4 rounded-2xl border-2 transition-all ${q.correctAnswer === opt && opt !== '' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-100'}`}>
+                                <div key={oi} className={`flex items-center gap-4 p-4 rounded-2xl border-2 transition-all ${isCorrectMCQ(q, opt) && opt !== '' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-100'}`}>
                                     <div className="flex items-center gap-3 shrink-0">
-                                        <input type="radio" name={`ans-${q.id}`} className="w-5 h-5 accent-emerald-600" checked={q.correctAnswer === opt && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} />
+                                        <input type="radio" name={`ans-${q.id}`} className="w-5 h-5 accent-emerald-600" checked={isCorrectMCQ(q, opt) && opt !== ''} onChange={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].correctAnswer = opt; setQuestions(nl); }} />
                                         <span className="text-xs font-black text-slate-400">{String.fromCharCode(65+oi)}.</span>
                                     </div>
                                     <input type="text" className="bg-transparent text-sm font-bold outline-none flex-1" value={opt} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].options![oi] = e.target.value; setQuestions(nl); }} placeholder={`Nhập phương án ${String.fromCharCode(65+oi)}...`} />
@@ -313,6 +329,13 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         <input type="text" className="text-3xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-100 focus:text-blue-600 transition-colors" placeholder="VD: KIỂM TRA CHƯƠNG I ĐẠO HÀM..." value={props.title} onChange={e => props.setTitle(e.target.value)} />
                     </div>
                     <div className="flex flex-wrap gap-3">
+                        <button 
+                            onClick={props.onCleanLabels}
+                            className="flex items-center gap-3 px-6 py-5 bg-emerald-50 text-emerald-600 border-2 border-emerald-100 rounded-[2rem] text-xs font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-xl active:scale-95"
+                            title="Xóa bỏ các nhãn A., B., a), b) dư thừa trong nội dung câu hỏi"
+                        >
+                            <Zap size={20}/> DỌN DẸP NHÃN
+                        </button>
                         <button 
                             onClick={() => setIsTextInputOpen(true)}
                             className={`flex items-center gap-3 px-6 py-5 bg-blue-600 text-white rounded-[2rem] text-xs font-black uppercase hover:bg-black transition-all shadow-2xl active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
