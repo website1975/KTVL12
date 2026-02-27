@@ -9,7 +9,14 @@ const cleanJsonString = (str: string): string => {
 
 const stripOptionLabel = (text: string): string => {
     if (!text) return "";
-    return text.replace(/^(\*?[A-Za-z0-9][\.\)\/\-]\s*)/g, "").trim();
+    // Xử lý đệ quy để xóa nhiều lớp nhãn (VD: "A. A. Nội dung")
+    let cleaned = text.trim();
+    const labelRegex = /^(\*?[A-Za-z0-9][\.\)\/\-:\s]\s*)/g;
+    
+    while (labelRegex.test(cleaned)) {
+        cleaned = cleaned.replace(labelRegex, "").trim();
+    }
+    return cleaned;
 };
 
 const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa).
@@ -49,6 +56,15 @@ const processAIQuestions = (rawData: any[]): Question[] => {
                 }
             } else {
                 finalCorrectAnswer = stripOptionLabel(item.correctAnswer);
+            }
+        }
+
+        // Đảm bảo correctAnswer của MCQ luôn khớp với một trong các options sau khi đã strip
+        if (item.type === 'mcq' && strippedOptions && finalCorrectAnswer) {
+            const cleanAns = stripOptionLabel(finalCorrectAnswer);
+            const match = strippedOptions.find((opt: string) => stripOptionLabel(opt) === cleanAns);
+            if (match) {
+                finalCorrectAnswer = match;
             }
         }
 
