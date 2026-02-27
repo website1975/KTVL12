@@ -335,6 +335,39 @@ const AdminDashboard: React.FC = () => {
     setUploadingId(null);
   };
 
+  const handleCleanLabels = () => {
+    const stripLabel = (text: string): string => {
+        if (!text) return "";
+        let cleaned = text.trim();
+        const labelRegex = /^(\*?[A-Za-z0-9][\.\)\/\-:\s]\s*)/g;
+        while (labelRegex.test(cleaned)) {
+            cleaned = cleaned.replace(labelRegex, "").trim();
+        }
+        return cleaned;
+    };
+
+    const cleanedQuestions = questions.map(q => {
+        const newQ = { ...q };
+        newQ.text = stripLabel(q.text);
+        if (q.options) {
+            newQ.options = q.options.map(opt => stripLabel(opt));
+        }
+        if (q.correctAnswer && q.type === 'mcq') {
+            newQ.correctAnswer = stripLabel(q.correctAnswer);
+        }
+        if (q.subQuestions) {
+            newQ.subQuestions = q.subQuestions.map(sq => ({
+                ...sq,
+                text: stripLabel(sq.text)
+            }));
+        }
+        return newQ;
+    });
+
+    setQuestions(cleanedQuestions);
+    alert("Đã dọn dẹp nhãn cho tất cả câu hỏi!");
+  };
+
   const handleSaveStudent = async () => {
     if (!studentForm.fullName || !studentForm.studentCode) return alert("Vui lòng điền đủ thông tin!");
     setIsSavingStudent(true);
@@ -435,6 +468,7 @@ const AdminDashboard: React.FC = () => {
                     duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
                     startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
                     questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
+                    onCleanLabels={handleCleanLabels}
                     onOpenBank={(type) => { 
                         setBTypeFilter(type); 
                         setBGradeFilter(quizGrade); 
