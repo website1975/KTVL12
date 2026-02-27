@@ -29,8 +29,8 @@ QUY TẮC TRÍCH XUẤT ĐÁP ÁN VÀ LỜI GIẢI (CỰC KỲ QUAN TRỌNG):
 - ƯU TIÊN TUYỆT ĐỐI ĐÁP ÁN CÓ SẴN: Quét toàn bộ nội dung để tìm đáp án hoặc lời giải của tác giả (VD: "Đáp án: A", "Chọn A", "1-A, 2-C...", "Lời giải:...", "Giải:...", "Hướng dẫn:...").
 - Nếu tìm thấy đáp án/lời giải trong tài liệu, BẮT BUỘC phải lấy dữ liệu đó. Tuyệt đối không được tự ý giải lại nếu tài liệu đã có đáp án.
 - CHỈ KHI KHÔNG CÓ ĐÁP ÁN: Nếu tài liệu hoàn toàn không đề cập đến đáp án hay hướng dẫn giải, bạn mới được thực hiện giải toán và cung cấp lời giải của riêng mình.
-- LaTeX: Mọi công thức, ký hiệu toán học phải bọc trong $...$.
-- LÀM SẠCH: Xóa bỏ các nhãn "A.", "B.", "a)", "b)" ở đầu nội dung phương án/ý hỏi.
+- LaTeX: Mọi công thức, ký hiệu toán học phải bọc trong $...$. BẮT BUỘC giữ nguyên dấu $ trong cả nội dung câu hỏi và CÁC PHƯƠNG ÁN LỰA CHỌN (Options).
+- LÀM SẠCH: Xóa bỏ các nhãn "A.", "B.", "a)", "b)" ở đầu nội dung phương án/ý hỏi nhưng KHÔNG ĐƯỢC xóa dấu $ của công thức.
 
 QUY TẮC RIÊNG CHO TỪNG LOẠI CÂU HỎI:
 - MCQ: BẮT BUỘC phải có 'correctAnswer'. Nếu tài liệu không đánh dấu trực tiếp (như dấu sao *), hãy dựa vào 'solution' hoặc nội dung câu hỏi để xác định đáp án đúng và điền vào 'correctAnswer'.
@@ -94,7 +94,7 @@ Khối: ${config.grade}.
 Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf, ${config.part3Count} câu short.
 
 QUY TẮC BẮT BUỘC:
-1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. 
+1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. Quy tắc này áp dụng cho cả nội dung câu hỏi, LỜI GIẢI và CÁC PHƯƠNG ÁN (Options).
 2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức trong $...$.
 3. MCQ: Phải xác định rõ 'correctAnswer' và điền vào.
 4. GROUP-TF: 'solution' phải giải thích chi tiết cho từng ý a, b, c, d theo định dạng:
