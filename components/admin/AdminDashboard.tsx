@@ -349,12 +349,28 @@ const AdminDashboard: React.FC = () => {
     const cleanedQuestions = questions.map(q => {
         const newQ = { ...q };
         newQ.text = stripLabel(q.text);
+        
         if (q.options) {
             newQ.options = q.options.map(opt => stripLabel(opt));
         }
-        if (q.correctAnswer && q.type === 'mcq') {
-            newQ.correctAnswer = stripLabel(q.correctAnswer);
+
+        if (q.type === 'mcq' && q.correctAnswer && q.options) {
+            const currentAns = q.correctAnswer.trim();
+            const cleanAns = stripLabel(currentAns);
+            
+            // Nếu đáp án hiện tại là một nhãn đơn lẻ (A, B, C, D)
+            const matchLabel = currentAns.match(/^[A-D][\.\)\s]*$/i);
+            if (matchLabel) {
+                const label = matchLabel[0].charAt(0).toUpperCase();
+                const index = label.charCodeAt(0) - 65;
+                if (q.options[index]) {
+                    newQ.correctAnswer = stripLabel(q.options[index]);
+                }
+            } else {
+                newQ.correctAnswer = cleanAns;
+            }
         }
+
         if (q.subQuestions) {
             newQ.subQuestions = q.subQuestions.map(sq => ({
                 ...sq,
