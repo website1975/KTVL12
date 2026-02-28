@@ -20,26 +20,33 @@ const stripOptionLabel = (text: string): string => {
 };
 
 const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa).
-NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn 3 phần:
-1. 'mcq': Trắc nghiệm 4 lựa chọn.
-2. 'group-tf': Trắc nghiệm Đúng/Sai (thường có 4 ý a,b,c,d).
-3. 'short': Trắc nghiệm trả lời ngắn (điền số).
+NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn.
 
-QUY TẮC TRÍCH XUẤT ĐÁP ÁN VÀ LỜI GIẢI (CỰC KỲ QUAN TRỌNG):
-- ƯU TIÊN TUYỆT ĐỐI ĐÁP ÁN CÓ SẴN: Quét toàn bộ nội dung để tìm đáp án hoặc lời giải của tác giả (VD: "Đáp án: A", "Chọn A", "1-A, 2-C...", "Lời giải:...", "Giải:...", "Hướng dẫn:...").
-- Nếu tìm thấy đáp án/lời giải trong tài liệu, BẮT BUỘC phải lấy dữ liệu đó. Tuyệt đối không được tự ý giải lại nếu tài liệu đã có đáp án.
-- CHỈ KHI KHÔNG CÓ ĐÁP ÁN: Nếu tài liệu hoàn toàn không đề cập đến đáp án hay hướng dẫn giải, bạn mới được thực hiện giải toán và cung cấp lời giải của riêng mình.
-- LaTeX: Mọi công thức, ký hiệu toán học phải bọc trong $...$. BẮT BUỘC giữ nguyên dấu $ trong cả nội dung câu hỏi và CÁC PHƯƠNG ÁN LỰA CHỌN (Options).
-- LÀM SẠCH: Xóa bỏ các nhãn "A.", "B.", "a)", "b)" ở đầu nội dung phương án/ý hỏi nhưng KHÔNG ĐƯỢC xóa dấu $ của công thức.
+QUY TẮC TRÍCH XUẤT (CỰC KỲ QUAN TRỌNG):
+1. PHÂN TÍCH ĐÁP ÁN: Quét toàn bộ nội dung để tìm bảng đáp án (thường ở cuối).
+2. MCQ (Trắc nghiệm 4 lựa chọn):
+   - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B...).
+   - Nếu tài liệu chỉ ghi "1.A", hãy lấy nội dung của phương án A gán vào 'correctAnswer'.
+3. GROUP-TF (Đúng/Sai):
+   - 'subQuestions': Phải có đủ 4 ý.
+   - 'solution': BẮT BUỘC giải thích chi tiết cho cả 4 ý theo mẫu:
+     a) [Đúng/Sai] : Vì [Giải thích]
+     b) [Đúng/Sai] : Vì [Giải thích]
+     c) [Đúng/Sai] : Vì [Giải thích]
+     d) [Đúng/Sai] : Vì [Giải thích]
+4. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
+5. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)" ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
 
-QUY TẮC RIÊNG CHO TỪNG LOẠI CÂU HỎI:
-- MCQ: BẮT BUỘC phải có 'correctAnswer'. Nếu tài liệu không đánh dấu trực tiếp (như dấu sao *), hãy dựa vào 'solution' hoặc nội dung câu hỏi để xác định đáp án đúng và điền vào 'correctAnswer'.
-- GROUP-TF: BẮT BUỘC phải có 'solution' chi tiết cho từng ý a, b, c, d. Lời giải phải trình bày theo định dạng sau:
-  a) [Đúng/Sai] : Vì [Giải thích chi tiết]
-  b) [Đúng/Sai] : Vì [Giải thích chi tiết]
-  c) [Đúng/Sai] : Vì [Giải thích chi tiết]
-  d) [Đúng/Sai] : Vì [Giải thích chi tiết]
-- SHORT: 'correctAnswer' phải là con số cụ thể.`;
+VÍ DỤ CẤU TRÚC GROUP-TF:
+{
+  "type": "group-tf",
+  "text": "Cho hàm số $y=f(x)$...",
+  "subQuestions": [
+    {"text": "Hàm số đồng biến trên...", "correctAnswer": "True"},
+    {"text": "Hàm số có cực đại tại...", "correctAnswer": "False"}
+  ],
+  "solution": "a) Đúng : Vì đạo hàm $f'(x) > 0$...\\nb) Sai : Vì tại $x=1$ là điểm cực tiểu..."
+}`;
 
 const processAIQuestions = (rawData: any[]): Question[] => {
     return rawData.map((item: any) => {
@@ -47,24 +54,36 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         let finalCorrectAnswer = item.correctAnswer;
 
         if (item.type === 'mcq' && item.correctAnswer && item.options) {
-            const label = item.correctAnswer.trim().toUpperCase().replace(/[\.\)\:\s]/g, "");
-            // Nếu AI trả về nhãn (A, B, C, D) thay vì nội dung đầy đủ
-            if (label.length === 1 && /^[A-D]$/.test(label)) {
+            let ansText = item.correctAnswer.trim();
+            
+            // Tìm nhãn A, B, C, D trong chuỗi đáp án
+            const matchLabel = ansText.match(/(?:Đáp án|Chọn|Câu\s*\d+[:\s]*|^)\s*([A-D])(?:\.|\s|$)/i);
+            
+            if (matchLabel) {
+                const label = matchLabel[1].toUpperCase();
                 const index = label.charCodeAt(0) - 65;
                 if (item.options[index]) {
                     finalCorrectAnswer = stripOptionLabel(item.options[index]);
                 }
             } else {
-                finalCorrectAnswer = stripOptionLabel(item.correctAnswer);
+                finalCorrectAnswer = stripOptionLabel(ansText);
             }
         }
 
         // Đảm bảo correctAnswer của MCQ luôn khớp với một trong các options sau khi đã strip
         if (item.type === 'mcq' && strippedOptions && finalCorrectAnswer) {
             const cleanAns = stripOptionLabel(finalCorrectAnswer);
-            const match = strippedOptions.find((opt: string) => stripOptionLabel(opt) === cleanAns);
-            if (match) {
-                finalCorrectAnswer = match;
+            // Ưu tiên khớp chính xác
+            const exactMatch = strippedOptions.find((opt: string) => stripOptionLabel(opt) === cleanAns);
+            if (exactMatch) {
+                finalCorrectAnswer = exactMatch;
+            } else {
+                // Khớp mờ nếu không tìm thấy chính xác
+                const fuzzyMatch = strippedOptions.find((opt: string) => {
+                    const cleanOpt = stripOptionLabel(opt);
+                    return cleanOpt.includes(cleanAns) || cleanAns.includes(cleanOpt);
+                });
+                if (fuzzyMatch) finalCorrectAnswer = fuzzyMatch;
             }
         }
 
@@ -78,7 +97,7 @@ const processAIQuestions = (rawData: any[]): Question[] => {
                 ...sq, 
                 id: uuidv4(),
                 text: stripOptionLabel(sq.text),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true') ? 'True' : 'False'
+                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true' || sq.correctAnswer === '1') ? 'True' : 'False'
             })) : undefined
         };
     });
@@ -96,12 +115,14 @@ Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf
 QUY TẮC BẮT BUỘC:
 1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. Quy tắc này áp dụng cho cả nội dung câu hỏi, LỜI GIẢI và CÁC PHƯƠNG ÁN (Options).
 2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức trong $...$.
-3. MCQ: Phải xác định rõ 'correctAnswer' và điền vào.
-4. GROUP-TF: 'solution' phải giải thích chi tiết cho từng ý a, b, c, d theo định dạng:
-   a) [Đúng/Sai] : Vì [Giải thích]
-   b) [Đúng/Sai] : Vì [Giải thích]
-   c) [Đúng/Sai] : Vì [Giải thích]
-   d) [Đúng/Sai] : Vì [Giải thích]
+3. MCQ: Phải xác định rõ 'correctAnswer' (A, B, C hoặc D) và điền nội dung tương ứng vào 'correctAnswer'.
+4. GROUP-TF: 
+   - 'subQuestions' phải có 4 ý.
+   - 'solution' phải giải thích chi tiết cho từng ý a, b, c, d theo định dạng:
+     a) [Đúng/Sai] : Vì [Giải thích]
+     b) [Đúng/Sai] : Vì [Giải thích]
+     c) [Đúng/Sai] : Vì [Giải thích]
+     d) [Đúng/Sai] : Vì [Giải thích]
 5. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B." vào nội dung phương án.
 6. Cấu trúc JSON phải chuẩn xác theo schema.`;
 
@@ -174,7 +195,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                     points: { type: Type.NUMBER },
                     options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                     correctAnswer: { type: Type.STRING, nullable: true },
-                    solution: { type: Type.STRING, nullable: true },
+                    solution: { type: Type.STRING },
                     subQuestions: {
                         type: Type.ARRAY,
                         nullable: true,
@@ -188,7 +209,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                         }
                     }
                 },
-                required: ["type", "text"]
+                required: ["type", "text", "solution"]
             }
         }
       }
@@ -222,7 +243,7 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
                             points: { type: Type.NUMBER },
                             options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             correctAnswer: { type: Type.STRING, nullable: true },
-                            solution: { type: Type.STRING, nullable: true },
+                            solution: { type: Type.STRING },
                             subQuestions: {
                                 type: Type.ARRAY,
                                 nullable: true,
@@ -236,7 +257,7 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
                                 }
                             }
                         },
-                        required: ["type", "text"]
+                        required: ["type", "text", "solution"]
                     }
                 }
             }
