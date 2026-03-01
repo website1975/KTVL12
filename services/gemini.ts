@@ -26,37 +26,31 @@ QUY TẮC TRÍCH XUẤT (CỰC KỲ QUAN TRỌNG):
 1. PHÂN TÍCH ĐÁP ÁN: Quét toàn bộ nội dung để tìm bảng đáp án (thường ở cuối).
 2. MCQ (Trắc nghiệm 4 lựa chọn):
    - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B...).
-   - Nếu tài liệu chỉ ghi "1.A", hãy lấy nội dung của phương án A gán vào 'correctAnswer'.
+   - LaTeX: Mọi phương án nếu chứa ký hiệu toán học BẮT BUỘC phải bọc trong $...$. (VD: "$x^2$").
 3. GROUP-TF (Đúng/Sai):
    - 'subQuestions': Phải có đủ 4 ý.
-   - 'solution': BẮT BUỘC giải thích chi tiết cho cả 4 ý theo mẫu:
-     a) [Đúng/Sai] : Vì [Giải thích]
-     b) [Đúng/Sai] : Vì [Giải thích]
-     c) [Đúng/Sai] : Vì [Giải thích]
-     d) [Đúng/Sai] : Vì [Giải thích]
-4. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
-5. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)" ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
+   - 'solution': BẮT BUỘC giải thích chi tiết cho cả 4 ý theo mẫu: a) Đúng... b) Sai...
+4. SHORT (Trả lời ngắn):
+   - 'type': BẮT BUỘC là "short".
+   - 'correctAnswer': BẮT BUỘC là giá trị số (VD: "12", "0.5").
+   - 'options': Để null hoặc [].
+5. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
+6. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)" ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
 
-VÍ DỤ CẤU TRÚC GROUP-TF:
-{
-  "type": "group-tf",
-  "text": "Cho hàm số $y=f(x)$...",
-  "subQuestions": [
-    {"text": "Hàm số đồng biến trên...", "correctAnswer": "True"},
-    {"text": "Hàm số có cực đại tại...", "correctAnswer": "False"}
-  ],
-  "solution": "a) Đúng : Vì đạo hàm $f'(x) > 0$...\\nb) Sai : Vì tại $x=1$ là điểm cực tiểu..."
-}`;
+VÍ DỤ CẤU TRÚC:
+- MCQ: {"type": "mcq", "text": "Câu 1...", "options": ["$1$", "$2$", "$3$", "$4$"], "correctAnswer": "$1$", "solution": "..."}
+- GROUP-TF: {"type": "group-tf", "text": "Câu 2...", "subQuestions": [{"text": "...", "correctAnswer": "True"}, ...], "solution": "a) Đúng... b) Sai..."}
+- SHORT: {"type": "short", "text": "Câu 3...", "correctAnswer": "12.5", "solution": "..."}
+`;
 
 const processAIQuestions = (rawData: any[]): Question[] => {
     return rawData.map((item: any) => {
-        const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : undefined;
+        const type = item.type?.toLowerCase() || 'mcq';
+        const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : (type === 'mcq' ? [] : undefined);
         let finalCorrectAnswer = item.correctAnswer;
 
-        if (item.type === 'mcq' && item.correctAnswer && item.options) {
+        if (type === 'mcq' && item.correctAnswer && item.options) {
             let ansText = item.correctAnswer.trim();
-            
-            // Tìm nhãn A, B, C, D trong chuỗi đáp án
             const matchLabel = ansText.match(/(?:Đáp án|Chọn|Câu\s*\d+[:\s]*|^)\s*([A-D])(?:\.|\s|$)/i);
             
             if (matchLabel) {
@@ -71,14 +65,12 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         }
 
         // Đảm bảo correctAnswer của MCQ luôn khớp với một trong các options sau khi đã strip
-        if (item.type === 'mcq' && strippedOptions && finalCorrectAnswer) {
+        if (type === 'mcq' && strippedOptions && finalCorrectAnswer) {
             const cleanAns = stripOptionLabel(finalCorrectAnswer);
-            // Ưu tiên khớp chính xác
             const exactMatch = strippedOptions.find((opt: string) => stripOptionLabel(opt) === cleanAns);
             if (exactMatch) {
                 finalCorrectAnswer = exactMatch;
             } else {
-                // Khớp mờ nếu không tìm thấy chính xác
                 const fuzzyMatch = strippedOptions.find((opt: string) => {
                     const cleanOpt = stripOptionLabel(opt);
                     return cleanOpt.includes(cleanAns) || cleanAns.includes(cleanOpt);
@@ -87,10 +79,15 @@ const processAIQuestions = (rawData: any[]): Question[] => {
             }
         }
 
+        if (type === 'short') {
+            finalCorrectAnswer = item.correctAnswer?.toString().trim() || "";
+        }
+
         return {
             ...item,
+            type,
             id: uuidv4(),
-            points: item.points || (item.type === 'mcq' ? 0.25 : item.type === 'group-tf' ? 1.0 : 0.5),
+            points: item.points || (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5),
             options: strippedOptions,
             correctAnswer: finalCorrectAnswer,
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
