@@ -31,43 +31,58 @@ const handleSupabaseError = (error: any, context: string) => {
 export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let query = supabase.from('results').select('id, quiz_id, student_id, data->studentName, data->studentCode, data->score, data->submittedAt, data->durationSeconds, data->violationCount');
+      let query = supabase.from('results')
+        .select('id, quiz_id, student_id, data')
+        .order('id', { ascending: false }) // Ưu tiên bản ghi mới nhất theo ID
+        .limit(2000); // Lấy tối đa 2000 bản ghi gần nhất
+        
       if (quizId && quizId !== 'all') {
         query = query.eq('quiz_id', quizId);
       }
       const { data, error } = await query;
       if (error) throw error;
       
-      return data ? data.map((row: any) => ({
-          id: row.id,
-          quizId: row.quiz_id,
-          studentId: row.student_id,
-          studentName: row.studentName,
-          studentCode: row.studentCode,
-          score: row.score,
-          submittedAt: row.submittedAt,
-          durationSeconds: row.durationSeconds,
-          violationCount: row.violationCount
-      } as any)).sort((a: any, b: any) => 
-        new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
-      ) : [];
+      return data ? data.map((row: any) => {
+          const res = row.data as Result;
+          return {
+              ...res,
+              id: row.id,
+              quizId: row.quiz_id,
+              studentId: row.student_id
+          };
+      }) : [];
   } catch (e) {
+      console.error("Lỗi getResultsMetadata:", e);
       return [];
   }
 };
 
 export const getResults = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('results').select('data');
+  let query = supabase.from('results')
+    .select('data')
+    .order('id', { ascending: false })
+    .limit(2000);
+    
+  if (quizId && quizId !== 'all') {
+    query = query.eq('quiz_id', quizId);
+  }
+  
+  const { data, error } = await query;
   if (error) return [];
   return data.map((row: any) => row.data as Result);
 };
 
 export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
   if (!supabase) return [];
-  let query = supabase.from('results').select('data');
+  let query = supabase.from('results')
+    .select('data')
+    .order('id', { ascending: false })
+    .limit(500); // Lấy 500 bài gần nhất của học sinh này
+    
   if (studentCode && studentCode !== 'N/A') {
-    query = query.or(`student_id.eq.${studentId},data->>studentCode.eq.${studentCode.toUpperCase()}`);
+    const code = studentCode.trim().toUpperCase();
+    query = query.or(`student_id.eq.${studentId},data->>studentCode.eq.${code}`);
   } else {
     query = query.eq('student_id', studentId);
   }
@@ -172,8 +187,7 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    // THÊM: data->isUnlisted VÀO TRUY VẤN
-    let query = supabase.from('quizzes').select('id, grade, data->title, data->type, data->isPublished, data->isUnlisted, data->orderIndex, data->createdAt, data->category, data->durationMinutes, data->isMonitored, data->questionCount');
+    let query = supabase.from('quizzes').select('id, grade, data');
     if (grade && grade !== 'all') {
         query = query.or(`grade.eq.${grade},grade.eq.all`);
     }
@@ -193,23 +207,18 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
             return { data: counts };
         });
 
-    return quizzesData ? quizzesData.map((row: any) => ({
-        id: row.id,
-        grade: row.grade,
-        title: row.title,
-        type: row.type,
-        isPublished: row.isPublished,
-        isUnlisted: row.isUnlisted || false, 
-        orderIndex: row.orderIndex || 1,
-        createdAt: row.createdAt,
-        category: row.category,
-        durationMinutes: row.durationMinutes,
-        isMonitored: row.isMonitored,
-        questionCount: row.questionCount || 0,
-        attemptCount: countsData ? (countsData[row.id] || 0) : 0,
-        questions: [] 
-    } as any)) : [];
+    return quizzesData ? quizzesData.map((row: any) => {
+        const quiz = row.data as Quiz;
+        return {
+            ...quiz,
+            id: row.id,
+            grade: row.grade,
+            attemptCount: countsData ? (countsData[row.id] || 0) : 0,
+            questions: [] // Không tải câu hỏi để tiết kiệm băng thông
+        };
+    }) : [];
   } catch (e) {
+    console.error("Lỗi getQuizzesMetadata:", e);
     return [];
   }
 };
