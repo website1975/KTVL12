@@ -153,7 +153,11 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             const ans = finalAnswers[q.id];
             const qPoints = parseFloat(String(q.points || 0));
             if (q.type === 'mcq' && ans === q.correctAnswer) score += qPoints;
-            else if (q.type === 'short' && String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase()) score += qPoints;
+            else if (q.type === 'short') {
+                const normalizedAns = String(ans || '').trim().toLowerCase().replace(/,/g, '.');
+                const normalizedCorrect = String(q.correctAnswer || '').trim().toLowerCase().replace(/,/g, '.');
+                if (normalizedAns === normalizedCorrect) score += qPoints;
+            }
             else if (q.type === 'group-tf' && q.subQuestions) {
                 let subCorrect = 0;
                 q.subQuestions.forEach((sq, i) => { if (ans?.[i] === sq.correctAnswer) subCorrect++; });
