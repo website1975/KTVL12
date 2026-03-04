@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Result, Quiz, Grade, Chapter, User as UserType } from '../../types';
-import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter, ShieldAlert, Sparkles, Loader2, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
+import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter, ShieldAlert, Sparkles, Loader2, CheckCircle2, AlertCircle, ChevronDown, RefreshCw } from 'lucide-react';
 import { format, isAfter } from 'date-fns';
 import { updateResultCode, deleteResult } from '../../services/storage';
 
@@ -17,6 +17,7 @@ interface ResultsBoardProps {
     rQuizFilter: string;
     setRQuizFilter: (val: string) => void;
     onClearCache: () => void;
+    onRefresh: () => void;
     onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void;
     onDeleteResult: (history: Result[]) => void;
 }
@@ -26,7 +27,7 @@ const PAGE_SIZE = 20;
 const ResultsBoard: React.FC<ResultsBoardProps> = ({ 
     results, quizzes, users, chapters, rGradeFilter, setRGradeFilter, 
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
-    onClearCache, onViewHistory, onDeleteResult
+    onClearCache, onRefresh, onViewHistory, onDeleteResult
 }) => {
     const [isFixing, setIsFixing] = useState(false);
     const [fixReport, setFixReport] = useState<{updated: number, deleted: number} | null>(null);
@@ -34,7 +35,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
 
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
-    }, [rGradeFilter, rChapterFilter, rQuizFilter]);
+    }, [rGradeFilter, rChapterFilter, rQuizFilter, results]);
 
     const getEffectiveStudentCode = (res: Result) => {
         if (res.studentCode && res.studentCode !== 'N/A') return res.studentCode;
@@ -73,6 +74,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
     const groupedResults = React.useMemo(() => {
         const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
+            // Nếu không tìm thấy quiz (đề đã bị xóa), nhưng filter là 'all' thì vẫn cho qua để hiện "Đề đã xóa"
             const matchGrade = rGradeFilter === 'all' || (quiz && quiz.grade === rGradeFilter);
             const matchChapter = rChapterFilter === 'all' || (quiz && quiz.category === rChapterFilter);
             const matchQuiz = rQuizFilter === 'all' || r.quizId === rQuizFilter;
@@ -92,7 +94,12 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                 }
             }
         });
-        return Object.values(groups).sort((a, b) => isAfter(new Date(b.latest.submittedAt), new Date(a.latest.submittedAt)) ? 1 : -1);
+        
+        const sortedGroups = Object.values(groups).sort((a, b) => 
+            new Date(b.latest.submittedAt).getTime() - new Date(a.latest.submittedAt).getTime()
+        );
+
+        return sortedGroups;
     }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
 
     const visibleGroupedResults = groupedResults.slice(0, visibleCount);
@@ -130,15 +137,28 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg"><BarChart3 size={20}/></div>
-                        <h3 className="text-xl font-black uppercase tracking-tight">Bảng điểm tổng hợp</h3>
+                        <div>
+                            <h3 className="text-xl font-black uppercase tracking-tight">Bảng điểm tổng hợp</h3>
+                            <div className="flex gap-4 mt-1">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Cloud: {results.length} bản ghi</span>
+                                <span className="text-[9px] font-black text-blue-500 uppercase">Hiển thị: {groupedResults.length} dòng</span>
+                            </div>
+                        </div>
                     </div>
-                    <button onClick={onClearCache} className="flex items-center gap-2 px-5 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase"><Eraser size={14}/> Reset Cache</button>
+                    <div className="flex gap-3">
+                        <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
+                            <RefreshCw size={14}/> Làm mới Cloud
+                        </button>
+                        <button onClick={onClearCache} className="flex items-center gap-2 px-5 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase">
+                            <Eraser size={14}/> Xóa sạch Cache
+                        </button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><Filter size={10}/> Khối lớp</label>
                         <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none focus:border-blue-400" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}>
-                            <option value="all">Tất cả Khối (Hiển thị chậm)</option>
+                            <option value="all">Tất cả Khối</option>
                             <option value="12">Khối 12</option>
                             <option value="11">Khối 11</option>
                             <option value="10">Khối 10</option>
