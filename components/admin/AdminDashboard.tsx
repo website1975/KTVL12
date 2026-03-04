@@ -66,21 +66,21 @@ const AdminDashboard: React.FC = () => {
         const [u, r, q] = await Promise.all([
           getUsers(), 
           getResultsMetadata(),
-          quizzes.length === 0 ? getQuizzesMetadata() : Promise.resolve(quizzes)
+          getQuizzesMetadata()
         ]);
         
         setStudents(u.filter(user => user.role === 'student'));
         setResults(r);
-        if (quizzes.length === 0) setQuizzes(q);
+        setQuizzes(q);
       } else if (tab === 'results') {
         const [r, q, u] = await Promise.all([
           getResultsMetadata(),
-          quizzes.length === 0 ? getQuizzesMetadata() : Promise.resolve(quizzes),
-          students.length === 0 ? getUsers() : Promise.resolve(students)
+          getQuizzesMetadata(),
+          getUsers()
         ]);
         setResults(r);
-        if (quizzes.length === 0) setQuizzes(q);
-        if (students.length === 0) setStudents(u.filter(user => user.role === 'student'));
+        setQuizzes(q);
+        setStudents(u.filter(user => user.role === 'student'));
       } else if (tab === 'bank') {
         const b = await getBankQuestions();
         setBankQuestions(b);
@@ -93,7 +93,7 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setIsDataLoading(false);
     }
-  }, [quizzes.length, students.length]);
+  }, []);
 
   useEffect(() => {
     loadTabData(activeTab);
@@ -549,6 +549,7 @@ const AdminDashboard: React.FC = () => {
                     <StudentManager 
                         students={students} results={results} quizzes={quizzes}
                         sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
+                        onRefresh={() => loadTabData('students')}
                         onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
                         onImportCsv={() => {}} onViewDetail={setViewingStudent}
                         onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
