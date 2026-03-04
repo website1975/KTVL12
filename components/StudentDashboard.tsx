@@ -9,6 +9,7 @@ import QuizPreviewModal from './admin/QuizPreviewModal';
 import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes } from 'date-fns';
 import LatexText from './LatexText';
+import { Lock } from 'lucide-react';
 
 interface StudentDashboardProps {
   user: User;
@@ -133,6 +134,31 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
 
   const now = new Date();
   const practiceQuizzes = quizzes.filter(q => q.type === 'practice' && (!q.endTime || isBefore(now, new Date(q.endTime))));
+  
+  // Logic kiểm tra lộ trình học tập (Prerequisite Path)
+  const getQuizStatus = (q: Quiz) => {
+    const qOrder = q.orderIndex ?? 1;
+    if (!q.category || qOrder <= 1) return { isLocked: false };
+    
+    // Tìm các đề trong cùng chương có thứ tự nhỏ hơn
+    const prerequisites = quizzes
+        .filter(prev => prev.category === q.category && (prev.orderIndex ?? 0) < qOrder)
+        .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0)); // Lấy đề ngay trước đó
+    
+    if (prerequisites.length === 0) return { isLocked: false };
+    
+    const prevQuiz = prerequisites[0];
+    const bestScore = results
+        .filter(r => r.quizId === prevQuiz.id)
+        .reduce((max, r) => Math.max(max, r.score), 0);
+    
+    if (bestScore < 5) {
+        return { isLocked: true, reason: `Cần đạt >= 5 điểm ở đề "${prevQuiz.title}"` };
+    }
+    
+    return { isLocked: false };
+  };
+
   const testQuizzes = quizzes.filter(q => q.type === 'test');
 
   return (
@@ -267,7 +293,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                   <div className="h-px flex-1 bg-slate-100"></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {practiceQuizzes.map(q => {
+                {practiceQuizzes.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).map(q => {
+                    const status = getQuizStatus(q);
                     const qStats = (qid: string) => {
                       const attempts = results.filter(r => r.quizId === qid);
                       if (attempts.length === 0) return null;
@@ -275,20 +302,33 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                     };
                     const qs = qStats(q.id);
                     return (
-                      <div key={q.id} className="bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col hover:shadow-2xl hover:-translate-y-2 transition-all group border-b-8 border-b-slate-50 hover:border-b-blue-600">
+                      <div key={q.id} className={`bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col transition-all border-b-8 ${status.isLocked ? 'opacity-75 grayscale' : 'hover:shadow-2xl hover:-translate-y-2 group hover:border-b-blue-600'}`}>
                         <div className="flex justify-between items-start mb-6">
                           <div className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl font-black text-[10px] uppercase">{q.questions.length} câu</div>
                           <span className="text-[10px] font-black text-slate-300 uppercase">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
                         </div>
-                        <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 uppercase">{q.title}</h3>
-                        <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
-                            <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Đã làm</p><p className="text-sm font-black text-slate-700">{qs?.count || 0} lần</p></div>
-                            <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 mt-auto">
-                          <button onClick={() => setActivePracticeQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
-                          <button onClick={() => setActiveQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
-                        </div>
+                        <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 uppercase flex items-center gap-2">
+                            {status.isLocked && <Lock size={16} className="text-slate-400 shrink-0"/>}
+                            {q.title}
+                        </h3>
+                        
+                        {status.isLocked ? (
+                            <div className="mt-auto bg-slate-100 p-4 rounded-2xl border-2 border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Trạng thái: Đang khóa</p>
+                                <p className="text-[10px] font-bold text-slate-600 leading-tight">{status.reason}</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
+                                    <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Đã làm</p><p className="text-sm font-black text-slate-700">{qs?.count || 0} lần</p></div>
+                                    <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mt-auto">
+                                  <button onClick={() => setActivePracticeQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
+                                  <button onClick={() => setActiveQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
+                                </div>
+                            </>
+                        )}
                       </div>
                     );
                 })}
