@@ -58,7 +58,8 @@ export interface Quiz {
   createdAt: string;
   isPublished: boolean;
   isMonitored?: boolean;
-  isUnlisted?: boolean; // Thuộc tính mới cho đề thi ẩn
+  isUnlisted?: boolean; 
+  orderIndex?: number; // Thứ tự trong chương
 }
 
 export interface Result {
