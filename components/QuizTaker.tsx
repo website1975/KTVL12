@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession, verifyResultExists } from '../services/storage';
@@ -18,7 +19,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
     const initialStartTimeRef = useRef(new Date().toISOString());
     const isInternalActionRef = useRef(false);
     
-    // Fix: Defined orderedQuestions using useMemo to resolve the reference error on line 308
     const orderedQuestions = useMemo(() => {
         const mcq = quiz.questions.filter(q => q.type === 'mcq');
         const tf = quiz.questions.filter(q => q.type === 'group-tf');
@@ -164,6 +164,10 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             }
         });
 
+        // CHỐT ĐIỂM THƯỞNG NGAY TẠI ĐÂY
+        // Nếu đạt từ 8 điểm trở lên -> Lưu vết 1 điểm thưởng vĩnh viễn (áp dụng cho cả luyện tập và kiểm tra)
+        const bonusPoint = (score >= 8) ? 1 : 0;
+
         const result: Result = {
             id: uuidv4(),
             quizId: quiz.id,
@@ -174,25 +178,22 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             totalQuestions: quiz.questions.length,
             submittedAt: new Date().toISOString(),
             durationSeconds: finalSpent,
+            bonusPoint: bonusPoint, // LƯU VẾT VÀO DATABASE
             pointsAwarded: Number(score.toFixed(2)),
             userAnswers: finalAnswers,
             violationCount: finalViolations
         };
 
         try {
-            // Bước 1: Lưu vào DB
             await saveResult(result);
-            
-            // Bước 2: Xác minh xem DB đã thực sự nhận chưa
             setSubmitStatus('verifying');
-            await new Promise(r => setTimeout(r, 1500)); // Đợi DB đồng bộ
+            await new Promise(r => setTimeout(r, 1500)); 
             const exists = await verifyResultExists(result.id);
             
             if (!exists) {
                 throw new Error("Database báo lưu thành công nhưng không tìm thấy dữ liệu. Vui lòng nộp lại.");
             }
 
-            // Bước 3: Hoàn tất
             await addPointsToUser(student.id, score);
             await deleteExamSession(sessionIdRef.current); 
             localStorage.removeItem(backupKey);
@@ -251,7 +252,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
         <div className="min-h-screen bg-[#f8fafc] flex flex-col">
             {(submitStatus !== 'idle' && submitStatus !== 'done') && (
                 <div className="fixed inset-0 z-[3000] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6 animate-fade-in">
-                    <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center space-y-8 shadow-2xl">
+                    <div className="bg-white rounded-[3rem] p-12 max-sm w-full text-center space-y-8 shadow-2xl">
                         {submitStatus === 'queuing' && (
                             <div className="space-y-4">
                                 <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto animate-pulse"><Clock size={40}/></div>
