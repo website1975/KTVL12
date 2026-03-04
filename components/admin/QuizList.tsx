@@ -88,19 +88,44 @@ const QuizList: React.FC<QuizListProps> = ({
                     const count = (q as any).questionCount || 0;
                     const attempts = (q as any).attemptCount || 0;
                     
+                    const now = new Date();
+                    const isStarted = !q.startTime || new Date(q.startTime) <= now;
+                    const isExpired = q.endTime && new Date(q.endTime) < now;
+                    const isActive = isStarted && !isExpired;
+                    
+                    let cardStyle = "";
+                    if (!q.isPublished) {
+                        cardStyle = "bg-slate-50 border-dashed border-slate-300 opacity-75";
+                    } else if (isExpired) {
+                        cardStyle = "bg-amber-50/50 border-b-amber-500 border-amber-200 shadow-sm";
+                    } else if (q.isUnlisted) {
+                        cardStyle = "bg-indigo-50/30 border-b-indigo-500 border-indigo-100 shadow-sm";
+                    } else {
+                        cardStyle = "bg-white shadow-sm border-b-blue-600 border-slate-100";
+                    }
+
                     return (
                         <div 
                             key={q.id} 
-                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${q.isPublished 
-                                ? (q.isUnlisted ? 'bg-indigo-50/30 border-b-indigo-500 border-indigo-100 shadow-sm' : 'bg-white shadow-sm border-b-blue-600 border-slate-100') 
-                                : 'bg-slate-50 border-dashed border-slate-300 opacity-75'}`}
+                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${cardStyle}`}
                         >
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600') : 'bg-slate-200 text-slate-500'}`}>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? (isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600')) : 'bg-slate-200 text-slate-500'}`}>
                                             KHỐI {q.grade}
                                         </span>
+                                        {q.isPublished && (
+                                            isExpired ? (
+                                                <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                                    HẾT HẠN
+                                                </span>
+                                            ) : (
+                                                <span className={`px-2 py-1 bg-white border ${isActive ? 'border-emerald-200 text-emerald-600' : 'border-amber-200 text-amber-600'} rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm`}>
+                                                    {isActive ? 'ĐANG MỞ' : 'CHƯA ĐẾN GIỜ'}
+                                                </span>
+                                            )
+                                        )}
                                         {q.isPublished && q.isUnlisted && (
                                             <span className="px-2 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
                                                 <EyeOff size={10}/> RIÊNG TƯ
