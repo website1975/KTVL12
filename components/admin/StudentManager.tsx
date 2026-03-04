@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Grade, Result, Quiz } from '../../types';
-import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown } from 'lucide-react';
+import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw } from 'lucide-react';
 
 interface StudentManagerProps {
     students: User[];
@@ -12,6 +12,7 @@ interface StudentManagerProps {
     sGradeFilter: Grade | 'all';
     setSGradeFilter: (val: Grade | 'all') => void;
     onAdd: () => void;
+    onRefresh: () => void;
     onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onViewDetail: (user: User) => void;
     onEdit: (user: User) => void;
@@ -23,11 +24,10 @@ const PAGE_SIZE = 20;
 
 const StudentManager: React.FC<StudentManagerProps> = ({ 
     students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
-    onAdd, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword 
+    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword 
 }) => {
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-    // Reset phân trang khi thay đổi bộ lọc
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
     }, [sSearch, sGradeFilter]);
@@ -55,13 +55,16 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                 
                 <div className="flex flex-col gap-2 w-full lg:w-auto">
                     <div className="flex gap-3">
+                        <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
+                            <RefreshCw size={14}/> Làm mới Cloud
+                        </button>
                         <select className="px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
                             <option value="all">TẤT CẢ KHỐI</option>
                             <option value="12">KHỐI 12</option>
                             <option value="11">KHỐI 11</option>
                             <option value="10">KHỐI 10</option>
                         </select>
-                        <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all" title="Cấu trúc CSV: [0: MAHS], [1: Họ và tên], [2: Khối], [3: Mật khẩu]">
+                        <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all">
                             <FileSpreadsheet size={16}/> NHẬP CSV
                             <input type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
                         </label>
@@ -76,7 +79,7 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                 <table className="w-full text-left">
                     <thead>
                         <tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400">
-                            <th className="p-6">Học sinh</th>
+                            <th className="p-6">Học sinh (Cloud ID)</th>
                             <th className="p-6 text-center">Mã số (MAHS)</th>
                             <th className="p-6 text-center">Khối</th>
                             <th className="p-6 text-center">Điểm tích lũy</th>
@@ -88,34 +91,35 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         {visibleStudents.map(u => {
                             const userResults = results.filter(r => 
                                 r.studentId === u.id || 
-                                (u.studentCode && r.studentCode === u.studentCode.toUpperCase())
+                                (u.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === u.studentCode.trim().toUpperCase())
                             );
                             
                             const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
                             const timePoints = totalSeconds / 2700;
 
-                            const testBestScores: Record<string, number> = {};
-                            userResults.forEach(r => {
-                                const quiz = quizzes.find(q => q.id === r.quizId);
-                                if (quiz && quiz.type === 'test') {
-                                    if (!testBestScores[r.quizId] || r.score > testBestScores[r.quizId]) {
-                                        testBestScores[r.quizId] = r.score;
-                                    }
+                            const bonusPoints = userResults.reduce((acc, r) => {
+                                const bp = (r as any).bonusPoint;
+                                if (bp !== undefined && bp !== null) {
+                                    return acc + Number(bp);
                                 }
-                            });
+                                if (r.score >= 8) return acc + 1;
+                                return acc;
+                            }, 0);
                             
-                            let bonusPoints = 0;
-                            Object.values(testBestScores).forEach(score => {
-                                if (score >= 8) bonusPoints += 1;
-                            });
-
                             const totalAccumulated = timePoints + bonusPoints;
 
                             return (
                                 <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
                                     <td className="p-6">
-                                        <p className="font-black text-slate-800 uppercase text-sm leading-tight">{u.fullName}</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">User: {u.username}</p>
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg" title="Đã đồng bộ Cloud">
+                                                <Database size={14}/>
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-slate-800 uppercase text-sm leading-tight">{u.fullName}</p>
+                                                <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-0.5 italic">Học sinh hệ thống</p>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td className="p-6 text-center">
                                         <span className="font-black uppercase text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 text-xs">{u.studentCode || 'N/A'}</span>
@@ -158,11 +162,6 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         >
                             <ChevronDown size={14}/> Xem thêm học sinh (Còn {filtered.length - visibleCount})
                         </button>
-                    </div>
-                )}
-                {filtered.length === 0 && (
-                    <div className="p-20 text-center text-slate-300 font-black uppercase text-xs tracking-widest italic">
-                        Không tìm thấy học sinh nào phù hợp
                     </div>
                 )}
             </div>
