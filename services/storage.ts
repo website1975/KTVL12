@@ -31,18 +31,38 @@ const handleSupabaseError = (error: any, context: string) => {
 export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let query = supabase.from('results')
-        .select('id, quiz_id, student_id, data')
-        .order('id', { ascending: false }) // Ưu tiên bản ghi mới nhất theo ID
-        .limit(2000); // Lấy tối đa 2000 bản ghi gần nhất
-        
-      if (quizId && quizId !== 'all') {
-        query = query.eq('quiz_id', quizId);
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+          let query = supabase.from('results')
+            .select('id, quiz_id, student_id, data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+          if (quizId && quizId !== 'all') {
+            query = query.eq('quiz_id', quizId);
+          }
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+              allData = [...allData, ...data];
+              from += step;
+              // Nếu lấy được ít hơn step nghĩa là đã hết dữ liệu
+              if (data.length < step) hasMore = false;
+              // Giới hạn an toàn để tránh vòng lặp vô tận nếu có lỗi, 
+              // 10.000 bản ghi là ngưỡng hợp lý cho ứng dụng hiện tại
+              if (from >= 10000) hasMore = false; 
+          } else {
+              hasMore = false;
+          }
       }
-      const { data, error } = await query;
-      if (error) throw error;
       
-      return data ? data.map((row: any) => {
+      return allData.map((row: any) => {
           const res = row.data as Result;
           return {
               ...res,
@@ -50,7 +70,7 @@ export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => 
               quizId: row.quiz_id,
               studentId: row.student_id
           };
-      }) : [];
+      });
   } catch (e) {
       console.error("Lỗi getResultsMetadata:", e);
       return [];
