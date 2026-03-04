@@ -109,6 +109,7 @@ const AdminDashboard: React.FC = () => {
   const [isMonitored, setIsMonitored] = useState(false);
   const [isUnlisted, setIsUnlisted] = useState(false);
   const [duration, setDuration] = useState(45);
+  const [orderIndex, setOrderIndex] = useState(1);
   const [category, setCategory] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -147,7 +148,7 @@ const AdminDashboard: React.FC = () => {
   // Quiz Handlers
   const handleCreateQuiz = () => {
     setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
-    setIsPublished(false); setIsMonitored(false); setIsUnlisted(false); setDuration(45); setCategory('');
+    setIsPublished(false); setIsMonitored(false); setIsUnlisted(false); setDuration(45); setOrderIndex(1); setCategory('');
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
     setActiveTab('quizzes');
   };
@@ -160,7 +161,7 @@ const AdminDashboard: React.FC = () => {
             setEditingQuizId(fullQuiz.id); setQuizTitle(fullQuiz.title); setQuizGrade(fullQuiz.grade);
             setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
             setIsUnlisted(fullQuiz.isUnlisted || false);
-            setDuration(fullQuiz.durationMinutes); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
+            setDuration(fullQuiz.durationMinutes); setOrderIndex(fullQuiz.orderIndex || 1); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
             setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
             setActiveTab('quizzes');
         }
@@ -264,7 +265,7 @@ const AdminDashboard: React.FC = () => {
     setIsSavingInProgress(true);
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
-      isPublished, isMonitored, isUnlisted, durationMinutes: duration, category, startTime, endTime,
+      isPublished, isMonitored, isUnlisted, durationMinutes: duration, orderIndex, category, startTime, endTime,
       questions, createdAt: new Date().toISOString(), description: ''
     };
     
@@ -482,6 +483,7 @@ const AdminDashboard: React.FC = () => {
                     isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
                     isUnlisted={isUnlisted} setIsUnlisted={setIsUnlisted}
                     duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
+                    orderIndex={orderIndex} setOrderIndex={setOrderIndex}
                     startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
                     questions={questions} setQuestions={setQuestions} chapters={chapters} onSave={handleSaveQuiz}
                     onCleanLabels={handleCleanLabels}
@@ -567,6 +569,7 @@ const AdminDashboard: React.FC = () => {
                         rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter}
                         rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter}
                         rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter}
+                        onRefresh={() => loadTabData('results')}
                         onClearCache={clearLocalCache}
                         onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
                         onDeleteResult={(history) => history.forEach(r => deleteResult(r.id).then(() => loadTabData('results')))}
