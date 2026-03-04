@@ -214,18 +214,33 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
     const { data: quizzesData, error: qError } = await query;
     if (qError) throw qError;
     
-    const { data: countsData } = await supabase
-        .from('results')
-        .select('quiz_id')
-        .then((res: any) => {
-            const counts: Record<string, number> = {};
-            if (res.data) {
-                res.data.forEach((r: any) => {
-                    counts[r.quiz_id] = (counts[r.quiz_id] || 0) + 1;
-                });
-            }
-            return { data: counts };
-        });
+    // Cơ chế quét sạch Cloud để đếm lượt làm bài chính xác (vượt giới hạn 1000)
+    let allQuizIds: any[] = [];
+    let fromCount = 0;
+    const stepCount = 1000;
+    let hasMoreCount = true;
+
+    while (hasMoreCount) {
+        const { data: cData, error: cError } = await supabase
+            .from('results')
+            .select('quiz_id')
+            .range(fromCount, fromCount + stepCount - 1);
+        
+        if (cError) break;
+        if (cData && cData.length > 0) {
+            allQuizIds = [...allQuizIds, ...cData];
+            fromCount += stepCount;
+            if (cData.length < stepCount) hasMoreCount = false;
+            if (fromCount >= 10000) hasMoreCount = false;
+        } else {
+            hasMoreCount = false;
+        }
+    }
+
+    const counts: Record<string, number> = {};
+    allQuizIds.forEach((r: any) => {
+        counts[r.quiz_id] = (counts[r.quiz_id] || 0) + 1;
+    });
 
     return quizzesData ? quizzesData.map((row: any) => {
         const quiz = row.data as Quiz;
@@ -233,7 +248,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
             ...quiz,
             id: row.id,
             grade: row.grade,
-            attemptCount: countsData ? (countsData[row.id] || 0) : 0,
+            attemptCount: counts[row.id] || 0,
             questions: [] // Không tải câu hỏi để tiết kiệm băng thông
         };
     }) : [];
