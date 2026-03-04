@@ -33,6 +33,8 @@ interface QuizEditorProps {
     onSave: () => void;
     onCleanLabels: () => void;
     onOpenBank: (type: QuestionType) => void;
+    orderIndex: number;
+    setOrderIndex: (val: number) => void;
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onTextExtract: (text: string) => void;
     onUploadImage: (qId: string, file: File) => void;
@@ -375,6 +377,10 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                             <option value="practice">Luyện tập (Tự do)</option>
                             <option value="test">Kiểm tra (Hẹn giờ)</option>
                         </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thứ tự luyện (1, 2, 3...)</label>
+                        <input type="number" className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.orderIndex} onChange={e => props.setOrderIndex(parseInt(e.target.value) || 1)} />
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng (phút)</label>
