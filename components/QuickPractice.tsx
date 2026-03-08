@@ -24,7 +24,9 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
     if (currentQuestion.type === 'mcq') {
       return selectedOption === currentQuestion.correctAnswer;
     } else if (currentQuestion.type === 'short') {
-      return String(selectedOption || '').trim().toLowerCase() === String(currentQuestion.correctAnswer || '').trim().toLowerCase();
+      const normalizedAns = String(selectedOption || '').trim().toLowerCase().replace(/,/g, '.');
+      const normalizedCorrect = String(currentQuestion.correctAnswer || '').trim().toLowerCase().replace(/,/g, '.');
+      return normalizedAns === normalizedCorrect;
     } else if (currentQuestion.type === 'group-tf') {
       if (!selectedOption || !currentQuestion.subQuestions) return false;
       return currentQuestion.subQuestions.every((sq, i) => selectedOption[i] === sq.correctAnswer);
