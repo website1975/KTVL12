@@ -257,12 +257,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
 
                           return (
                               <div key={q.id} className={`bg-white rounded-[2.5rem] border p-8 flex flex-col transition-all border-b-8 ${alreadyDone ? 'border-emerald-500' : (isEnded ? 'border-slate-300 opacity-60' : (isStarted ? 'border-red-500 shadow-xl' : 'border-slate-200 opacity-60 grayscale'))}`}>
-                                  <div className="flex justify-between items-start mb-6">
+                                  <div className="flex justify-between items-start mb-4">
                                       <div className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase ${alreadyDone ? 'bg-emerald-50 text-emerald-600' : (isEnded ? 'bg-slate-100 text-slate-400' : (isStarted ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'))}`}>
                                           {alreadyDone ? 'ĐÃ HOÀN THÀNH' : (isEnded ? 'ĐÃ KẾT THÚC' : (isStarted ? 'ĐANG DIỄN RA' : 'CHƯA ĐẾN GIỜ'))}
                                       </div>
                                       <span className="text-[10px] font-black text-slate-300 uppercase">{q.durationMinutes}p</span>
                                   </div>
+                                  {q.category && <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1 italic">{q.category}</p>}
                                   <h3 className="font-black text-slate-800 text-[16px] leading-tight mb-4 uppercase">{q.title}</h3>
                                   <div className="mt-auto">
                                       {alreadyDone ? (
@@ -303,10 +304,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                     const qs = qStats(q.id);
                     return (
                       <div key={q.id} className={`bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col transition-all border-b-8 ${status.isLocked ? 'opacity-75 grayscale' : 'hover:shadow-2xl hover:-translate-y-2 group hover:border-b-blue-600'}`}>
-                        <div className="flex justify-between items-start mb-6">
+                        <div className="flex justify-between items-start mb-4">
                           <div className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl font-black text-[10px] uppercase">{q.questions.length} câu</div>
                           <span className="text-[10px] font-black text-slate-300 uppercase">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
                         </div>
+                        {q.category && <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1 italic">{q.category}</p>}
                         <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 uppercase flex items-center gap-2">
                             {status.isLocked && <Lock size={16} className="text-slate-400 shrink-0"/>}
                             {q.title}
