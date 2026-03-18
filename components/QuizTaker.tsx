@@ -300,23 +300,34 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 </div>
             )}
 
-            <header className="max-w-5xl w-full mx-auto flex justify-between items-center bg-white/90 backdrop-blur-xl p-6 rounded-[2.5rem] border shadow-sm sticky top-6 z-50 mb-10 mt-6 px-10">
-                <div>
-                    <h1 className="font-black text-slate-800 uppercase tracking-tight text-lg">{quiz.title}</h1>
-                    <div className="flex items-center gap-3 mt-1">
-                        <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase">KHỐI {quiz.grade}</span>
-                        {quiz.isMonitored && <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 animate-pulse"><ShieldAlert size={10}/> ĐANG GIÁM SÁT</span>}
+            <header className="max-w-7xl w-full mx-auto flex justify-between items-center bg-white/90 backdrop-blur-xl p-4 rounded-[2rem] border shadow-sm sticky top-4 z-50 mb-8 mt-4 px-8">
+                <div className="flex-1 overflow-hidden">
+                    <h1 className="font-black text-slate-800 uppercase tracking-tight text-base truncate">{quiz.title}</h1>
+                    <div className="flex items-center gap-2 mt-0.5">
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[8px] font-black uppercase">KHỐI {quiz.grade}</span>
+                        {quiz.isMonitored && <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-md text-[8px] font-black uppercase flex items-center gap-1 animate-pulse"><ShieldAlert size={8}/> GIÁM SÁT</span>}
                     </div>
                 </div>
-                <div className="flex items-center gap-8">
-                    <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border shadow-sm transition-all ${timeLeft < 300 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
-                        <Clock size={20} className={timeLeft < 300 ? 'text-red-600' : 'text-blue-600'}/>
+
+                <div className="flex-1 flex justify-center">
+                    <button 
+                        onClick={handleSubmit} 
+                        disabled={isSubmitting} 
+                        className="flex items-center gap-2 px-10 py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-black transition-all active:scale-95 disabled:opacity-50"
+                    >
+                        <Send size={16}/> {isSubmitting ? 'ĐANG NỘP...' : 'Nộp bài thi ngay'}
+                    </button>
+                </div>
+
+                <div className="flex-1 flex justify-end">
+                    <div className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border shadow-sm transition-all ${timeLeft < 300 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+                        <Clock size={18} className={timeLeft < 300 ? 'text-red-600' : 'text-blue-600'}/>
                         <span className={`tabular-nums font-black text-xl ${timeLeft < 300 ? 'text-red-700' : 'text-blue-700'}`}>{formatTime(timeLeft)}</span>
                     </div>
                 </div>
             </header>
 
-            <div className="max-w-5xl w-full mx-auto space-y-12 pb-48 px-4">
+            <div className="max-w-7xl w-full mx-auto space-y-12 pb-20 px-4">
                 {orderedQuestions.map((q, idx) => (
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
                         <div className="flex items-start gap-4 mb-6">
@@ -357,12 +368,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     </div>
                 ))}
             </div>
-
-            <footer className="fixed bottom-0 left-0 right-0 p-8 bg-white/80 backdrop-blur-md border-t flex justify-center z-[60] shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
-                <button onClick={handleSubmit} disabled={isSubmitting} className="group relative flex items-center gap-4 px-24 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black uppercase text-sm shadow-2xl hover:bg-black transition-all overflow-hidden disabled:opacity-50">
-                    <span className="relative z-10 flex items-center gap-4"><Send size={20}/> {isSubmitting ? 'ĐANG NỘP BÀI...' : 'Nộp bài thi ngay'}</span>
-                </button>
-            </footer>
         </div>
     );
 };
