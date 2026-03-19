@@ -45,6 +45,53 @@ const StudentManager: React.FC<StudentManagerProps> = ({
         return h > 0 ? `${h}h ${m}m` : `${m}m`;
     };
 
+    const handleExportCsv = () => {
+        const headers = ['Tên học sinh', 'Mã số (MAHS)', 'Khối', 'Điểm rèn (Tích lũy)', 'Thời gian luyện'];
+        const rows = filtered.map(u => {
+            const userResults = results.filter(r => 
+                r.studentId === u.id || 
+                (u.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === u.studentCode.trim().toUpperCase())
+            );
+            
+            const totalSeconds = userResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
+            const timePoints = totalSeconds / 2700;
+
+            const bonusPoints = userResults.reduce((acc, r) => {
+                const bp = (r as any).bonusPoint;
+                if (bp !== undefined && bp !== null) {
+                    return acc + Number(bp);
+                }
+                if (r.score >= 8) return acc + 1;
+                return acc;
+            }, 0);
+            
+            const totalAccumulated = timePoints + bonusPoints;
+
+            return [
+                u.fullName,
+                u.studentCode || 'N/A',
+                u.grade || '-',
+                totalAccumulated.toFixed(2),
+                formatTime(totalSeconds)
+            ];
+        });
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `ket_qua_ren_luyen_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-6 rounded-[2.5rem] border shadow-sm gap-4">
@@ -64,6 +111,9 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                             <option value="11">KHỐI 11</option>
                             <option value="10">KHỐI 10</option>
                         </select>
+                        <button onClick={handleExportCsv} className="flex items-center gap-2 px-6 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-blue-700 shadow-lg transition-all">
+                            <FileSpreadsheet size={16}/> KẾT QUẢ RÈN
+                        </button>
                         <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all">
                             <FileSpreadsheet size={16}/> NHẬP CSV
                             <input type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
