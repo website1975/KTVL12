@@ -443,6 +443,12 @@ export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> =
     return data ? data.map((row: any) => row.data as ExamSession) : [];
 };
 
+export const getStudentActiveSessions = async (studentId: string): Promise<ExamSession[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('exam_sessions').select('data').filter('data->>studentId', 'eq', studentId);
+    return data ? data.map((row: any) => row.data as ExamSession) : [];
+};
+
 export const clearAllSessions = async () => {
     if (supabase) await supabase.from('exam_sessions').delete().neq('id', 'null');
 };
