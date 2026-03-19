@@ -385,14 +385,87 @@ const AdminDashboard: React.FC = () => {
     alert("Đã dọn dẹp nhãn cho tất cả câu hỏi!");
   };
 
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length <= 1) return alert("File CSV trống hoặc không hợp lệ!");
+
+      const newStudents: User[] = [];
+      const duplicates: string[] = [];
+      const existingCodes = new Set(students.map(s => s.studentCode?.toUpperCase()));
+
+      // Bỏ qua dòng tiêu đề
+      for (let i = 1; i < lines.length; i++) {
+        const [fullName, studentCode, grade, password] = lines[i].split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+        
+        if (!fullName || !studentCode) continue;
+
+        const code = studentCode.toUpperCase();
+        if (existingCodes.has(code)) {
+          duplicates.push(code);
+          continue;
+        }
+
+        newStudents.push({
+          id: uuidv4(),
+          username: code.toLowerCase(),
+          password: password || '123',
+          role: 'student',
+          fullName,
+          studentCode: code,
+          grade: (grade as Grade) || '12',
+          points: 0
+        });
+        existingCodes.add(code);
+      }
+
+      if (duplicates.length > 0) {
+        const proceed = confirm(`CẢNH BÁO: Phát hiện ${duplicates.length} mã học sinh đã tồn tại: ${duplicates.slice(0, 5).join(', ')}${duplicates.length > 5 ? '...' : ''}. Hệ thống sẽ bỏ qua các mã này. Tiếp tục nhập ${newStudents.length} học sinh mới?`);
+        if (!proceed) return;
+      }
+
+      if (newStudents.length === 0) return alert("Không có học sinh mới nào để nhập!");
+
+      setIsDataLoading(true);
+      try {
+        for (const s of newStudents) {
+          await saveUser(s);
+        }
+        alert(`Đã nhập thành công ${newStudents.length} học sinh!`);
+        loadTabData('students');
+      } catch (error) {
+        alert("Lỗi khi nhập danh sách học sinh.");
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
+  };
+
   const handleSaveStudent = async () => {
     if (!studentForm.fullName || !studentForm.studentCode) return alert("Vui lòng điền đủ thông tin!");
+    
+    const code = studentForm.studentCode.trim().toUpperCase();
+    
+    // Kiểm tra trùng mã học sinh (MAHS)
+    const isDuplicate = students.some(s => s.studentCode === code && s.id !== selectedStudent?.id);
+    if (isDuplicate) {
+      return alert(`CẢNH BÁO: Mã học sinh "${code}" đã tồn tại trong hệ thống. Vui lòng kiểm tra lại!`);
+    }
+
     setIsSavingStudent(true);
     try {
       const newUser: User = {
-        id: selectedStudent?.id || uuidv4(), username: studentForm.studentCode.toLowerCase().trim(),
+        id: selectedStudent?.id || uuidv4(), username: code.toLowerCase(),
         password: studentForm.password, role: 'student', fullName: studentForm.fullName,
-        studentCode: studentForm.studentCode.trim().toUpperCase(), grade: studentForm.grade,
+        studentCode: code, grade: studentForm.grade,
         points: selectedStudent?.points || 0
       };
       await saveUser(newUser); setIsStudentModalOpen(false); loadTabData('students');
@@ -551,7 +624,7 @@ const AdminDashboard: React.FC = () => {
                         sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
                         onRefresh={() => loadTabData('students')}
                         onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
-                        onImportCsv={() => {}} onViewDetail={setViewingStudent}
+                        onImportCsv={handleImportCsv} onViewDetail={setViewingStudent}
                         onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
                         onDelete={handleDeleteStudent} onResetPassword={handleResetPassword}
                     />
@@ -611,7 +684,18 @@ const AdminDashboard: React.FC = () => {
       </main>
 
       {/* Modals */}
-      {isStudentModalOpen && <StudentModal isOpen={isStudentModalOpen} student={selectedStudent} form={studentForm} setForm={setStudentForm} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} isSaving={isSavingStudent} />}
+      {isStudentModalOpen && (
+        <StudentModal 
+          isOpen={isStudentModalOpen} 
+          student={selectedStudent} 
+          form={studentForm} 
+          setForm={setStudentForm} 
+          onClose={() => setIsStudentModalOpen(false)} 
+          onSave={handleSaveStudent} 
+          isSaving={isSavingStudent} 
+          isDuplicate={students.some(s => s.studentCode === studentForm.studentCode.trim().toUpperCase() && s.id !== selectedStudent?.id)}
+        />
+      )}
       {viewingStudent && <StudentDetailModal student={viewingStudent} results={results} quizzes={quizzes} onClose={() => setViewingStudent(null)} onViewResult={handleViewResultDetail} />}
       {historyData && <ResultHistoryModal isOpen={true} {...historyData} onClose={() => setHistoryData(null)} onViewDetail={handleViewResultDetail} onDeleteOne={(r) => deleteResult(r.id).then(() => loadTabData('results'))} />}
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
