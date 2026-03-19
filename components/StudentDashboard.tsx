@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
-import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById } from '../services/storage';
+import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap } from 'lucide-react';
-import { format, isBefore, isAfter, addMinutes } from 'date-fns';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap, ShieldAlert } from 'lucide-react';
+import { format, isBefore, isAfter, addMinutes, differenceInMinutes } from 'date-fns';
 import LatexText from './LatexText';
 import { Lock } from 'lucide-react';
 
@@ -26,6 +26,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
   const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
 
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
@@ -56,6 +57,43 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
     }
   }, [user.id, user.studentCode, user.grade]);
 
+  const checkActiveSession = async (quizId: string): Promise<boolean> => {
+    setIsCheckingSession(true);
+    try {
+      const sessions = await getStudentActiveSessions(user.id);
+      // Lọc các phiên còn "sống" (cập nhật trong 10 phút qua)
+      const activeSessions = sessions.filter(s => {
+        const lastUpdate = new Date(s.lastUpdate);
+        return differenceInMinutes(new Date(), lastUpdate) < 10;
+      });
+
+      if (activeSessions.length > 0) {
+        // Nếu có phiên của đề KHÁC
+        const otherQuizSession = activeSessions.find(s => s.quizId !== quizId);
+        if (otherQuizSession) {
+          alert(`CẢNH BÁO: Bạn đang có một bài thi khác đang diễn ra. Hệ thống không cho phép làm nhiều đề cùng lúc để đảm bảo tính công bằng. Vui lòng hoàn thành bài thi hiện tại trước!`);
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.error("Lỗi kiểm tra phiên làm bài:", e);
+      return true; // Cho phép nếu lỗi mạng
+    } finally {
+      setIsCheckingSession(false);
+    }
+  };
+
+  const handleStartQuiz = async (quiz: Quiz) => {
+    const canStart = await checkActiveSession(quiz.id);
+    if (canStart) setActiveQuiz(quiz);
+  };
+
+  const handleStartPractice = async (quiz: Quiz) => {
+    const canStart = await checkActiveSession(quiz.id);
+    if (canStart) setActivePracticeQuiz(quiz);
+  };
+
   // Xử lý tự động mở đề thi từ link ẩn
   useEffect(() => {
     if (targetQuizId) {
@@ -64,10 +102,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
             try {
                 const quiz = await getQuizById(targetQuizId);
                 if (quiz && quiz.isPublished) {
-                    // Nếu là đề thi có link, ta mở lên làm bài luôn
-                    setActiveQuiz(quiz);
-                    // Xóa param trên URL để không bị loop
-                    window.history.replaceState({}, document.title, window.location.pathname);
+                    // Kiểm tra phiên trước khi tự động mở
+                    const canStart = await checkActiveSession(quiz.id);
+                    if (canStart) {
+                        setActiveQuiz(quiz);
+                        // Xóa param trên URL để không bị loop
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
                 } else {
                     alert("Đề thi này không tồn tại hoặc chưa được phát hành.");
                 }
@@ -163,6 +204,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20">
+      {isCheckingSession && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center">
+            <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4">
+                <Loader2 className="animate-spin text-blue-600" size={48}/>
+                <p className="font-black uppercase text-xs tracking-widest text-slate-800">Đang kiểm tra bảo mật...</p>
+            </div>
+        </div>
+      )}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="relative z-10">
@@ -274,7 +323,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                                       ) : (
                                           <button 
                                             disabled={!isStarted || isEnded}
-                                            onClick={() => isStarted && !isEnded ? setActiveQuiz(q) : null} 
+                                            onClick={() => isStarted && !isEnded ? handleStartQuiz(q) : null} 
                                             className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] transition-all ${isStarted && !isEnded ? 'bg-slate-900 text-white shadow-2xl hover:bg-black' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                                           >
                                               {isEnded ? 'Đã hết giờ thi' : (isStarted ? 'Vào làm bài ngay' : `Bắt đầu lúc ${format(startTime, 'HH:mm')}`)}
@@ -326,8 +375,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                                     <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mt-auto">
-                                  <button onClick={() => setActivePracticeQuiz(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
-                                  <button onClick={() => setActiveQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
+                                  <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
+                                  <button onClick={() => handleStartQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
                                 </div>
                             </>
                         )}
