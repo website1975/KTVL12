@@ -11,9 +11,10 @@ interface StudentModalProps {
     onClose: () => void;
     onSave: () => void;
     isSaving?: boolean;
+    isDuplicate?: boolean;
 }
 
-const StudentModal: React.FC<StudentModalProps> = ({ isOpen, student, form, setForm, onClose, onSave, isSaving }) => {
+const StudentModal: React.FC<StudentModalProps> = ({ isOpen, student, form, setForm, onClose, onSave, isSaving, isDuplicate }) => {
     if (!isOpen) return null;
 
     return (
@@ -28,8 +29,17 @@ const StudentModal: React.FC<StudentModalProps> = ({ isOpen, student, form, setF
                 </div>
                 <div className="p-10 space-y-6">
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black text-blue-500 uppercase">1. Mã học sinh (MAHS)</label>
-                        <input disabled={isSaving} className="w-full p-4 bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-2xl font-black uppercase outline-none disabled:opacity-50" value={form.studentCode} onChange={e => setForm({...form, studentCode: e.target.value})} placeholder="VÍ DỤ: HS001" />
+                        <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-black text-blue-500 uppercase">1. Mã học sinh (MAHS)</label>
+                            {isDuplicate && <span className="text-[9px] font-black text-red-500 uppercase animate-pulse">Mã đã tồn tại!</span>}
+                        </div>
+                        <input 
+                            disabled={isSaving} 
+                            className={`w-full p-4 bg-slate-50 border-2 ${isDuplicate ? 'border-red-500 bg-red-50' : 'border-slate-100 focus:border-blue-500'} rounded-2xl font-black uppercase outline-none disabled:opacity-50 transition-all`} 
+                            value={form.studentCode} 
+                            onChange={e => setForm({...form, studentCode: e.target.value})} 
+                            placeholder="VÍ DỤ: HS001" 
+                        />
                     </div>
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase">2. Họ và tên</label>
