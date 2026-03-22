@@ -32,7 +32,19 @@ const ResultDetailModal: React.FC<ResultDetailModalProps> = ({ isOpen, result, q
         let isCorrect = false;
 
         if (q.type === 'mcq') isCorrect = ans === q.correctAnswer;
-        else if (q.type === 'short') isCorrect = String(ans || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase();
+        else if (q.type === 'short') {
+            const normalize = (val: any) => String(val || '').trim().toLowerCase().replace(/\s/g, '').replace(/,/g, '.');
+            const nAns = normalize(ans);
+            const nCorrect = normalize(q.correctAnswer);
+            if (nAns === nCorrect) isCorrect = true;
+            else {
+                const numAns = Number(nAns);
+                const numCorrect = Number(nCorrect);
+                if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+                    isCorrect = true;
+                }
+            }
+        }
         else if (q.type === 'group-tf' && q.subQuestions) {
             const subResults = q.subQuestions.map((sq, i) => ans?.[i] === sq.correctAnswer);
             isCorrect = subResults.every(r => r === true);
