@@ -82,6 +82,7 @@ export interface Result {
 export interface ExamSession {
   id: string;
   quizId: string;
+  quizTitle: string;
   studentId: string;
   studentName: string;
   studentCode: string;
