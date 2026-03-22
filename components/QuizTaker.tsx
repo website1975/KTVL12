@@ -14,7 +14,7 @@ interface QuizTakerProps {
 }
 
 const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
-    const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}`);
+    const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
     const backupKey = `quiz_backup_${student.id}_${quiz.id}`;
     const initialStartTimeRef = useRef(new Date().toISOString());
     const isInternalActionRef = useRef(false);
@@ -74,6 +74,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             const session: ExamSession = {
                 id: sessionIdRef.current,
                 quizId: quiz.id,
+                quizTitle: quiz.title,
                 studentId: student.id,
                 studentName: student.fullName,
                 studentCode: student.studentCode || 'N/A',
@@ -154,9 +155,20 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             const qPoints = parseFloat(String(q.points || 0));
             if (q.type === 'mcq' && ans === q.correctAnswer) score += qPoints;
             else if (q.type === 'short') {
-                const normalizedAns = String(ans || '').trim().toLowerCase().replace(/,/g, '.');
-                const normalizedCorrect = String(q.correctAnswer || '').trim().toLowerCase().replace(/,/g, '.');
-                if (normalizedAns === normalizedCorrect) score += qPoints;
+                const normalize = (val: any) => String(val || '').trim().toLowerCase().replace(/\s/g, '').replace(/,/g, '.');
+                const nAns = normalize(ans);
+                const nCorrect = normalize(q.correctAnswer);
+                
+                if (nAns === nCorrect) {
+                    score += qPoints;
+                } else {
+                    // Thử so sánh số học (ví dụ: 3.4 và 3.40)
+                    const numAns = Number(nAns);
+                    const numCorrect = Number(nCorrect);
+                    if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+                        score += qPoints;
+                    }
+                }
             }
             else if (q.type === 'group-tf' && q.subQuestions) {
                 let subCorrect = 0;
