@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, Question, User, ExamSession } from '../types';
-import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, HelpCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen } from 'lucide-react';
 import LatexText from './LatexText';
 import { saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -62,20 +62,31 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
       if (nAns === nCorrect) return true;
       
       // Thử so sánh số học (ví dụ: 3.4 và 3.40)
-      const numAns = Number(nAns);
-      const numCorrect = Number(nCorrect);
-      if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+      const numAns = parseFloat(nAns);
+      const numCorrect = parseFloat(nCorrect);
+      if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.0001) {
           return true;
       }
       return false;
     } else if (currentQuestion.type === 'group-tf') {
       if (!selectedOption || !currentQuestion.subQuestions) return false;
-      return currentQuestion.subQuestions.every((sq, i) => selectedOption[i] === sq.correctAnswer);
+      const subResults = currentQuestion.subQuestions.map((sq, i) => selectedOption[i] === sq.correctAnswer);
+      const subCorrectCount = subResults.filter(r => r === true).length;
+      return subCorrectCount === currentQuestion.subQuestions.length;
     }
     return false;
   };
 
   const isCorrect = checkIsCorrect();
+
+  const isPartial = useMemo(() => {
+    if (currentQuestion.type === 'group-tf' && selectedOption && currentQuestion.subQuestions) {
+      const subResults = currentQuestion.subQuestions.map((sq, i) => selectedOption[i] === sq.correctAnswer);
+      const subCorrectCount = subResults.filter(r => r === true).length;
+      return subCorrectCount > 0 && subCorrectCount < currentQuestion.subQuestions.length;
+    }
+    return false;
+  }, [currentQuestion, selectedOption]);
 
   useEffect(() => {
     if (!isAnswered && showContent) {
@@ -270,17 +281,19 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
                <div className="flex items-center gap-3 mb-4">
                   {isCorrect ? (
                     <CheckCircle2 size={32} className="text-emerald-500" />
+                  ) : isPartial ? (
+                    <HelpCircle size={32} className="text-amber-500" />
                   ) : (
                     <XCircle size={32} className="text-red-500" />
                   )}
-                  <h3 className={`text-2xl font-black italic uppercase ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {isCorrect ? 'CHÍNH XÁC!' : 'RẤT TIẾC!'}
+                  <h3 className={`text-2xl font-black italic uppercase ${isCorrect ? 'text-emerald-600' : isPartial ? 'text-amber-600' : 'text-red-600'}`}>
+                    {isCorrect ? 'CHÍNH XÁC!' : isPartial ? 'ĐÚNG MỘT PHẦN!' : 'RẤT TIẾC!'}
                   </h3>
                </div>
 
-               <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-100 mb-4 text-center">
+               <div className={`p-4 rounded-xl border-2 mb-4 text-center ${isCorrect ? 'bg-slate-50 border-slate-100' : isPartial ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
                   <p className="font-black text-slate-700 text-xs">
-                    {isCorrect ? 'Tuyệt vời! Bạn đã làm rất tốt.' : 'Đừng nản chí, hãy xem lại lời giải nhé!'}
+                    {isCorrect ? 'Tuyệt vời! Bạn đã làm rất tốt.' : isPartial ? 'Khá tốt! Bạn đã trả lời đúng một số ý.' : 'Đừng nản chí, hãy xem lại lời giải nhé!'}
                   </p>
                   <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Đáp án đúng: {currentQuestion.correctAnswer || '(Xem phía dưới)'}</p>
                </div>
