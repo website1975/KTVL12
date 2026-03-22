@@ -163,9 +163,9 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                     score += qPoints;
                 } else {
                     // Thử so sánh số học (ví dụ: 3.4 và 3.40)
-                    const numAns = Number(nAns);
-                    const numCorrect = Number(nCorrect);
-                    if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+                    const numAns = parseFloat(nAns);
+                    const numCorrect = parseFloat(nCorrect);
+                    if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.0001) {
                         score += qPoints;
                     }
                 }
