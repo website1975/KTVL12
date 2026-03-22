@@ -1,8 +1,10 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Quiz, Question, User } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Quiz, Question, User, ExamSession } from '../types';
 import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen } from 'lucide-react';
 import LatexText from './LatexText';
+import { saveExamSession, deleteExamSession } from '../services/storage';
+import { v4 as uuidv4 } from 'uuid';
 
 interface QuickPracticeProps {
   quiz: Quiz;
@@ -11,11 +13,40 @@ interface QuickPracticeProps {
 }
 
 const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) => {
+  const sessionIdRef = useRef(`sess_prac_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
+  const initialStartTimeRef = useRef(new Date().toISOString());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<any>(null); // Lưu đáp án chọn (string cho mcq/short, object cho tf)
   const [isAnswered, setIsAnswered] = useState(false);
   const [showContent, setShowContent] = useState(true);
   const [memoryTimer, setMemoryTimer] = useState(10); 
+
+  const updateMonitorStatus = async (isFinished = false) => {
+    try {
+        const session: ExamSession = {
+            id: sessionIdRef.current,
+            quizId: quiz.id,
+            quizTitle: `[LUYỆN TẬP] ${quiz.title}`,
+            studentId: student.id,
+            studentName: student.fullName,
+            studentCode: student.studentCode || 'N/A',
+            startTime: initialStartTimeRef.current,
+            lastUpdate: new Date().toISOString(),
+            violationCount: 0,
+            isFinished: isFinished
+        };
+        await saveExamSession(session);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    updateMonitorStatus();
+    const heartbeat = setInterval(() => updateMonitorStatus(), 30000);
+    return () => {
+        clearInterval(heartbeat);
+        deleteExamSession(sessionIdRef.current);
+    };
+  }, []);
 
   const currentQuestion = quiz.questions[currentIndex];
 
@@ -24,9 +55,19 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
     if (currentQuestion.type === 'mcq') {
       return selectedOption === currentQuestion.correctAnswer;
     } else if (currentQuestion.type === 'short') {
-      const normalizedAns = String(selectedOption || '').trim().toLowerCase().replace(/,/g, '.');
-      const normalizedCorrect = String(currentQuestion.correctAnswer || '').trim().toLowerCase().replace(/,/g, '.');
-      return normalizedAns === normalizedCorrect;
+      const normalize = (val: any) => String(val || '').trim().toLowerCase().replace(/\s/g, '').replace(/,/g, '.');
+      const nAns = normalize(selectedOption);
+      const nCorrect = normalize(currentQuestion.correctAnswer);
+      
+      if (nAns === nCorrect) return true;
+      
+      // Thử so sánh số học (ví dụ: 3.4 và 3.40)
+      const numAns = Number(nAns);
+      const numCorrect = Number(nCorrect);
+      if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+          return true;
+      }
+      return false;
     } else if (currentQuestion.type === 'group-tf') {
       if (!selectedOption || !currentQuestion.subQuestions) return false;
       return currentQuestion.subQuestions.every((sq, i) => selectedOption[i] === sq.correctAnswer);
