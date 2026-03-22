@@ -38,28 +38,35 @@ const ResultDetailModal: React.FC<ResultDetailModalProps> = ({ isOpen, result, q
             const nCorrect = normalize(q.correctAnswer);
             if (nAns === nCorrect) isCorrect = true;
             else {
-                const numAns = Number(nAns);
-                const numCorrect = Number(nCorrect);
-                if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && numAns === numCorrect) {
+                const numAns = parseFloat(nAns);
+                const numCorrect = parseFloat(nCorrect);
+                if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.0001) {
                     isCorrect = true;
                 }
             }
         }
         else if (q.type === 'group-tf' && q.subQuestions) {
             const subResults = q.subQuestions.map((sq, i) => ans?.[i] === sq.correctAnswer);
-            isCorrect = subResults.every(r => r === true);
+            const subCorrectCount = subResults.filter(r => r === true).length;
+            isCorrect = subCorrectCount === q.subQuestions.length;
+            // Thêm biến để nhận biết đúng một phần
+            (q as any)._isPartial = !isCorrect && subCorrectCount > 0;
+            (q as any)._subCorrectCount = subCorrectCount;
         }
 
+        const isPartial = (q as any)._isPartial;
+
         return (
-            <div key={q.id} className={`bg-white p-10 rounded-[2.5rem] border-2 shadow-sm relative transition-all ${isPractice ? (isCorrect ? 'border-emerald-100' : 'border-red-100') : 'border-slate-100'}`}>
+            <div key={q.id} className={`bg-white p-10 rounded-[2.5rem] border-2 shadow-sm relative transition-all ${isPractice ? (isCorrect ? 'border-emerald-100' : (isPartial ? 'border-amber-100' : 'border-red-100')) : 'border-slate-100'}`}>
                 {isPractice && (
-                    <div className="absolute top-8 right-8">
-                        {isCorrect ? <CheckCircle2 className="text-emerald-500" size={32}/> : <XCircle className="text-red-500" size={32}/>}
+                    <div className="absolute top-8 right-8 flex items-center gap-2">
+                        {isPartial && <span className="bg-amber-100 text-amber-600 text-[8px] font-black px-2 py-1 rounded-md uppercase">Đúng một phần</span>}
+                        {isCorrect ? <CheckCircle2 className="text-emerald-500" size={32}/> : (isPartial ? <HelpCircle className="text-amber-500" size={32}/> : <XCircle className="text-red-500" size={32}/>)}
                     </div>
                 )}
 
                 <div className="flex items-start gap-4 mb-8">
-                    <span className={`text-xs font-black px-4 py-1.5 rounded-xl uppercase shrink-0 ${isPractice ? (isCorrect ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600') : 'bg-slate-100 text-slate-500'}`}>Câu {idx + 1}</span>
+                    <span className={`text-xs font-black px-4 py-1.5 rounded-xl uppercase shrink-0 ${isPractice ? (isCorrect ? 'bg-emerald-50 text-emerald-600' : (isPartial ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600')) : 'bg-slate-100 text-slate-500'}`}>Câu {idx + 1}</span>
                     <div className="text-slate-800 text-lg font-bold leading-relaxed pt-1 pr-12"><LatexText text={q.text}/></div>
                 </div>
 
