@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult } from '../types';
-import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions } from '../services/storage';
+import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions, deleteExamSession } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
@@ -57,6 +57,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
     }
   }, [user.id, user.studentCode, user.grade]);
 
+  const [sessionWarning, setSessionWarning] = useState<{
+    type: 'different_quiz' | 'same_quiz';
+    quizTitle: string;
+    onConfirm?: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+
   const checkActiveSession = async (quizId: string): Promise<boolean> => {
     setIsCheckingSession(true);
     try {
@@ -68,11 +75,54 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
       });
 
       if (activeSessions.length > 0) {
-        // Nếu có phiên của đề KHÁC
+        // 1. Chặn nếu làm đề KHÁC
         const otherQuizSession = activeSessions.find(s => s.quizId !== quizId);
         if (otherQuizSession) {
-          alert(`CẢNH BÁO: Bạn đang có một bài thi khác đang diễn ra. Hệ thống không cho phép làm nhiều đề cùng lúc để đảm bảo tính công bằng. Vui lòng hoàn thành bài thi hiện tại trước!`);
-          return false;
+          return new Promise((resolve) => {
+            setSessionWarning({
+              type: 'different_quiz',
+              quizTitle: otherQuizSession.quizTitle || 'Không rõ',
+              onConfirm: async () => {
+                try {
+                  await deleteExamSession(otherQuizSession.id);
+                  setSessionWarning(null);
+                  resolve(true);
+                } catch (e) {
+                  alert("Không thể kết thúc phiên cũ. Vui lòng thử lại.");
+                  resolve(false);
+                }
+              },
+              onCancel: () => {
+                setSessionWarning(null);
+                resolve(false);
+              }
+            });
+          });
+        }
+
+        // 2. Cảnh báo nếu làm CÙNG ĐỀ trên máy khác
+        const sameQuizSession = activeSessions.find(s => s.quizId === quizId);
+        if (sameQuizSession) {
+          return new Promise((resolve) => {
+            setSessionWarning({
+              type: 'same_quiz',
+              quizTitle: sameQuizSession.quizTitle || 'Đề này',
+              onConfirm: async () => {
+                try {
+                  await deleteExamSession(sameQuizSession.id);
+                  setSessionWarning(null);
+                  resolve(true);
+                } catch (e) {
+                  alert("Không thể xóa phiên cũ. Vui lòng thử lại.");
+                  resolve(false);
+                }
+              },
+              onCancel: () => {
+                setSessionWarning(null);
+                resolve(false);
+              }
+            });
+          });
         }
       }
       return true;
@@ -450,6 +500,64 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
                   </div>
               </div>
           </div>
+      )}
+      {/* Session Warning Modal */}
+      {sessionWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className={`p-6 text-white ${sessionWarning.type === 'different_quiz' ? 'bg-red-500' : 'bg-amber-500'}`}>
+              <div className="flex items-center gap-3 mb-2">
+                <ShieldAlert className="w-8 h-8" />
+                <h3 className="text-xl font-black uppercase tracking-tight">
+                  {sessionWarning.type === 'different_quiz' ? 'Cảnh báo bảo mật' : 'Thông báo phiên làm bài'}
+                </h3>
+              </div>
+              <p className="text-white/90 text-sm font-bold">
+                {sessionWarning.type === 'different_quiz' 
+                  ? 'Phát hiện nhiều phiên làm bài đồng thời' 
+                  : 'Phát hiện phiên làm bài trên thiết bị khác'}
+              </p>
+            </div>
+            
+            <div className="p-8">
+              <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Đề thi đang hoạt động:</p>
+                <p className="text-slate-700 font-black text-lg leading-tight">{sessionWarning.quizTitle}</p>
+              </div>
+
+              <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
+                {sessionWarning.type === 'different_quiz' ? (
+                  <p>
+                    Hệ đồng nhận thấy bạn đang làm bài thi <span className="font-bold text-slate-900">"{sessionWarning.quizTitle}"</span>. 
+                    Để đảm bảo tính công bằng, bạn <span className="font-bold text-red-600 underline">không thể</span> bắt đầu một đề thi mới khi chưa hoàn thành đề thi hiện tại.
+                  </p>
+                ) : (
+                  <p>
+                    Bạn đang có một phiên làm bài cho đề này trên thiết bị hoặc trình duyệt khác. 
+                    Nếu tiếp tục, dữ liệu chưa nộp ở máy kia <span className="font-bold text-amber-600">sẽ bị mất</span>. Bạn có chắc chắn muốn bắt đầu lại trên máy này?
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-8 flex flex-col gap-3">
+                <button
+                  onClick={sessionWarning.onConfirm}
+                  className={`w-full py-4 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
+                    sessionWarning.type === 'different_quiz' ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
+                  }`}
+                >
+                  {sessionWarning.type === 'different_quiz' ? 'Kết thúc đề cũ & Bắt đầu đề mới' : 'Tiếp tục (Bắt đầu mới)'}
+                </button>
+                <button
+                  onClick={sessionWarning.onCancel}
+                  className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                >
+                  Hủy bỏ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
