@@ -228,22 +228,32 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleAiGenerate = async (topic: string, p1: number, p2: number, p3: number, target: 'editor' | 'bank') => {
+  const handleAiGenerate = async (config: {
+    topic: string;
+    p1: number;
+    p2: number;
+    p3: number;
+    target: 'editor' | 'bank';
+    matrix?: { easy: number; medium: number; hard: number; vhard: number };
+    pdfBase64?: string;
+  }) => {
     setIsAiLoading(true);
     try {
       const newQs = await generateQuizFromPrompt({
-        topic,
+        topic: config.topic,
         grade: quizGrade,
-        part1Count: p1,
-        part2Count: p2,
-        part3Count: p3
+        part1Count: config.p1,
+        part2Count: config.p2,
+        part3Count: config.p3,
+        matrix: config.matrix,
+        pdfBase64: config.pdfBase64
       });
       
-      if (target === 'editor') {
+      if (config.target === 'editor') {
         setQuestions([...questions, ...newQs]);
         setActiveTab('quizzes');
         setIsEditingQuiz(true);
-        if (!quizTitle) setQuizTitle(topic.slice(0, 50).toUpperCase());
+        if (!quizTitle) setQuizTitle(config.topic.slice(0, 50).toUpperCase());
       } else {
         for (const q of newQs) {
           await saveBankQuestion(q);
