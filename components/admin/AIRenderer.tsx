@@ -1,12 +1,20 @@
 
 import React, { useState } from 'react';
 import { Grade } from '../../types';
-import { Sparkles, Database, LayoutTemplate, Loader2, AlertTriangle, PlusCircle } from 'lucide-react';
+import { Sparkles, Database, LayoutTemplate, Loader2, AlertTriangle, PlusCircle, FileUp } from 'lucide-react';
 
 interface AIRendererProps {
     grade: Grade;
     setGrade: (val: Grade) => void;
-    onGenerate: (prompt: string, p1: number, p2: number, p3: number, target: 'editor' | 'bank') => Promise<void>;
+    onGenerate: (config: {
+        topic: string;
+        p1: number;
+        p2: number;
+        p3: number;
+        target: 'editor' | 'bank';
+        matrix?: { easy: number; medium: number; hard: number; vhard: number };
+        pdfBase64?: string;
+    }) => Promise<void>;
     isLoading: boolean;
     hasQuestionsInEditor?: boolean;
 }
@@ -16,13 +24,39 @@ const AIRenderer: React.FC<AIRendererProps> = ({ grade, setGrade, onGenerate, is
     const [p1, setP1] = useState(5);
     const [p2, setP2] = useState(2);
     const [p3, setP3] = useState(2);
+    const [matrix, setMatrix] = useState({ easy: 40, medium: 30, hard: 20, vhard: 10 });
     const [target, setTarget] = useState<'editor' | 'bank'>('editor');
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [pdfBase64, setPdfBase64] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.type !== 'application/pdf') {
+                setErrorMsg("Chỉ hỗ trợ tệp PDF.");
+                return;
+            }
+            setPdfFile(file);
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                setPdfBase64(base64);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleGenerate = async () => {
         setErrorMsg(null);
         try {
-            await onGenerate(prompt, p1, p2, p3, target);
+            await onGenerate({
+                topic: prompt || (pdfFile ? `Dựa theo tài liệu: ${pdfFile.name}` : "Đề thi tổng hợp"),
+                p1, p2, p3,
+                target,
+                matrix,
+                pdfBase64: pdfBase64 || undefined
+            });
         } catch (err: any) {
             setErrorMsg(err.message || "Đã xảy ra lỗi không xác định.");
         }
@@ -33,9 +67,10 @@ const AIRenderer: React.FC<AIRendererProps> = ({ grade, setGrade, onGenerate, is
             <div className="bg-white p-10 rounded-[3rem] border shadow-sm text-center space-y-10">
                 <Sparkles size={64} className="mx-auto text-blue-600 drop-shadow-lg"/>
                 <div className="space-y-2">
-                    <h3 className="text-2xl font-black uppercase text-slate-800">Soạn đề bằng AI (Gemini)</h3>
+                    <h3 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Soạn đề thông minh</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sử dụng công nghệ AI mạnh mẽ để tạo đề thi chất lượng</p>
                     {hasQuestionsInEditor && target === 'editor' && (
-                        <div className="flex items-center justify-center gap-2 text-emerald-600 bg-emerald-50 w-fit mx-auto px-4 py-1.5 rounded-full border border-emerald-100">
+                        <div className="flex items-center justify-center gap-2 text-emerald-600 bg-emerald-50 w-fit mx-auto px-4 py-1.5 rounded-full border border-emerald-100 mt-2">
                             <PlusCircle size={14}/>
                             <span className="text-[10px] font-black uppercase tracking-wider">Đang ở chế độ chèn thêm vào đề hiện có</span>
                         </div>
@@ -50,66 +85,105 @@ const AIRenderer: React.FC<AIRendererProps> = ({ grade, setGrade, onGenerate, is
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         <div>
-                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400">1. Khối lớp</label>
-                            <select className="w-full bg-slate-50 border rounded-2xl p-4 font-black outline-none mt-1" value={grade} onChange={e => setGrade(e.target.value as Grade)}>
-                                <option value="12">Khối 12</option>
-                                <option value="11">Khối 11</option>
-                                <option value="10">Khối 10</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400">2. Đích đến</label>
-                            <div className="grid grid-cols-2 gap-2 mt-1">
-                                <button 
-                                    onClick={() => setTarget('editor')}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all ${target === 'editor' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}
-                                >
-                                    <LayoutTemplate size={20}/>
-                                    <span className="text-[9px] font-black uppercase">Mở Editor</span>
-                                </button>
-                                <button 
-                                    onClick={() => setTarget('bank')}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all ${target === 'bank' ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}
-                                >
-                                    <Database size={20}/>
-                                    <span className="text-[9px] font-black uppercase">Lưu Ngân hàng</span>
-                                </button>
+                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400 tracking-widest">1. Khối lớp & Đích đến</label>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                <select className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-black outline-none text-xs" value={grade} onChange={e => setGrade(e.target.value as Grade)}>
+                                    <option value="12">Khối 12</option>
+                                    <option value="11">Khối 11</option>
+                                    <option value="10">Khối 10</option>
+                                </select>
+                                <div className="flex bg-slate-100 p-1 rounded-2xl border-2 border-slate-100">
+                                    <button onClick={() => setTarget('editor')} className={`flex-1 flex items-center justify-center gap-2 rounded-xl text-[9px] font-black uppercase transition-all ${target === 'editor' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                                        <LayoutTemplate size={14}/> Editor
+                                    </button>
+                                    <button onClick={() => setTarget('bank')} className={`flex-1 flex items-center justify-center gap-2 rounded-xl text-[9px] font-black uppercase transition-all ${target === 'bank' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400'}`}>
+                                        <Database size={14}/> Bank
+                                    </button>
+                                </div>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400 tracking-widest">2. Ma trận kiến thức (%)</label>
+                            <div className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-[2rem] border-2 border-slate-100">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-emerald-600 uppercase">Nhận biết</label>
+                                    <input type="number" className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-xs" value={matrix.easy} onChange={e => setMatrix({...matrix, easy: parseInt(e.target.value) || 0})} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-blue-600 uppercase">Thông hiểu</label>
+                                    <input type="number" className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-xs" value={matrix.medium} onChange={e => setMatrix({...matrix, medium: parseInt(e.target.value) || 0})} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-orange-600 uppercase">Vận dụng</label>
+                                    <input type="number" className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-xs" value={matrix.hard} onChange={e => setMatrix({...matrix, hard: parseInt(e.target.value) || 0})} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-red-600 uppercase">Vận dụng cao</label>
+                                    <input type="number" className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-xs" value={matrix.vhard} onChange={e => setMatrix({...matrix, vhard: parseInt(e.target.value) || 0})} />
+                                </div>
+                            </div>
+                            <p className="text-[8px] text-slate-400 italic px-2">Lưu ý: Tổng các phần trăm nên là 100% để đề thi cân đối.</p>
                         </div>
                     </div>
                     
-                    <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase ml-2 text-slate-400">3. Số lượng câu</label>
-                        <div className="flex gap-4 items-end">
-                            <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.I (TN)</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={p1} onChange={e => setP1(parseInt(e.target.value))} /></div>
-                            <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.II (D/S)</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={p2} onChange={e => setP2(parseInt(e.target.value))} /></div>
-                            <div className="flex-1"><label className="text-[8px] font-black uppercase ml-1">P.III (NGẮN)</label><input type="number" className="w-full bg-slate-50 border p-4 rounded-2xl font-bold" value={p3} onChange={e => setP3(parseInt(e.target.value))} /></div>
+                    <div className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400 tracking-widest">3. Cấu trúc đề (Số câu)</label>
+                            <div className="flex gap-4 bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-inner">
+                                <div className="flex-1 text-center border-r border-slate-100">
+                                    <label className="text-[8px] font-black uppercase text-blue-500">P.I (TN)</label>
+                                    <input type="number" className="w-full text-center bg-transparent font-black text-lg outline-none" value={p1} onChange={e => setP1(parseInt(e.target.value))} />
+                                </div>
+                                <div className="flex-1 text-center border-r border-slate-100">
+                                    <label className="text-[8px] font-black uppercase text-purple-500">P.II (D/S)</label>
+                                    <input type="number" className="w-full text-center bg-transparent font-black text-lg outline-none" value={p2} onChange={e => setP2(parseInt(e.target.value))} />
+                                </div>
+                                <div className="flex-1 text-center">
+                                    <label className="text-[8px] font-black uppercase text-orange-500">P.III (NGẮN)</label>
+                                    <input type="number" className="w-full text-center bg-transparent font-black text-lg outline-none" value={p3} onChange={e => setP3(parseInt(e.target.value))} />
+                                </div>
+                            </div>
                         </div>
-                        <p className="text-[9px] text-slate-400 italic px-2 leading-tight">Mẹo: Soạn dưới 10 câu mỗi lần để đạt hiệu suất AI tốt nhất.</p>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase ml-2 text-slate-400 tracking-widest">4. Tài liệu nguồn (Tùy chọn PDF)</label>
+                            <div className={`relative border-2 border-dashed rounded-[2rem] p-6 transition-all ${pdfFile ? 'border-blue-500 bg-blue-50/30' : 'border-slate-200 hover:border-blue-400'}`}>
+                                <input type="file" accept="application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileChange} />
+                                <div className="flex flex-col items-center gap-2">
+                                    <FileUp className={pdfFile ? 'text-blue-600' : 'text-slate-300'} size={32}/>
+                                    <p className="text-[10px] font-black uppercase text-slate-600">
+                                        {pdfFile ? pdfFile.name : 'Nhấn hoặc kéo PDF vào đây'}
+                                    </p>
+                                    {pdfFile && <button onClick={(e) => { e.preventDefault(); setPdfFile(null); setPdfBase64(null); }} className="text-[8px] font-black text-red-500 uppercase mt-1">Xóa file</button>}
+                                </div>
+                            </div>
+                            <p className="text-[8px] text-slate-400 italic px-2">Nếu có file, AI sẽ chỉ trích xuất các ý tưởng, kiến thức từ file này.</p>
+                        </div>
                     </div>
                 </div>
 
                 <div className="text-left space-y-1">
-                    <label className="text-[10px] font-black uppercase ml-2 text-slate-400">4. Nội dung yêu cầu</label>
+                    <label className="text-[10px] font-black uppercase ml-2 text-slate-400 tracking-widest">5. Chủ đề & Ghi chú thêm</label>
                     <textarea 
-                        className="w-full bg-slate-50 border rounded-[2.5rem] p-8 font-bold min-h-[150px] text-sm outline-none focus:border-blue-400" 
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 font-bold min-h-[120px] text-sm outline-none focus:border-blue-400 transition-all focus:bg-white" 
                         value={prompt} 
                         onChange={e => setPrompt(e.target.value)} 
-                        placeholder="Ví dụ: Đạo hàm và các bài toán cực trị, dùng LaTeX $...$ cho công thức..." 
+                        placeholder="Ví dụ: Đạo hàm và các bài toán cực trị..." 
                     />
                 </div>
 
                 <button 
                     onClick={handleGenerate} 
-                    disabled={isLoading || !prompt} 
-                    className={`w-full py-6 rounded-[2rem] font-black shadow-2xl flex items-center justify-center gap-3 disabled:opacity-50 transition-all ${target === 'bank' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                    disabled={isLoading || (!prompt && !pdfFile)} 
+                    className={`w-full py-6 rounded-[2.5rem] font-black shadow-2xl flex items-center justify-center gap-4 disabled:opacity-50 transition-all active:scale-[0.98] ${target === 'bank' ? 'bg-purple-600 hover:bg-black' : 'bg-blue-600 hover:bg-black'} text-white text-sm uppercase tracking-widest`}
                 >
-                    {isLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} 
-                    {isLoading ? 'HỆ THỐNG ĐANG SOẠN...' : (
-                        target === 'bank' ? 'SOẠN & LƯU VÀO NGÂN HÀNG' : 
-                        (hasQuestionsInEditor ? 'SOẠN & CHÈN TIẾP VÀO ĐỀ' : 'BẮT ĐẦU SOẠN ĐỀ THÔNG MINH')
+                    {isLoading ? <Loader2 className="animate-spin" size={28}/> : <Sparkles size={28}/>} 
+                    {isLoading ? 'Hệ thống đang xử lý...' : (
+                        target === 'bank' ? 'Soạn & Lưu vào ngân hàng' : 
+                        (hasQuestionsInEditor ? 'Soạn & Chèn thêm vào đề' : 'Bắt đầu soạn đề thông minh')
                     )}
                 </button>
             </div>
