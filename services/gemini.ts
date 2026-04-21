@@ -103,30 +103,57 @@ const processAIQuestions = (rawData: any[]): Question[] => {
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
+    let matrixPrompt = "";
+    if (config.matrix) {
+        matrixPrompt = `
+MA TRẬN ĐỘ KHÓ (PHÂN BỔ THEO % TỔNG SỐ CÂU):
+- Nhận biết (Easy/Knowledge): ${config.matrix.easy}% 
+- Thông hiểu (Medium/Understanding): ${config.matrix.medium}%
+- Vận dụng (Hard/Application): ${config.matrix.hard}%
+- Vận dụng cao (Very Hard/High Application): ${config.matrix.vhard}%
+Hãy phân bổ độ khó cho các câu hỏi sao cho tỉ lệ các mức độ sát với ma trận này nhất có thể.
+`;
+    }
+
+    const sourceInstruction = config.pdfBase64 
+        ? "NGUỒN DỮ LIỆU: Hãy đọc kỹ file PDF được cung cấp. BẮT BUỘC chỉ được lấy dữ liệu, ý tưởng hoặc trích xuất trực tiếp các câu hỏi từ nội dung trong file PDF này để soạn đề. Không được tự ý chế tác nội dung nằm ngoài phạm vi tài liệu PDF trừ khi cần thiết để hoàn thiện cấu trúc câu hỏi."
+        : "NGUỒN DỮ LIỆU: Sử dụng kho tri thức chuyên sâu của bạn về chương trình giáo dục phổ thông Việt Nam để soạn đề.";
+
     const prompt = `Bạn là chuyên gia soạn đề thi THPT quốc gia Việt Nam môn Toán/Lý/Hóa.
 Sử dụng model: gemini-3-flash-preview.
-Chủ đề: ${config.topic}.
-Khối: ${config.grade}.
-Số lượng: ${config.part1Count} câu mcq, ${config.part2Count} câu group-tf, ${config.part3Count} câu short.
+${sourceInstruction}
 
-QUY TẮC BẮT BUỘC:
-1. LaTeX: Mọi biểu thức, ký hiệu toán/lý (VD: $\Delta\Phi$, $\Omega$, $x^2$) BẮT BUỘC nằm trong $...$. Quy tắc này áp dụng cho cả nội dung câu hỏi, LỜI GIẢI và CÁC PHƯƠNG ÁN (Options).
-2. Solution (Lời giải): Phải có lời giải chi tiết cho từng câu, bọc công thức trong $...$.
-3. MCQ: Phải xác định rõ 'correctAnswer' (A, B, C hoặc D) và điền nội dung tương ứng vào 'correctAnswer'.
+YÊU CẦU CHI TIẾT:
+- Chủ đề: ${config.topic}.
+- Khối lớp: ${config.grade}.
+- Cấu trúc: ${config.part1Count} câu trắc nghiệm 4 lựa chọn (MCQ), ${config.part2Count} câu trắc nghiệm Đúng/Sai (Group-TF), ${config.part3Count} câu trả lời ngắn (Short).
+${matrixPrompt}
+
+QUY TẮC KỸ THUẬT BẮT BUỘC:
+1. LaTeX: Mọi biểu thức, công thức, ký hiệu toán/lý/hóa (VD: $\Delta\Phi$, $\Omega$, $x^2$, $\vec{v}$) BẮT BUỘC phải nằm trong cặp dấu $...$. Quy tắc này áp dụng cho NỘI DUNG CÂU HỎI, CÁC PHƯƠNG ÁN (Options), và LỜI GIẢI (Solution).
+2. Solution (Lời giải): Phải có lời giải chi tiết, sư phạm cho từng câu.
+3. MCQ: 'correctAnswer' phải là nội dung của phương án đúng (không kèm nhãn A, B, C, D).
 4. GROUP-TF: 
-   - 'subQuestions' phải có 4 ý.
-   - 'solution' phải giải thích chi tiết cho từng ý a, b, c, d theo định dạng:
-     a) [Đúng/Sai] : Vì [Giải thích]
-     b) [Đúng/Sai] : Vì [Giải thích]
-     c) [Đúng/Sai] : Vì [Giải thích]
-     d) [Đúng/Sai] : Vì [Giải thích]
-5. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B." vào nội dung phương án.
-6. Cấu trúc JSON phải chuẩn xác theo schema.`;
+   - 'subQuestions' phải có chính xác 4 ý (a, b, c, d).
+   - 'solution' phải giải thích chi tiết cho từng ý theo mẫu:
+     a) [Đúng/Sai] : Vì [Lý do chi tiết]
+     ... (tương tự cho b, c, d)
+5. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B.", "C.", "D." vào nội dung phương án.
+6. JSON: Trả về kết quả dưới dạng mảng JSON chuẩn xác theo schema đã định.`;
 
     try {
+        const contents = config.pdfBase64 
+            ? {
+                parts: [
+                    { inlineData: { mimeType: "application/pdf", data: config.pdfBase64 } },
+                    { text: prompt }
+                ]
+            }
+            : prompt;
+
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: prompt,
+            contents: contents,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
