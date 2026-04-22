@@ -379,8 +379,17 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thứ tự luyện (1, 2, 3...)</label>
-                        <input type="number" className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.orderIndex} onChange={e => props.setOrderIndex(parseInt(e.target.value) || 1)} />
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thứ tự luyện (0: Tự do, 1-N: Trình tự)</label>
+                        <input 
+                            type="number" 
+                            min="0"
+                            className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" 
+                            value={props.orderIndex} 
+                            onChange={e => {
+                                const val = parseInt(e.target.value);
+                                props.setOrderIndex(isNaN(val) ? 0 : val);
+                            }} 
+                        />
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng (phút)</label>
