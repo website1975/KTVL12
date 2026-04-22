@@ -28,41 +28,22 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => {
+export const getResultsMetadata = async (quizId?: string, limit: number = 2000): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-          let query = supabase.from('results')
-            .select('id, quiz_id, student_id, data')
-            .order('id', { ascending: false })
-            .range(from, from + step - 1);
-            
-          if (quizId && quizId !== 'all') {
-            query = query.eq('quiz_id', quizId);
-          }
-          
-          const { data, error } = await query;
-          if (error) throw error;
-          
-          if (data && data.length > 0) {
-              allData = [...allData, ...data];
-              from += step;
-              // Nếu lấy được ít hơn step nghĩa là đã hết dữ liệu
-              if (data.length < step) hasMore = false;
-              // Giới hạn an toàn để tránh vòng lặp vô tận nếu có lỗi, 
-              // 10.000 bản ghi là ngưỡng hợp lý cho ứng dụng hiện tại
-              if (from >= 10000) hasMore = false; 
-          } else {
-              hasMore = false;
-          }
+      let query = supabase.from('results')
+        .select('id, quiz_id, student_id, data')
+        .order('id', { ascending: false })
+        .limit(limit);
+        
+      if (quizId && quizId !== 'all') {
+        query = query.eq('quiz_id', quizId);
       }
       
-      return allData.map((row: any) => {
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      return data ? data.map((row: any) => {
           const res = row.data as Result;
           return {
               ...res,
@@ -70,14 +51,22 @@ export const getResultsMetadata = async (quizId?: string): Promise<Result[]> => 
               quizId: row.quiz_id,
               studentId: row.student_id
           };
-      });
+      }) : [];
   } catch (e) {
       console.error("Lỗi getResultsMetadata:", e);
       return [];
   }
 };
 
-export const getResults = async (quizId?: string): Promise<Result[]> => {
+export const getResultsCount = async (quizId?: string): Promise<number> => {
+  if (!supabase) return 0;
+  let query = supabase.from('results').select('*', { count: 'exact', head: true });
+  if (quizId && quizId !== 'all') query = query.eq('quiz_id', quizId);
+  const { count, error } = await query;
+  return error ? 0 : (count || 0);
+};
+
+export const getResults = async (quizId?: string, limit: number = 2000): Promise<Result[]> => {
   if (!supabase) return [];
   let query = supabase.from('results')
     .select('data')
@@ -214,41 +203,13 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
     const { data: quizzesData, error: qError } = await query;
     if (qError) throw qError;
     
-    // Cơ chế quét sạch Cloud để đếm lượt làm bài chính xác (vượt giới hạn 1000)
-    let allQuizIds: any[] = [];
-    let fromCount = 0;
-    const stepCount = 1000;
-    let hasMoreCount = true;
-
-    while (hasMoreCount) {
-        const { data: cData, error: cError } = await supabase
-            .from('results')
-            .select('quiz_id')
-            .range(fromCount, fromCount + stepCount - 1);
-        
-        if (cError) break;
-        if (cData && cData.length > 0) {
-            allQuizIds = [...allQuizIds, ...cData];
-            fromCount += stepCount;
-            if (cData.length < stepCount) hasMoreCount = false;
-            if (fromCount >= 10000) hasMoreCount = false;
-        } else {
-            hasMoreCount = false;
-        }
-    }
-
-    const counts: Record<string, number> = {};
-    allQuizIds.forEach((r: any) => {
-        counts[r.quiz_id] = (counts[r.quiz_id] || 0) + 1;
-    });
-
     return quizzesData ? quizzesData.map((row: any) => {
         const quiz = row.data as Quiz;
         return {
             ...quiz,
             id: row.id,
             grade: row.grade,
-            attemptCount: counts[row.id] || 0,
+            attemptCount: quiz.attemptCount || 0,
             questions: [] // Không tải câu hỏi để tiết kiệm băng thông
         };
     }) : [];
