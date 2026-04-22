@@ -157,11 +157,13 @@ const QuizList: React.FC<QuizListProps> = ({
                             <div className="grid grid-cols-2 gap-3 mb-6">
                                 <div className={`${q.isPublished ? 'bg-white border-slate-100' : 'bg-slate-200/50 border-slate-200'} rounded-xl p-2 flex flex-col items-center justify-center border shadow-sm`}>
                                     <FileText size={12} className={q.isUnlisted ? "text-indigo-500" : "text-blue-500"}/>
-                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-slate-700' : 'text-slate-500'}`}>{count} CÂU</span>
+                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-slate-700' : 'text-slate-500'}`}>{q.questionCount || 0} CÂU</span>
                                 </div>
                                 <div className="bg-white rounded-xl p-2 flex flex-col items-center justify-center border border-slate-100 shadow-sm">
                                     <Users size={12} className="text-slate-400"/>
-                                    <span className="text-[9px] font-black text-slate-700">{attempts} LƯỢT</span>
+                                    <span className="text-[9px] font-black text-slate-700">
+                                        {results.filter(r => r.quizId === q.id).length} LƯỢT
+                                    </span>
                                 </div>
                             </div>
 
