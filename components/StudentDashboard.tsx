@@ -229,12 +229,24 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
   // Logic kiểm tra lộ trình học tập (Prerequisite Path)
   const getQuizStatus = (q: Quiz) => {
     const qOrder = q.orderIndex ?? 1;
+    
+    // Đề có STT = 0 là đề tự do (không chặn ai và không bị ai chặn)
+    if (qOrder === 0) return { isLocked: false };
+    
+    // Nếu chưa có chương hoặc STT = 1 thì mặc định mở
     if (!q.category || qOrder <= 1) return { isLocked: false };
     
     // Tìm các đề trong cùng chương có thứ tự nhỏ hơn
+    // Chỉ xét các đề đang còn hạn (để tránh học sinh bị kẹt bởi đề đã hết hạn)
+    // Và bỏ qua các đề có STT = 0
     const prerequisites = quizzes
-        .filter(prev => prev.category === q.category && (prev.orderIndex ?? 0) < qOrder)
-        .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0)); // Lấy đề ngay trước đó
+        .filter(prev => 
+            prev.category === q.category && 
+            (prev.orderIndex ?? 0) > 0 && 
+            (prev.orderIndex ?? 0) < qOrder &&
+            (!prev.endTime || isBefore(now, new Date(prev.endTime)))
+        )
+        .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0));
     
     if (prerequisites.length === 0) return { isLocked: false };
     
