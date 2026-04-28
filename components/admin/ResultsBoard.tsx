@@ -16,6 +16,8 @@ interface ResultsBoardProps {
     setRChapterFilter: (val: string) => void;
     rQuizFilter: string;
     setRQuizFilter: (val: string) => void;
+    rSearch: string;
+    setRSearch: (val: string) => void;
     onClearCache: () => void;
     onRefresh: () => void;
     onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void;
@@ -30,6 +32,7 @@ const PAGE_SIZE = 20;
 const ResultsBoard: React.FC<ResultsBoardProps> = ({ 
     results, quizzes, users, chapters, rGradeFilter, setRGradeFilter, 
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
+    rSearch, setRSearch,
     onClearCache, onRefresh, onViewHistory, onDeleteResult,
     totalCount, onLoadMore, isMoreLoading
 }) => {
@@ -151,7 +154,17 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         </button>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><Search size={10}/> Tìm học sinh</label>
+                        <input 
+                            type="text" 
+                            placeholder="Tên hoặc MAHS..." 
+                            className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black outline-none focus:border-blue-400"
+                            value={rSearch}
+                            onChange={e => setRSearch(e.target.value)}
+                        />
+                    </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><Filter size={10}/> Khối lớp</label>
                         <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none focus:border-blue-400" value={rGradeFilter} onChange={e => { setRGradeFilter(e.target.value as any); setRChapterFilter('all'); setRQuizFilter('all'); }}>
