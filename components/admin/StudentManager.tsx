@@ -17,6 +17,7 @@ interface StudentManagerProps {
     onViewDetail: (user: User) => void;
     onEdit: (user: User) => void;
     onDelete: (id: string, name: string) => void;
+    onBulkDelete: (ids: string[]) => void;
     onResetPassword: (user: User) => void;
     totalCount: number;
     onLoadMore: () => void;
@@ -27,13 +28,37 @@ const PAGE_SIZE = 20;
 
 const StudentManager: React.FC<StudentManagerProps> = ({ 
     students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
-    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword,
+    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onBulkDelete, onResetPassword,
     totalCount, onLoadMore, isMoreLoading
 }) => {
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
     const filtered = students.filter(u => 
         (sGradeFilter === 'all' || u.grade === sGradeFilter) &&
         (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())))
     );
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedIds(filtered.map(u => u.id));
+        } else {
+            setSelectedIds([]);
+        }
+    };
+
+    const handleToggleStudent = (id: string) => {
+        setSelectedIds(prev => 
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
+    const handleBulkDelete = () => {
+        if (selectedIds.length === 0) return;
+        if (confirm(`Bạn có chắc muốn xóa vĩnh viễn ${selectedIds.length} học sinh đã chọn? Hành động này sẽ xóa toàn bộ lịch sử điểm số liên quan và không thể hoàn tác.`)) {
+            onBulkDelete(selectedIds);
+            setSelectedIds([]);
+        }
+    };
 
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -98,6 +123,11 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                 
                 <div className="flex flex-col gap-2 w-full lg:w-auto">
                     <div className="flex gap-3">
+                        {selectedIds.length > 0 && (
+                            <button onClick={handleBulkDelete} className="flex items-center gap-2 px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-black shadow-xl transition-all">
+                                <Trash2 size={16}/> XÓA ĐÃ CHỌN ({selectedIds.length})
+                            </button>
+                        )}
                         <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
                             <RefreshCw size={14}/> Làm mới Cloud
                         </button>
@@ -125,6 +155,14 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                 <table className="w-full text-left">
                     <thead>
                         <tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            <th className="p-6 w-12">
+                                <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                                    onChange={e => handleSelectAll(e.target.checked)}
+                                />
+                            </th>
                             <th className="p-6">Học sinh (Cloud ID)</th>
                             <th className="p-6 text-center">Mã số (MAHS)</th>
                             <th className="p-6 text-center">Khối</th>
@@ -153,9 +191,18 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                             }, 0);
                             
                             const totalAccumulated = timePoints + bonusPoints;
+                            const isSelected = selectedIds.includes(u.id);
 
                             return (
-                                <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
+                                <tr key={u.id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                                    <td className="p-6">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            checked={isSelected}
+                                            onChange={() => handleToggleStudent(u.id)}
+                                        />
+                                    </td>
                                     <td className="p-6">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg" title="Đã đồng bộ Cloud">
