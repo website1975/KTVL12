@@ -28,7 +28,7 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-export const getResultsMetadataPage = async (page: number, pageSize: number = 50, quizId?: string): Promise<{ data: Result[], total: number }> => {
+export const getResultsMetadataPage = async (page: number, pageSize: number = 50, quizId?: string, search?: string): Promise<{ data: Result[], total: number }> => {
   if (!supabase) return { data: [], total: 0 };
   try {
     const from = (page - 1) * pageSize;
@@ -41,6 +41,11 @@ export const getResultsMetadataPage = async (page: number, pageSize: number = 50
       
     if (quizId && quizId !== 'all') {
       query = query.eq('quiz_id', quizId);
+    }
+
+    if (search) {
+      // Tìm kiếm theo tên học sinh hoặc mã học sinh lưu trong cột data (JSONB)
+      query = query.or(`data->>studentName.ilike.%${search}%,data->>studentCode.ilike.%${search}%`);
     }
     
     const { data, count, error } = await query;
@@ -202,17 +207,23 @@ export const updateResultCode = async (id: string, code: string): Promise<void> 
 };
 
 // --- Users ---
-export const getUsersPage = async (page: number, pageSize: number = 50): Promise<{ data: User[], total: number }> => {
+export const getUsersPage = async (page: number, pageSize: number = 50, search?: string): Promise<{ data: User[], total: number }> => {
   if (!supabase) return { data: [], total: 0 };
   try {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, count, error } = await supabase.from('users')
+    let query = supabase.from('users')
       .select('*', { count: 'exact' })
       .order('id', { ascending: false })
       .range(from, to);
     
+    if (search) {
+      // Lọc role student mặc định cho dashboard
+      query = query.or(`data->>fullName.ilike.%${search}%,data->>studentCode.ilike.%${search}%`);
+    }
+
+    const { data, count, error } = await query;
     if (error) throw error;
     const users = data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
     return { data: users, total: count || 0 };
