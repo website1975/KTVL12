@@ -130,6 +130,7 @@ const AdminDashboard: React.FC = () => {
   const [qGradeFilter, setQGradeFilter] = useState<Grade | 'all'>('all');
   const [qChapterFilter, setQChapterFilter] = useState('all');
   const [sSearch, setSSearch] = useState('');
+  const [rSearch, setRSearch] = useState('');
   const [sGradeFilter, setSGradeFilter] = useState<Grade | 'all'>('all');
   const [rGradeFilter, setRGradeFilter] = useState<Grade | 'all'>('all');
   const [rChapterFilter, setRChapterFilter] = useState('all');
@@ -137,11 +138,11 @@ const AdminDashboard: React.FC = () => {
 
   // Server-side filtering for results
   useEffect(() => {
-    if (activeTab === 'results') {
-      const fetchFilteredResults = async () => {
+    const timer = setTimeout(async () => {
+      if (activeTab === 'results') {
         setIsDataLoading(true);
         try {
-          const paged = await getResultsMetadataPage(1, 50, rQuizFilter);
+          const paged = await getResultsMetadataPage(1, 50, rQuizFilter, rSearch);
           setResults(paged.data);
           setResultsTotal(paged.total);
           setResultsPage(1);
@@ -150,10 +151,30 @@ const AdminDashboard: React.FC = () => {
         } finally {
           setIsDataLoading(false);
         }
-      };
-      fetchFilteredResults();
-    }
-  }, [rQuizFilter, activeTab]);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [rQuizFilter, rSearch, activeTab]);
+
+  // Server-side filtering for students
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (activeTab === 'students') {
+        setIsDataLoading(true);
+        try {
+          const paged = await getUsersPage(1, 50, sSearch);
+          setStudents(paged.data.filter(u => u.role === 'student'));
+          setStudentsTotal(paged.total);
+          setStudentsPage(1);
+        } catch (e) {
+          console.error("Lỗi lọc học sinh:", e);
+        } finally {
+          setIsDataLoading(false);
+        }
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [sSearch, activeTab]);
 
   const [bGradeFilter, setBGradeFilter] = useState<Grade | 'all'>('all');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('all');
@@ -550,7 +571,7 @@ const AdminDashboard: React.FC = () => {
     setIsDataLoading(true);
     try {
       const nextPage = studentsPage + 1;
-      const paged = await getUsersPage(nextPage, 50);
+      const paged = await getUsersPage(nextPage, 50, sSearch);
       setStudents(prev => [...prev, ...paged.data.filter(u => u.role === 'student')]);
       setStudentsPage(nextPage);
       setStudentsTotal(paged.total);
@@ -565,7 +586,7 @@ const AdminDashboard: React.FC = () => {
     setIsDataLoading(true);
     try {
       const nextPage = resultsPage + 1;
-      const paged = await getResultsMetadataPage(nextPage, 50, rQuizFilter);
+      const paged = await getResultsMetadataPage(nextPage, 50, rQuizFilter, rSearch);
       setResults(prev => [...prev, ...paged.data]);
       setResultsPage(nextPage);
       setResultsTotal(paged.total);
@@ -715,6 +736,7 @@ const AdminDashboard: React.FC = () => {
                         rGradeFilter={rGradeFilter} setRGradeFilter={setRGradeFilter}
                         rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter}
                         rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter}
+                        rSearch={rSearch} setRSearch={setRSearch}
                         onRefresh={() => loadTabData('results')}
                         onClearCache={clearLocalCache}
                         onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
