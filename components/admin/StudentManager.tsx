@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Grade, Result, Quiz } from '../../types';
-import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw } from 'lucide-react';
+import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw, Loader2 } from 'lucide-react';
 
 interface StudentManagerProps {
     students: User[];
@@ -18,26 +18,22 @@ interface StudentManagerProps {
     onEdit: (user: User) => void;
     onDelete: (id: string, name: string) => void;
     onResetPassword: (user: User) => void;
+    totalCount: number;
+    onLoadMore: () => void;
+    isMoreLoading: boolean;
 }
 
 const PAGE_SIZE = 20;
 
 const StudentManager: React.FC<StudentManagerProps> = ({ 
     students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
-    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword 
+    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onResetPassword,
+    totalCount, onLoadMore, isMoreLoading
 }) => {
-    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-    useEffect(() => {
-        setVisibleCount(PAGE_SIZE);
-    }, [sSearch, sGradeFilter]);
-
     const filtered = students.filter(u => 
         (sGradeFilter === 'all' || u.grade === sGradeFilter) &&
         (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())))
     );
-
-    const visibleStudents = filtered.slice(0, visibleCount);
 
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -138,7 +134,7 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {visibleStudents.map(u => {
+                        {filtered.map(u => {
                             const userResults = results.filter(r => 
                                 r.studentId === u.id || 
                                 (u.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === u.studentCode.trim().toUpperCase())
@@ -204,13 +200,15 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         })}
                     </tbody>
                 </table>
-                {visibleCount < filtered.length && (
+                {students.length < totalCount && (
                     <div className="p-8 text-center bg-slate-50/50">
                         <button 
-                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
-                            className="inline-flex items-center gap-2 px-8 py-3 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
+                            onClick={onLoadMore}
+                            disabled={isMoreLoading}
+                            className="inline-flex items-center gap-2 px-8 py-3 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm disabled:opacity-50"
                         >
-                            <ChevronDown size={14}/> Xem thêm học sinh (Còn {filtered.length - visibleCount})
+                            {isMoreLoading ? <Loader2 className="animate-spin" size={14}/> : <ChevronDown size={14}/>} 
+                            Tải thêm từ Cloud (Tổng: {totalCount}, Đã tải: {students.length})
                         </button>
                     </div>
                 )}
