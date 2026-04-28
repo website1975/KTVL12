@@ -1,8 +1,8 @@
 
 import { 
   getQuizzesMetadata, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
-  getUsers, saveUser, deleteUser, changePassword,
-  getResultsMetadata, getResultById, deleteResult,
+  getUsers, saveUser, deleteUser, changePassword, getUsersPage,
+  getResultsMetadata, getResultById, deleteResult, getResultsMetadataPage,
   getChapters, saveChapter, deleteChapter,
   getBankQuestions, saveBankQuestion,
   clearLocalCache,
@@ -45,7 +45,11 @@ const AdminDashboard: React.FC = () => {
   // Data states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [students, setStudents] = useState<User[]>([]);
+  const [studentsTotal, setStudentsTotal] = useState(0);
+  const [studentsPage, setStudentsPage] = useState(1);
   const [results, setResults] = useState<Result[]>([]);
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
@@ -63,22 +67,26 @@ const AdminDashboard: React.FC = () => {
         setChapters(c);
         setResults(r);
       } else if (tab === 'students') {
-        const [u, r, q] = await Promise.all([
-          getUsers(), 
+        const [paged, r, q] = await Promise.all([
+          getUsersPage(1, 50),
           getResultsMetadata(),
           getQuizzesMetadata()
         ]);
         
-        setStudents(u.filter(user => user.role === 'student'));
+        setStudents(paged.data.filter(user => user.role === 'student'));
+        setStudentsTotal(paged.total);
+        setStudentsPage(1);
         setResults(r);
         setQuizzes(q);
       } else if (tab === 'results') {
-        const [r, q, u] = await Promise.all([
-          getResultsMetadata(),
+        const [paged, q, u] = await Promise.all([
+          getResultsMetadataPage(1, 50),
           getQuizzesMetadata(),
           getUsers()
         ]);
-        setResults(r);
+        setResults(paged.data);
+        setResultsTotal(paged.total);
+        setResultsPage(1);
         setQuizzes(q);
         setStudents(u.filter(user => user.role === 'student'));
       } else if (tab === 'bank') {
@@ -126,6 +134,27 @@ const AdminDashboard: React.FC = () => {
   const [rGradeFilter, setRGradeFilter] = useState<Grade | 'all'>('all');
   const [rChapterFilter, setRChapterFilter] = useState('all');
   const [rQuizFilter, setRQuizFilter] = useState('all');
+
+  // Server-side filtering for results
+  useEffect(() => {
+    if (activeTab === 'results') {
+      const fetchFilteredResults = async () => {
+        setIsDataLoading(true);
+        try {
+          const paged = await getResultsMetadataPage(1, 50, rQuizFilter);
+          setResults(paged.data);
+          setResultsTotal(paged.total);
+          setResultsPage(1);
+        } catch (e) {
+          console.error("Lỗi lọc kết quả:", e);
+        } finally {
+          setIsDataLoading(false);
+        }
+      };
+      fetchFilteredResults();
+    }
+  }, [rQuizFilter, activeTab]);
+
   const [bGradeFilter, setBGradeFilter] = useState<Grade | 'all'>('all');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('all');
   const [bSearch, setBSearch] = useState('');
@@ -517,6 +546,36 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleLoadMoreStudents = async () => {
+    setIsDataLoading(true);
+    try {
+      const nextPage = studentsPage + 1;
+      const paged = await getUsersPage(nextPage, 50);
+      setStudents(prev => [...prev, ...paged.data.filter(u => u.role === 'student')]);
+      setStudentsPage(nextPage);
+      setStudentsTotal(paged.total);
+    } catch (e) {
+      console.error("Lỗi tải thêm học sinh:", e);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  const handleLoadMoreResults = async () => {
+    setIsDataLoading(true);
+    try {
+      const nextPage = resultsPage + 1;
+      const paged = await getResultsMetadataPage(nextPage, 50, rQuizFilter);
+      setResults(prev => [...prev, ...paged.data]);
+      setResultsPage(nextPage);
+      setResultsTotal(paged.total);
+    } catch (e) {
+      console.error("Lỗi tải thêm kết quả:", e);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white flex">
       <aside className="w-16 lg:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all">
@@ -626,7 +685,7 @@ const AdminDashboard: React.FC = () => {
           {activeTab === 'students' && (
             <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">DANH SÁCH HỌC SINH</h1>
-                {isDataLoading ? (
+                {isDataLoading && students.length === 0 ? (
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <StudentManager 
@@ -637,6 +696,9 @@ const AdminDashboard: React.FC = () => {
                         onImportCsv={handleImportCsv} onViewDetail={setViewingStudent}
                         onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
                         onDelete={handleDeleteStudent} onResetPassword={handleResetPassword}
+                        totalCount={studentsTotal}
+                        onLoadMore={handleLoadMoreStudents}
+                        isMoreLoading={isDataLoading}
                     />
                 )}
             </div>
@@ -645,7 +707,7 @@ const AdminDashboard: React.FC = () => {
           {activeTab === 'results' && (
              <div className="space-y-6">
                 <h1 className="text-xl font-black text-slate-800 uppercase italic">KẾT QUẢ HỌC TẬP</h1>
-                {isDataLoading ? (
+                {isDataLoading && results.length === 0 ? (
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <ResultsBoard 
@@ -657,6 +719,9 @@ const AdminDashboard: React.FC = () => {
                         onClearCache={clearLocalCache}
                         onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
                         onDeleteResult={(history) => history.forEach(r => deleteResult(r.id).then(() => loadTabData('results')))}
+                        totalCount={resultsTotal}
+                        onLoadMore={handleLoadMoreResults}
+                        isMoreLoading={isDataLoading}
                     />
                 )}
              </div>
