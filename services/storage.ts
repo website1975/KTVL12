@@ -28,22 +28,69 @@ const handleSupabaseError = (error: any, context: string) => {
 };
 
 // --- Results ---
-export const getResultsMetadata = async (quizId?: string, limit: number = 2000): Promise<Result[]> => {
+export const getResultsMetadataPage = async (page: number, pageSize: number = 50, quizId?: string): Promise<{ data: Result[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('results')
+      .select('id, quiz_id, student_id, data', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+      
+    if (quizId && quizId !== 'all') {
+      query = query.eq('quiz_id', quizId);
+    }
+    
+    const { data, count, error } = await query;
+    if (error) throw error;
+    
+    const results = data ? data.map((row: any) => ({
+      ...(row.data as Result),
+      id: row.id,
+      quizId: row.quiz_id,
+      studentId: row.student_id
+    })) : [];
+
+    return { data: results, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getResultsMetadataPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
+export const getResultsMetadata = async (quizId?: string, maxRecords: number = 10000): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let query = supabase.from('results')
-        .select('id, quiz_id, student_id, data')
-        .order('id', { ascending: false })
-        .limit(limit);
-        
-      if (quizId && quizId !== 'all') {
-        query = query.eq('quiz_id', quizId);
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore && allData.length < maxRecords) {
+          let query = supabase.from('results')
+            .select('id, quiz_id, student_id, data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+          if (quizId && quizId !== 'all') {
+            query = query.eq('quiz_id', quizId);
+          }
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+              allData = [...allData, ...data];
+              from += step;
+              if (data.length < step) hasMore = false;
+          } else {
+              hasMore = false;
+          }
       }
       
-      const { data, error } = await query;
-      if (error) throw error;
-      
-      return data ? data.map((row: any) => {
+      return allData.map((row: any) => {
           const res = row.data as Result;
           return {
               ...res,
@@ -51,7 +98,7 @@ export const getResultsMetadata = async (quizId?: string, limit: number = 2000):
               quizId: row.quiz_id,
               studentId: row.student_id
           };
-      }) : [];
+      });
   } catch (e) {
       console.error("Lỗi getResultsMetadata:", e);
       return [];
@@ -66,20 +113,39 @@ export const getResultsCount = async (quizId?: string): Promise<number> => {
   return error ? 0 : (count || 0);
 };
 
-export const getResults = async (quizId?: string, limit: number = 2000): Promise<Result[]> => {
+export const getResults = async (quizId?: string, maxRecords: number = 5000): Promise<Result[]> => {
   if (!supabase) return [];
-  let query = supabase.from('results')
-    .select('data')
-    .order('id', { ascending: false })
-    .limit(2000);
-    
-  if (quizId && quizId !== 'all') {
-    query = query.eq('quiz_id', quizId);
+  try {
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore && allData.length < maxRecords) {
+          let query = supabase.from('results')
+            .select('data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+          if (quizId && quizId !== 'all') {
+            query = query.eq('quiz_id', quizId);
+          }
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+              allData = [...allData, ...data];
+              from += step;
+              if (data.length < step) hasMore = false;
+          } else {
+              hasMore = false;
+          }
+      }
+      return allData.map((row: any) => row.data as Result);
+  } catch (e) {
+      return [];
   }
-  
-  const { data, error } = await query;
-  if (error) return [];
-  return data.map((row: any) => row.data as Result);
 };
 
 export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
@@ -136,10 +202,53 @@ export const updateResultCode = async (id: string, code: string): Promise<void> 
 };
 
 // --- Users ---
+export const getUsersPage = async (page: number, pageSize: number = 50): Promise<{ data: User[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, count, error } = await supabase.from('users')
+      .select('*', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+    
+    if (error) throw error;
+    const users = data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
+    return { data: users, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getUsersPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
 export const getUsers = async (): Promise<User[]> => {
   if (!supabase) return [];
-  const { data } = await supabase.from('users').select('*');
-  return data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
+  try {
+    let allUsers: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase.from('users')
+            .select('*')
+            .range(from, from + step - 1);
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+            allUsers = [...allUsers, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
+    }
+    return allUsers.map((row: any) => ({ ...row.data, id: row.id } as User));
+  } catch (e) {
+    console.error("Lỗi getUsers:", e);
+    return [];
+  }
 };
 
 export const saveUser = async (user: User): Promise<void> => {
@@ -193,17 +302,73 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 };
 
 // --- Quizzes ---
+export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20, grade?: Grade): Promise<{ data: Quiz[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('quizzes')
+      .select('id, grade, data', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+      
+    if (grade && grade !== 'all') {
+      query = query.or(`grade.eq.${grade},grade.eq.all`);
+    }
+    
+    const { data, count, error } = await query;
+    if (error) throw error;
+    
+    const quizzes = data ? data.map((row: any) => {
+        const quiz = row.data as Quiz;
+        return {
+            ...quiz,
+            id: row.id,
+            grade: row.grade,
+            attemptCount: quiz.attemptCount || 0,
+            questions: []
+        };
+    }) : [];
+
+    return { data: quizzes, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getQuizzesMetadataPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    let query = supabase.from('quizzes').select('id, grade, data');
-    if (grade && grade !== 'all') {
-        query = query.or(`grade.eq.${grade},grade.eq.all`);
+    let allQuizzes: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        let query = supabase.from('quizzes')
+            .select('id, grade, data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+        if (grade && grade !== 'all') {
+            query = query.or(`grade.eq.${grade},grade.eq.all`);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allQuizzes = [...allQuizzes, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
     }
-    const { data: quizzesData, error: qError } = await query;
-    if (qError) throw qError;
     
-    return quizzesData ? quizzesData.map((row: any) => {
+    return allQuizzes.map((row: any) => {
         const quiz = row.data as Quiz;
         return {
             ...quiz,
@@ -212,7 +377,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
             attemptCount: quiz.attemptCount || 0,
             questions: [] // Không tải câu hỏi để tiết kiệm băng thông
         };
-    }) : [];
+    });
   } catch (e) {
     console.error("Lỗi getQuizzesMetadata:", e);
     return [];
@@ -222,13 +387,33 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
 export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
   try {
-    let query = supabase.from('quizzes').select('data');
-    if (grade && grade !== 'all') {
-        query = query.or(`grade.eq.${grade},grade.eq.all`);
+    let allQuizzes: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        let query = supabase.from('quizzes')
+            .select('data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+        if (grade && grade !== 'all') {
+            query = query.or(`grade.eq.${grade},grade.eq.all`);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allQuizzes = [...allQuizzes, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
     }
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ? data.map((row: any) => row.data as Quiz) : [];
+    return allQuizzes.map((row: any) => row.data as Quiz);
   } catch (e) {
     return [];
   }
@@ -307,9 +492,26 @@ export const deleteChapter = async (id: string): Promise<void> => {
 export const getBankQuestions = async (): Promise<Question[]> => {
     if (!supabase) return [];
     try {
-        const { data: bankData, error } = await supabase.from('bank_questions').select('data');
-        if (error) throw error;
-        return bankData ? bankData.map((row: any) => row.data as Question) : [];
+        let allQuestions: any[] = [];
+        let from = 0;
+        const step = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+            const { data, error } = await supabase.from('bank_questions')
+                .select('data')
+                .range(from, from + step - 1);
+            
+            if (error) throw error;
+            if (data && data.length > 0) {
+                allQuestions = [...allQuestions, ...data];
+                from += step;
+                if (data.length < step) hasMore = false;
+            } else {
+                hasMore = false;
+            }
+        }
+        return allQuestions.map((row: any) => row.data as Question);
     } catch (e) {
         console.error("Lỗi lấy ngân hàng câu hỏi:", e);
         return [];
