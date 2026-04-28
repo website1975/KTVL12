@@ -20,6 +20,9 @@ interface ResultsBoardProps {
     onRefresh: () => void;
     onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void;
     onDeleteResult: (history: Result[]) => void;
+    totalCount: number;
+    onLoadMore: () => void;
+    isMoreLoading: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -27,15 +30,11 @@ const PAGE_SIZE = 20;
 const ResultsBoard: React.FC<ResultsBoardProps> = ({ 
     results, quizzes, users, chapters, rGradeFilter, setRGradeFilter, 
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
-    onClearCache, onRefresh, onViewHistory, onDeleteResult
+    onClearCache, onRefresh, onViewHistory, onDeleteResult,
+    totalCount, onLoadMore, isMoreLoading
 }) => {
     const [isFixing, setIsFixing] = useState(false);
     const [fixReport, setFixReport] = useState<{updated: number, deleted: number} | null>(null);
-    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-    useEffect(() => {
-        setVisibleCount(PAGE_SIZE);
-    }, [rGradeFilter, rChapterFilter, rQuizFilter, results]);
 
     const getEffectiveStudentCode = (res: Result) => {
         if (res.studentCode && res.studentCode !== 'N/A') return res.studentCode;
@@ -101,8 +100,6 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
 
         return sortedGroups;
     }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
-
-    const visibleGroupedResults = groupedResults.slice(0, visibleCount);
 
     const naCount = results.filter(r => !r.studentCode || r.studentCode === 'N/A').length;
     const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter);
@@ -193,7 +190,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {visibleGroupedResults.map((group, gIdx) => {
+                        {groupedResults.map((group, gIdx) => {
                             const quiz = quizzes.find(item => item.id === group.latest.quizId);
                             const maxScore = Math.max(...group.history.map(h => h.score));
                             const isNA = group.effectiveCode === 'N/A';
@@ -233,13 +230,15 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         })}
                     </tbody>
                 </table>
-                {visibleCount < groupedResults.length && (
+                {results.length < totalCount && (
                     <div className="p-8 text-center bg-slate-50/50">
                         <button 
-                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
-                            className="inline-flex items-center gap-2 px-8 py-3 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
+                            onClick={onLoadMore}
+                            disabled={isMoreLoading}
+                            className="inline-flex items-center gap-2 px-8 py-3 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm disabled:opacity-50"
                         >
-                            <ChevronDown size={14}/> Xem thêm bảng điểm (Còn {groupedResults.length - visibleCount})
+                            {isMoreLoading ? <Loader2 className="animate-spin" size={14}/> : <ChevronDown size={14}/>} 
+                            Tải thêm dữ liệu từ Cloud (Tổng: {totalCount}, Đã tải: {results.length})
                         </button>
                     </div>
                 )}
