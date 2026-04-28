@@ -38,6 +38,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
 }) => {
     const [isFixing, setIsFixing] = useState(false);
     const [fixReport, setFixReport] = useState<{updated: number, deleted: number} | null>(null);
+    const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
     const getEffectiveStudentCode = (res: Result) => {
         if (res.studentCode && res.studentCode !== 'N/A') return res.studentCode;
@@ -83,12 +84,12 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
             return matchGrade && matchChapter && matchQuiz;
         });
 
-        const groups: Record<string, { latest: Result, history: Result[], effectiveCode: string }> = {};
+        const groups: Record<string, { key: string, latest: Result, history: Result[], effectiveCode: string }> = {};
         filtered.forEach(r => {
             const code = getEffectiveStudentCode(r);
             const key = `${code}_${r.quizId}`;
             if (!groups[key]) {
-                groups[key] = { latest: r, history: [r], effectiveCode: code };
+                groups[key] = { key, latest: r, history: [r], effectiveCode: code };
             } else {
                 groups[key].history.push(r);
                 if (isAfter(new Date(r.submittedAt), new Date(groups[key].latest.submittedAt))) {
@@ -103,6 +104,32 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
 
         return sortedGroups;
     }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedGroups(groupedResults.map(g => g.key));
+        } else {
+            setSelectedGroups([]);
+        }
+    };
+
+    const handleToggleGroup = (key: string) => {
+        setSelectedGroups(prev => 
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+        );
+    };
+
+    const handleBulkDelete = () => {
+        const resultsToDelete = groupedResults
+            .filter(g => selectedGroups.includes(g.key))
+            .flatMap(g => g.history);
+        
+        if (resultsToDelete.length === 0) return;
+        if (confirm(`Bạn có chắc muốn xóa tất cả ${resultsToDelete.length} bản ghi của ${selectedGroups.length} nhóm kết quả đã chọn?`)) {
+            onDeleteResult(resultsToDelete);
+            setSelectedGroups([]);
+        }
+    };
 
     const naCount = results.filter(r => !r.studentCode || r.studentCode === 'N/A').length;
     const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter);
@@ -142,10 +169,18 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                             <div className="flex gap-4 mt-1">
                                 <span className="text-[9px] font-black text-slate-400 uppercase">Cloud: {results.length} bản ghi</span>
                                 <span className="text-[9px] font-black text-blue-500 uppercase">Hiển thị: {groupedResults.length} dòng</span>
+                                {selectedGroups.length > 0 && (
+                                    <span className="text-[9px] font-black text-red-500 uppercase">Đã chọn: {selectedGroups.length} nhóm</span>
+                                )}
                             </div>
                         </div>
                     </div>
                     <div className="flex gap-3">
+                        {selectedGroups.length > 0 && (
+                            <button onClick={handleBulkDelete} className="flex items-center gap-2 px-5 py-3 bg-red-600 text-white rounded-2xl hover:bg-black transition-all text-[10px] font-black uppercase shadow-xl">
+                                <Trash2 size={14}/> Xóa Đã Chọn ({selectedGroups.length})
+                            </button>
+                        )}
                         <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
                             <RefreshCw size={14}/> Làm mới Cloud
                         </button>
@@ -195,6 +230,14 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                 <table className="w-full text-left">
                     <thead>
                         <tr className="bg-slate-50 border-b text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
+                            <th className="p-6 w-12">
+                                <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    checked={groupedResults.length > 0 && selectedGroups.length === groupedResults.length}
+                                    onChange={e => handleSelectAll(e.target.checked)}
+                                />
+                            </th>
                             <th className="p-6">Học sinh / Mã số</th>
                             <th className="p-6">Đề thi</th>
                             <th className="p-6 text-center">Lượt làm</th>
@@ -207,8 +250,17 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                             const quiz = quizzes.find(item => item.id === group.latest.quizId);
                             const maxScore = Math.max(...group.history.map(h => h.score));
                             const isNA = group.effectiveCode === 'N/A';
+                            const isSelected = selectedGroups.includes(group.key);
                             return (
-                                <tr key={gIdx} className={`hover:bg-slate-50 transition-colors group ${isNA ? 'bg-orange-50/20' : ''}`}>
+                                <tr key={gIdx} className={`hover:bg-slate-50 transition-colors group ${isNA ? 'bg-orange-50/20' : ''} ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                                    <td className="p-6">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            checked={isSelected}
+                                            onChange={() => handleToggleGroup(group.key)}
+                                        />
+                                    </td>
                                     <td className="p-6">
                                         <div className="flex items-center gap-4">
                                             <div className={`w-10 h-10 ${isNA ? 'bg-orange-100 text-orange-600' : 'bg-blue-50 text-blue-600'} rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-all`}><User size={18}/></div>
