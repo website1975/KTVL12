@@ -534,16 +534,34 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteStudent = async (id: string, name: string) => {
     if (confirm(`CẢNH BÁO: Xóa học sinh "${name}" sẽ xóa vĩnh viễn toàn bộ lịch sử bài làm của học sinh này trên Database. Tiếp tục?`)) { 
-      setIsDataLoading(true);
-      try {
-        await deleteUser(id); 
-        await loadTabData('students'); 
-        alert("Đã xóa học sinh và toàn bộ kết quả liên quan thành công.");
-      } catch (e: any) {
-        alert("Lỗi khi xóa học sinh: " + e.message);
-      } finally {
+      await handleDeleteStudentsBatch([id]);
+    }
+  };
+
+  const handleDeleteResultBatch = async (resultsToDelete: Result[]) => {
+    setIsDataLoading(true);
+    try {
+        // Xóa tuần tự hoặc song song nhưng chỉ load lại data 1 lần ở cuối
+        await Promise.all(resultsToDelete.map(r => deleteResult(r.id)));
+        await loadTabData('results');
+        alert(`Đã xóa thành công ${resultsToDelete.length} bản ghi.`);
+    } catch (e: any) {
+        alert("Lỗi khi xóa kết quả: " + e.message);
+    } finally {
         setIsDataLoading(false);
-      }
+    }
+  };
+
+  const handleDeleteStudentsBatch = async (studentIds: string[]) => {
+    setIsDataLoading(true);
+    try {
+        await Promise.all(studentIds.map(id => deleteUser(id)));
+        await loadTabData('students');
+        alert(`Đã xóa thành công ${studentIds.length} học sinh.`);
+    } catch (e: any) {
+        alert("Lỗi khi xóa học sinh: " + e.message);
+    } finally {
+        setIsDataLoading(false);
     }
   };
 
@@ -716,7 +734,9 @@ const AdminDashboard: React.FC = () => {
                         onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
                         onImportCsv={handleImportCsv} onViewDetail={setViewingStudent}
                         onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
-                        onDelete={handleDeleteStudent} onResetPassword={handleResetPassword}
+                        onDelete={handleDeleteStudent} 
+                        onBulkDelete={handleDeleteStudentsBatch}
+                        onResetPassword={handleResetPassword}
                         totalCount={studentsTotal}
                         onLoadMore={handleLoadMoreStudents}
                         isMoreLoading={isDataLoading}
@@ -740,7 +760,7 @@ const AdminDashboard: React.FC = () => {
                         onRefresh={() => loadTabData('results')}
                         onClearCache={clearLocalCache}
                         onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
-                        onDeleteResult={(history) => history.forEach(r => deleteResult(r.id).then(() => loadTabData('results')))}
+                        onDeleteResult={handleDeleteResultBatch}
                         totalCount={resultsTotal}
                         onLoadMore={handleLoadMoreResults}
                         isMoreLoading={isDataLoading}
