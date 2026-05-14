@@ -1,4 +1,6 @@
 
+/// <reference types="vite/client" />
+
 import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade } from '../types';
 import { v4 as uuidv4 } from 'uuid';
