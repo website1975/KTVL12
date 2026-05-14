@@ -1,173 +1,663 @@
 
-import React, { useState } from 'react';
-import { User } from '../types';
-import { findUser, saveUser, findUserByStudentCode } from '../services/storage';
+import { createClient } from '@supabase/supabase-js';
+import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { BookOpen, Hash, AlertCircle, ShieldCheck, UserCircle, Loader2, Lock } from 'lucide-react';
 
-interface AuthProps {
-  onLogin: (user: User) => void;
+let cleanedUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://orhzaveaerpklscqqhnq.supabase.co').trim();
+if (cleanedUrl.endsWith('/rest/v1') || cleanedUrl.endsWith('/rest/v1/')) {
+    cleanedUrl = cleanedUrl.replace(/\/rest\/v1\/?$/, '');
+}
+const SUPABASE_URL = cleanedUrl;
+const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yaHphdmVhZXJwa2xzY3FxaG5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MjUyOTIsImV4cCI6MjA5NDMwMTI5Mn0.R9N5WUp7af6Filydh0gZORpFnuf6D1VFgh6EqOCwIqE').trim();
+
+let supabase: any = null;
+
+try {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch (e) {
+  console.error("Lỗi khởi tạo Supabase:", e);
 }
 
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [studentCode, setStudentCode] = useState('');
-  const [studentPassword, setStudentPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleStudentLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!studentCode || !studentPassword) return;
-    setIsLoading(true);
-    try {
-      const user = await findUserByStudentCode(studentCode.trim());
-      if (user) {
-        if (user.password === studentPassword) {
-            onLogin(user);
-        } else {
-            setError('Mật khẩu không chính xác!');
-        }
-      } else {
-        setError('Mã số học sinh không tồn tại!');
-      }
-    } catch (err) {
-      setError('Lỗi kết nối máy chủ.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
-    try {
-      let user = await findUser(username.trim());
-      if (!user && username === 'admin' && password === '123') {
-          user = {
-              id: uuidv4(),
-              username: 'admin',
-              password: '123',
-              role: 'admin',
-              fullName: 'Quản Trị Viên',
-          };
-          await saveUser(user);
-      }
-      if (user && user.role === 'admin' && user.password === password) {
-        onLogin(user);
-      } else {
-        setError('Sai tài khoản hoặc mật khẩu Admin.');
-      }
-    } catch (err) {
-      setError('Lỗi kết nối.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-200 p-4 font-sans antialiased">
-      <div className="bg-white border-2 border-gray-800 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 w-full max-w-sm rounded-none">
-        
-        <div className="flex items-center gap-3 mb-6 border-b-2 border-gray-800 pb-4">
-          <div className="bg-gray-800 p-2 rounded-none">
-            <BookOpen className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight leading-none">
-              {isAdminMode ? 'ADMIN LOGIN' : 'STUDENT LOGIN'}
-            </h2>
-            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">
-              {isAdminMode ? 'Hệ thống quản trị' : 'Phòng thi trực tuyến'}
-            </p>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-200 text-xs font-bold flex items-center gap-2 rounded-none">
-            <AlertCircle size={16} className="shrink-0" /> {error}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {!isAdminMode ? (
-            <form onSubmit={handleStudentLogin} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1 tracking-wider">Mã số học sinh (MAHS)</label>
-                <input 
-                  type="text" 
-                  required 
-                  autoFocus
-                  placeholder="VD: HS12-001"
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-blue-50 transition-all font-black text-gray-800 placeholder:text-gray-300 text-sm uppercase" 
-                  value={studentCode} 
-                  onChange={(e) => setStudentCode(e.target.value.toUpperCase())} 
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1 tracking-wider">Mật khẩu</label>
-                <input 
-                  type="password" 
-                  required 
-                  placeholder="••••••"
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-blue-50 transition-all font-black text-gray-800 placeholder:text-gray-300 text-sm" 
-                  value={studentPassword} 
-                  onChange={(e) => setStudentPassword(e.target.value)} 
-                />
-              </div>
-
-              <button type="submit" disabled={isLoading} className="w-full bg-gray-800 text-white font-black py-4 rounded-none hover:bg-black transition-all uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 mt-2 shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] active:shadow-none active:translate-x-1 active:translate-y-1">
-                {isLoading ? <Loader2 className="animate-spin" size={16}/> : <ShieldCheck size={16}/>}
-                {isLoading ? 'XÁC THỰC...' : 'ĐĂNG NHẬP THI'}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleAdminLogin} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1">Username Admin</label>
-                <input 
-                  type="text" 
-                  required 
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-gray-50 transition-all font-bold text-gray-800 text-sm" 
-                  value={username} 
-                  onChange={(e) => setUsername(e.target.value)} 
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-gray-600 uppercase mb-1 ml-1">Password</label>
-                <input 
-                  type="password" 
-                  required 
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-800 rounded-none outline-none focus:bg-gray-50 transition-all font-bold text-gray-800 text-sm" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                />
-              </div>
-              <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-none hover:bg-blue-700 transition-all uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 mt-2 shadow-[4px_4px_0px_0px_rgba(31,41,55,1)] active:shadow-none active:translate-x-1 active:translate-y-1">
-                {isLoading ? <Loader2 className="animate-spin" size={16}/> : null}
-                {isLoading ? 'ĐANG XỬ LÝ...' : 'VÀO QUẢN TRỊ'}
-              </button>
-            </form>
-          )}
-        </div>
-        
-        <div className="mt-6 text-center border-t border-gray-100 pt-4">
-          <button 
-            onClick={() => { setIsAdminMode(!isAdminMode); setError(''); }} 
-            className="text-gray-400 hover:text-blue-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto"
-          >
-            {isAdminMode ? <UserCircle size={14}/> : <Lock size={14}/>}
-            {isAdminMode ? 'HỌC SINH ĐĂNG NHẬP' : 'DÀNH CHO GIÁO VIÊN'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+export const isDatabaseConnected = (): boolean => {
+    return !!supabase;
 };
 
-export default Auth;
+const handleSupabaseError = (error: any, context: string) => {
+    if (error) {
+        console.error(`LỖI SUPABASE [${context}]:`, error);
+        throw new Error(`${context} thất bại: ${error.message || JSON.stringify(error)}`);
+    }
+};
+
+// --- Results ---
+export const getResultsMetadataPage = async (page: number, pageSize: number = 50, quizId?: string, search?: string): Promise<{ data: Result[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('results')
+      .select('id, quiz_id, student_id, data', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+      
+    if (quizId && quizId !== 'all') {
+      query = query.eq('quiz_id', quizId);
+    }
+
+    if (search) {
+      // Tìm kiếm theo tên học sinh hoặc mã học sinh lưu trong cột data (JSONB)
+      query = query.or(`data->>studentName.ilike.%${search}%,data->>studentCode.ilike.%${search}%`);
+    }
+    
+    const { data, count, error } = await query;
+    if (error) throw error;
+    
+    const results = data ? data.map((row: any) => ({
+      ...(row.data as Result),
+      id: row.id,
+      quizId: row.quiz_id,
+      studentId: row.student_id
+    })) : [];
+
+    return { data: results, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getResultsMetadataPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
+export const getResultsMetadata = async (quizId?: string, maxRecords: number = 10000): Promise<Result[]> => {
+  if (!supabase) return [];
+  try {
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore && allData.length < maxRecords) {
+          let query = supabase.from('results')
+            .select('id, quiz_id, student_id, data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+          if (quizId && quizId !== 'all') {
+            query = query.eq('quiz_id', quizId);
+          }
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+              allData = [...allData, ...data];
+              from += step;
+              if (data.length < step) hasMore = false;
+          } else {
+              hasMore = false;
+          }
+      }
+      
+      return allData.map((row: any) => {
+          const res = row.data as Result;
+          return {
+              ...res,
+              id: row.id,
+              quizId: row.quiz_id,
+              studentId: row.student_id
+          };
+      });
+  } catch (e) {
+      console.error("Lỗi getResultsMetadata:", e);
+      return [];
+  }
+};
+
+export const getResultsCount = async (quizId?: string): Promise<number> => {
+  if (!supabase) return 0;
+  let query = supabase.from('results').select('*', { count: 'exact', head: true });
+  if (quizId && quizId !== 'all') query = query.eq('quiz_id', quizId);
+  const { count, error } = await query;
+  return error ? 0 : (count || 0);
+};
+
+export const getResults = async (quizId?: string, maxRecords: number = 5000): Promise<Result[]> => {
+  if (!supabase) return [];
+  try {
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore && allData.length < maxRecords) {
+          let query = supabase.from('results')
+            .select('data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+          if (quizId && quizId !== 'all') {
+            query = query.eq('quiz_id', quizId);
+          }
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+              allData = [...allData, ...data];
+              from += step;
+              if (data.length < step) hasMore = false;
+          } else {
+              hasMore = false;
+          }
+      }
+      return allData.map((row: any) => row.data as Result);
+  } catch (e) {
+      return [];
+  }
+};
+
+export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
+  if (!supabase) return [];
+  let query = supabase.from('results')
+    .select('data')
+    .order('id', { ascending: false })
+    .limit(500); // Lấy 500 bài gần nhất của học sinh này
+    
+  if (studentCode && studentCode !== 'N/A') {
+    const code = studentCode.trim().toUpperCase();
+    query = query.or(`student_id.eq.${studentId},data->>studentCode.eq.${code}`);
+  } else {
+    query = query.eq('student_id', studentId);
+  }
+  const { data, error } = await query;
+  if (error) return [];
+  return data.map((row: any) => row.data as Result);
+};
+
+export const verifyResultExists = async (id: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data } = await supabase.from('results').select('id').eq('id', id).maybeSingle();
+    return !!data;
+};
+
+export const getResultById = async (id: string): Promise<Result | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('results').select('data').eq('id', id).single();
+    if (error || !data) return null;
+    return data.data as Result;
+};
+
+export const saveResult = async (result: Result): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const payload = { id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result };
+  const { error } = await supabase.from('results').insert(payload);
+  handleSupabaseError(error, "Lưu kết quả thi");
+};
+
+export const deleteResult = async (id: string): Promise<void> => {
+    if (supabase) {
+        const { error } = await supabase.from('results').delete().eq('id', id);
+        handleSupabaseError(error, "Xóa kết quả");
+    }
+};
+
+export const updateResultCode = async (id: string, code: string): Promise<void> => {
+    if (!supabase) return;
+    const { data } = await supabase.from('results').select('data').eq('id', id).single();
+    if (!data) return;
+    const resData = { ...data.data, studentCode: code.trim().toUpperCase() };
+    await supabase.from('results').update({ data: resData }).eq('id', id);
+};
+
+// --- Users ---
+export const getUsersPage = async (page: number, pageSize: number = 50, search?: string): Promise<{ data: User[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('users')
+      .select('*', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+    
+    if (search) {
+      // Lọc role student mặc định cho dashboard
+      query = query.or(`data->>fullName.ilike.%${search}%,data->>studentCode.ilike.%${search}%`);
+    }
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+    const users = data ? data.map((row: any) => ({ ...row.data, id: row.id } as User)) : [];
+    return { data: users, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getUsersPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
+export const getUsers = async (): Promise<User[]> => {
+  if (!supabase) return [];
+  try {
+    let allUsers: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase.from('users')
+            .select('*')
+            .range(from, from + step - 1);
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+            allUsers = [...allUsers, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
+    }
+    return allUsers.map((row: any) => ({ ...row.data, id: row.id } as User));
+  } catch (e) {
+    console.error("Lỗi getUsers:", e);
+    return [];
+  }
+};
+
+export const saveUser = async (user: User): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database Cloud");
+  const payload = { id: user.id, username: user.username.toLowerCase().trim(), data: user };
+  await supabase.from('users').upsert(payload);
+};
+
+export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
+    if (!supabase) return;
+    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+    if (data) {
+      const userData = { ...data.data, points: (data.data.points || 0) + points };
+      await supabase.from('users').update({ data: userData }).eq('id', userId);
+    }
+};
+
+export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
+  if (!supabase) return undefined;
+  console.log("Supabase: Đang tìm User qua mã HS:", code.trim().toUpperCase());
+  const { data, error } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', code.trim().toUpperCase()).maybeSingle();
+  if (error) {
+    console.error("Lỗi Supabase khi tìm mã HS:", error);
+    return undefined;
+  }
+  console.log("Kết quả tìm kiếm User:", data);
+  return data?.data as User;
+};
+
+export const findUser = async (username: string): Promise<User | undefined> => {
+  if (!supabase) return undefined;
+  console.log("Supabase: Đang tìm User qua username:", username.trim().toLowerCase());
+  const { data, error } = await supabase.from('users').select('data').eq('username', username.trim().toLowerCase()).maybeSingle();
+  if (error) {
+    console.error("Lỗi Supabase khi tìm username:", error);
+    return undefined;
+  }
+  console.log("Kết quả tìm kiếm User:", data);
+  return data?.data as User;
+};
+
+export const testSupabaseConnection = async (): Promise<{success: boolean, message: string}> => {
+    if (!supabase) return { success: false, message: "Supabase client not initialized" };
+    console.log("Đang kiểm tra kết nối tới:", SUPABASE_URL);
+    try {
+        const { data, error } = await supabase.from('users').select('id').limit(1);
+        if (error) {
+            console.error("Lỗi PostgREST:", error);
+            return { success: false, message: `Lỗi kết nối (${SUPABASE_URL}): ${error.message || JSON.stringify(error)}` };
+        }
+        return { success: true, message: `Kết nối OK. Tìm thấy ${data?.length || 0} bản ghi.` };
+    } catch (e: any) {
+        console.error("Lỗi Exception kết nối:", e);
+        return { success: false, message: `Lỗi kết nối ngoại lệ: ${e.message}` };
+    }
+};
+
+export const deleteUser = async (id: string): Promise<void> => {
+  if (supabase) {
+      // 1. Xóa tất cả các kết quả thi của người dùng này trước để tránh dữ liệu mồ côi
+      const { error: resultsError } = await supabase.from('results').delete().eq('student_id', id);
+      if (resultsError) {
+          console.warn("Cảnh báo: Không thể xóa sạch kết quả thi của người dùng, nhưng vẫn tiến hành xóa tài khoản.", resultsError);
+      }
+
+      // 2. Xóa thông tin người dùng
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      handleSupabaseError(error, "Xóa người dùng");
+  }
+};
+
+export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
+    if (!data) return false;
+    const userData = { ...data.data, password: newPassword };
+    const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
+    return !error;
+};
+
+// --- Quizzes ---
+export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20, grade?: Grade): Promise<{ data: Quiz[], total: number }> => {
+  if (!supabase) return { data: [], total: 0 };
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('quizzes')
+      .select('id, grade, data', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(from, to);
+      
+    if (grade && grade !== 'all') {
+      query = query.or(`grade.eq.${grade},grade.eq.all`);
+    }
+    
+    const { data, count, error } = await query;
+    if (error) throw error;
+    
+    const quizzes = data ? data.map((row: any) => {
+        const quiz = row.data as Quiz;
+        return {
+            ...quiz,
+            id: row.id,
+            grade: row.grade,
+            attemptCount: quiz.attemptCount || 0,
+            questions: []
+        };
+    }) : [];
+
+    return { data: quizzes, total: count || 0 };
+  } catch (e) {
+    console.error("Lỗi getQuizzesMetadataPage:", e);
+    return { data: [], total: 0 };
+  }
+};
+
+export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
+  if (!supabase) return [];
+  try {
+    let allQuizzes: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        let query = supabase.from('quizzes')
+            .select('id, grade, data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+        if (grade && grade !== 'all') {
+            query = query.or(`grade.eq.${grade},grade.eq.all`);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allQuizzes = [...allQuizzes, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
+    }
+    
+    return allQuizzes.map((row: any) => {
+        const quiz = row.data as Quiz;
+        return {
+            ...quiz,
+            id: row.id,
+            grade: row.grade,
+            attemptCount: quiz.attemptCount || 0,
+            questions: [] // Không tải câu hỏi để tiết kiệm băng thông
+        };
+    });
+  } catch (e) {
+    console.error("Lỗi getQuizzesMetadata:", e);
+    return [];
+  }
+};
+
+export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
+  if (!supabase) return [];
+  try {
+    let allQuizzes: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        let query = supabase.from('quizzes')
+            .select('data')
+            .order('id', { ascending: false })
+            .range(from, from + step - 1);
+            
+        if (grade && grade !== 'all') {
+            query = query.or(`grade.eq.${grade},grade.eq.all`);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allQuizzes = [...allQuizzes, ...data];
+            from += step;
+            if (data.length < step) hasMore = false;
+        } else {
+            hasMore = false;
+        }
+    }
+    return allQuizzes.map((row: any) => row.data as Quiz);
+  } catch (e) {
+    return [];
+  }
+};
+
+export const getQuizById = async (id: string): Promise<Quiz | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).single();
+    if (error || !data) return null;
+    return data.data as Quiz;
+};
+
+export const saveQuiz = async (quiz: Quiz): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const enrichedQuiz = { ...quiz, questionCount: quiz.questions.length };
+  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
+  handleSupabaseError(error, "Lưu đề thi mới");
+};
+
+export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
+  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
+  handleSupabaseError(error, "Cập nhật đề thi");
+};
+
+export const deleteQuiz = async (id: string): Promise<void> => {
+  if (supabase) {
+      const { error } = await supabase.from('quizzes').delete().eq('id', id);
+      handleSupabaseError(error, "Xóa đề thi");
+  }
+};
+
+// CÔNG CỤ ĐỒNG BỘ: Quét lại toàn bộ đề thi để cập nhật số câu chính xác
+export const syncAllQuizzesMetadata = async (): Promise<number> => {
+  if (!supabase) return 0;
+  try {
+    const { data: allQuizzes, error } = await supabase.from('quizzes').select('*');
+    if (error || !allQuizzes) return 0;
+    
+    let count = 0;
+    for (const row of allQuizzes) {
+      const quiz = row.data as Quiz;
+      const questionCount = quiz.questions ? quiz.questions.length : 0;
+      const updatedQuiz = { ...quiz, questionCount };
+      
+      await supabase.from('quizzes').update({ 
+          data: updatedQuiz, 
+          grade: quiz.grade 
+      }).eq('id', row.id);
+      count++;
+    }
+    return count;
+  } catch (e) {
+    console.error("Lỗi đồng bộ Metadata:", e);
+    return 0;
+  }
+};
+
+// --- Chapters ---
+export const getChapters = async (): Promise<Chapter[]> => {
+  if (!supabase) return [];
+  const { data } = await supabase.from('chapters').select('data');
+  return data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
+};
+
+export const saveChapter = async (c: Chapter): Promise<void> => {
+  if (supabase) await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
+};
+
+export const deleteChapter = async (id: string): Promise<void> => {
+  if (supabase) await supabase.from('chapters').delete().eq('id', id);
+};
+
+// --- Question Bank ---
+export const getBankQuestions = async (): Promise<Question[]> => {
+    if (!supabase) return [];
+    try {
+        let allQuestions: any[] = [];
+        let from = 0;
+        const step = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+            const { data, error } = await supabase.from('bank_questions')
+                .select('data')
+                .range(from, from + step - 1);
+            
+            if (error) throw error;
+            if (data && data.length > 0) {
+                allQuestions = [...allQuestions, ...data];
+                from += step;
+                if (data.length < step) hasMore = false;
+            } else {
+                hasMore = false;
+            }
+        }
+        return allQuestions.map((row: any) => row.data as Question);
+    } catch (e) {
+        console.error("Lỗi lấy ngân hàng câu hỏi:", e);
+        return [];
+    }
+};
+
+export const syncQuizzesToBank = async (): Promise<{ total: number, added: number }> => {
+    if (!supabase) return { total: 0, added: 0 };
+    try {
+        const { data: quizData } = await supabase.from('quizzes').select('data');
+        if (!quizData) return { total: 0, added: 0 };
+
+        const allQuestions: Question[] = [];
+        quizData.forEach((row: any) => {
+            const quiz = row.data as Quiz;
+            if (quiz.questions) {
+                quiz.questions.forEach(q => {
+                    allQuestions.push({
+                        ...q,
+                        quizTitle: quiz.title,
+                        quizGrade: quiz.grade
+                    });
+                });
+            }
+        });
+
+        if (allQuestions.length === 0) return { total: 0, added: 0 };
+
+        const chunks = [];
+        const chunkSize = 50;
+        for (let i = 0; i < allQuestions.length; i += chunkSize) {
+            chunks.push(allQuestions.slice(i, i + chunkSize));
+        }
+
+        let addedCount = 0;
+        for (const chunk of chunks) {
+            const payload = chunk.map(q => ({ id: q.id, data: q }));
+            const { error } = await supabase.from('bank_questions').upsert(payload);
+            if (!error) addedCount += chunk.length;
+        }
+
+        return { total: allQuestions.length, added: addedCount };
+    } catch (e) {
+        console.error("Lỗi đồng bộ về Ngân hàng:", e);
+        return { total: 0, added: 0 };
+    }
+};
+
+export const saveBankQuestion = async (q: Question): Promise<void> => {
+    if (supabase) await supabase.from('bank_questions').upsert({ id: q.id, data: q });
+};
+
+export const uploadQuizImage = async (file: File): Promise<string> => {
+    if (!supabase) return '';
+    try {
+      const fileExt = file.name.split('.').pop() || 'png';
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file);
+      if (uploadError) return '';
+      const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
+      return data.publicUrl;
+    } catch (err) { return ''; }
+};
+
+export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('published_results').select('data').order('id', { ascending: false }).limit(limit);
+    return data ? data.map((row: any) => row.data as PublishedResult) : [];
+};
+
+export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
+    if (supabase) await supabase.from('published_results').upsert({ id: pub.id, data: pub });
+};
+
+export const deletePublishedResult = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('published_results').delete().eq('id', id);
+};
+
+export const saveExamSession = async (session: ExamSession): Promise<void> => {
+    if (supabase) await supabase.from('exam_sessions').upsert({ id: session.id, data: session });
+};
+
+export const deleteExamSession = async (id: string): Promise<void> => {
+    if (supabase) await supabase.from('exam_sessions').delete().eq('id', id);
+};
+
+export const getExamSessions = async (quizId?: string): Promise<ExamSession[]> => {
+    if (!supabase) return [];
+    let query = supabase.from('exam_sessions').select('data');
+    if (quizId && quizId !== 'all') query = query.filter('data->>quizId', 'eq', quizId);
+    const { data } = await query;
+    return data ? data.map((row: any) => row.data as ExamSession) : [];
+};
+
+export const getStudentActiveSessions = async (studentId: string): Promise<ExamSession[]> => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('exam_sessions').select('data').filter('data->>studentId', 'eq', studentId);
+    return data ? data.map((row: any) => row.data as ExamSession) : [];
+};
+
+export const clearAllSessions = async () => {
+    if (supabase) await supabase.from('exam_sessions').delete().neq('id', 'null');
+};
+
+export const initStorage = () => {};
+export const clearLocalCache = () => { localStorage.clear(); window.location.reload(); };
