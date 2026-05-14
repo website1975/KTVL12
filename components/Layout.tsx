@@ -10,16 +10,16 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
+export default function Layout({ children, user, onLogout }: LayoutProps) {
   const [isChangePassOpen, setIsChangePassOpen] = useState(false);
   const [currentPassInput, setCurrentPassInput] = useState('');
   const [newPassInput, setNewPassInput] = useState('');
   const [msg, setMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Kiểm tra kết nối
   const isOnline = isDatabaseConnected();
-  const isAIReady = process.env.API_KEY && process.env.API_KEY !== "undefined";
+  const rawKey = process.env.API_KEY;
+  const isAIReady = rawKey && rawKey !== "undefined" && rawKey.length > 10;
 
   const handleChangePass = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -96,16 +96,18 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <span>© 2024 EduQuiz VN. LH Thạnh 0909091634</span>
             <div className="flex flex-wrap justify-center gap-3">
                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                    <Database size={12}/> {isOnline ? 'DB Online' : 'DB Offline'}
+                    <Database size={12}/> {isOnline ? 'Cloud: lchfhsio...' : 'DB Offline'}
                 </div>
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isAIReady ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                <div 
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border cursor-help ${isAIReady ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-red-50 text-red-700 border-red-200'}`}
+                  title={isAIReady ? "Hệ thống AI đã sẵn sàng" : "Thiếu API_KEY hoặc cần Redeploy lại trên Vercel"}
+                >
                     <Sparkles size={12}/> {isAIReady ? 'AI Ready' : 'AI No Key'}
                 </div>
             </div>
          </div>
       </footer>
 
-      {/* Change Password Modal */}
       {isChangePassOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -159,6 +161,4 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       )}
     </div>
   );
-};
-
-export default Layout;
+}
