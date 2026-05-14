@@ -16,7 +16,7 @@ interface StudentDashboardProps {
   targetQuizId?: string | null;
 }
 
-const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId }) => {
+export default function StudentDashboard({ user, targetQuizId }: StudentDashboardProps) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
@@ -573,6 +573,4 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, targetQuizId 
       )}
     </div>
   );
-};
-
-export default StudentDashboard;
+}
