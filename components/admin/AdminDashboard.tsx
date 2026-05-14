@@ -92,8 +92,12 @@ export default function AdminDashboard() {
         setQuizzes(q);
         setStudents(u.filter(user => user.role === 'student'));
       } else if (tab === 'bank') {
-        const b = await getBankQuestions();
+        const [b, c] = await Promise.all([
+          getBankQuestions(),
+          getChapters()
+        ]);
         setBankQuestions(b);
+        setChapters(c);
       } else if (tab === 'chapters') {
         const c = await getChapters();
         setChapters(c);
@@ -179,6 +183,7 @@ export default function AdminDashboard() {
   }, [sSearch, activeTab]);
 
   const [bGradeFilter, setBGradeFilter] = useState<Grade | 'all'>('all');
+  const [bChapterFilter, setBChapterFilter] = useState('all');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('all');
   const [bSearch, setBSearch] = useState('');
 
@@ -813,7 +818,8 @@ export default function AdminDashboard() {
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <QuestionBank 
-                        questions={allAvailableQuestions} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        questions={allAvailableQuestions} chapters={chapters} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                         bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
                         onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setActiveTab('quizzes'); setIsEditingQuiz(true); }}
                     />
@@ -856,7 +862,9 @@ export default function AdminDashboard() {
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
                     <QuestionBank 
                         questions={allAvailableQuestions} 
+                        chapters={chapters}
                         bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                        bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                         bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
                         bSearch={bSearch} setBSearch={setBSearch}
                         onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
