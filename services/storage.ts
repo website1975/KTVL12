@@ -3,8 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-const SUPABASE_URL = 'https://lchfhsioxvgkjfsikycl.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjaGZoc2lveHZna2pmc2lreWNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NTI3MDksImV4cCI6MjA4MDUyODcwOX0.toOc2ytPzo_cqhpQyd0YOLq4Zvk3BtfdZSziXN__j8Q';
+let cleanedUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://orhzaveaerpklscqqhnq.supabase.co').trim();
+if (cleanedUrl.endsWith('/rest/v1') || cleanedUrl.endsWith('/rest/v1/')) {
+    cleanedUrl = cleanedUrl.replace(/\/rest\/v1\/?$/, '');
+}
+const SUPABASE_URL = cleanedUrl;
+const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yaHphdmVhZXJwa2xzY3FxaG5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MjUyOTIsImV4cCI6MjA5NDMwMTI5Mn0.R9N5WUp7af6Filydh0gZORpFnuf6D1VFgh6EqOCwIqE').trim();
 
 let supabase: any = null;
 
@@ -23,7 +27,7 @@ export const isDatabaseConnected = (): boolean => {
 const handleSupabaseError = (error: any, context: string) => {
     if (error) {
         console.error(`LỖI SUPABASE [${context}]:`, error);
-        throw new Error(`${context} thất bại: ${error.message}`);
+        throw new Error(`${context} thất bại: ${error.message || JSON.stringify(error)}`);
     }
 };
 
@@ -279,14 +283,42 @@ export const addPointsToUser = async (userId: string, points: number): Promise<v
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
-  const { data } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', code.trim().toUpperCase()).maybeSingle();
+  console.log("Supabase: Đang tìm User qua mã HS:", code.trim().toUpperCase());
+  const { data, error } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', code.trim().toUpperCase()).maybeSingle();
+  if (error) {
+    console.error("Lỗi Supabase khi tìm mã HS:", error);
+    return undefined;
+  }
+  console.log("Kết quả tìm kiếm User:", data);
   return data?.data as User;
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
-  const { data } = await supabase.from('users').select('data').eq('username', username.trim().toLowerCase()).maybeSingle();
+  console.log("Supabase: Đang tìm User qua username:", username.trim().toLowerCase());
+  const { data, error } = await supabase.from('users').select('data').eq('username', username.trim().toLowerCase()).maybeSingle();
+  if (error) {
+    console.error("Lỗi Supabase khi tìm username:", error);
+    return undefined;
+  }
+  console.log("Kết quả tìm kiếm User:", data);
   return data?.data as User;
+};
+
+export const testSupabaseConnection = async (): Promise<{success: boolean, message: string}> => {
+    if (!supabase) return { success: false, message: "Supabase client not initialized" };
+    console.log("Đang kiểm tra kết nối tới:", SUPABASE_URL);
+    try {
+        const { data, error } = await supabase.from('users').select('id').limit(1);
+        if (error) {
+            console.error("Lỗi PostgREST:", error);
+            return { success: false, message: `Lỗi kết nối (${SUPABASE_URL}): ${error.message || JSON.stringify(error)}` };
+        }
+        return { success: true, message: `Kết nối OK. Tìm thấy ${data?.length || 0} bản ghi.` };
+    } catch (e: any) {
+        console.error("Lỗi Exception kết nối:", e);
+        return { success: false, message: `Lỗi kết nối ngoại lệ: ${e.message}` };
+    }
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
