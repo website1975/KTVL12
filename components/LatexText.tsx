@@ -7,7 +7,7 @@ interface LatexTextProps {
   text: string;
 }
 
-const LatexText: React.FC<LatexTextProps> = ({ text }) => {
+export default function LatexText({ text }: LatexTextProps) {
   useEffect(() => {
     // Re-render handled by React key prop mostly, but effect ensures cleanup if needed
   }, [text]);
@@ -42,6 +42,4 @@ const LatexText: React.FC<LatexTextProps> = ({ text }) => {
       })}
     </span>
   );
-};
-
-export default LatexText;
+}
