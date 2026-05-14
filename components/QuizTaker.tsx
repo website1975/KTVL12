@@ -13,7 +13,7 @@ interface QuizTakerProps {
     onExit: () => void;
 }
 
-const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
+export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
     const backupKey = `quiz_backup_${student.id}_${quiz.id}`;
     const initialStartTimeRef = useRef(new Date().toISOString());
@@ -82,7 +82,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
                 lastUpdate: new Date().toISOString(),
                 violationCount: violationCount,
                 isFinished: isFinished
-            };
+            } as ExamSession;
             await saveExamSession(session);
         } catch (e) {}
     };
@@ -382,6 +382,4 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ quiz, student, onExit }) => {
             </div>
         </div>
     );
-};
-
-export default QuizTaker;
+}
