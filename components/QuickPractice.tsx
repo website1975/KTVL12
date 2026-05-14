@@ -12,7 +12,7 @@ interface QuickPracticeProps {
   onExit: () => void;
 }
 
-const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) => {
+export default function QuickPractice({ quiz, student, onExit }: QuickPracticeProps) {
   const sessionIdRef = useRef(`sess_prac_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
   const initialStartTimeRef = useRef(new Date().toISOString());
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -34,7 +34,7 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
             lastUpdate: new Date().toISOString(),
             violationCount: 0,
             isFinished: isFinished
-        };
+        } as ExamSession;
         await saveExamSession(session);
     } catch (e) {}
   };
@@ -324,6 +324,4 @@ const QuickPractice: React.FC<QuickPracticeProps> = ({ quiz, student, onExit }) 
       </div>
     </div>
   );
-};
-
-export default QuickPractice;
+}
