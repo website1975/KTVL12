@@ -1,14 +1,17 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, QuestionType, Grade } from '../../types';
+import { Question, QuestionType, Grade, Chapter } from '../../types';
 import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 
 interface QuestionBankProps {
     questions: Question[];
+    chapters: Chapter[];
     bGradeFilter: Grade | 'all';
     setBGradeFilter: (val: Grade | 'all') => void;
+    bChapterFilter: string;
+    setBChapterFilter: (val: string) => void;
     bTypeFilter: QuestionType | 'all';
     setBTypeFilter: (val: QuestionType | 'all') => void;
     bSearch: string;
@@ -19,7 +22,7 @@ interface QuestionBankProps {
 const PAGE_SIZE = 40;
 
 export default function QuestionBank({ 
-    questions, bGradeFilter, setBGradeFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple 
+    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple 
 }: QuestionBankProps) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -29,6 +32,10 @@ export default function QuestionBank({
             // Lọc khối - Bình thường hóa chuỗi
             const qGradeRaw = (q.quizGrade || 'all').toString().trim();
             const matchGrade = bGradeFilter === 'all' || qGradeRaw === bGradeFilter;
+
+            // Lọc chương
+            const qChapter = (q.quizCategory || '').toString().trim().toLowerCase();
+            const matchChapter = bChapterFilter === 'all' || qChapter === bChapterFilter.trim().toLowerCase();
             
             // Lọc dạng - Quan trọng: Xử lý cả 'group_tf' và 'group-tf'
             let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
@@ -41,11 +48,11 @@ export default function QuestionBank({
                               q.text.toLowerCase().includes(bSearch.toLowerCase()) ||
                               (q.quizTitle && q.quizTitle.toLowerCase().includes(bSearch.toLowerCase()));
             
-            return matchGrade && matchType && matchSearch;
+            return matchGrade && matchChapter && matchType && matchSearch;
         });
-    }, [questions, bGradeFilter, bTypeFilter, bSearch]);
+    }, [questions, bGradeFilter, bChapterFilter, bTypeFilter, bSearch]);
 
-    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [bGradeFilter, bTypeFilter, bSearch]);
+    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [bGradeFilter, bChapterFilter, bTypeFilter, bSearch]);
 
     const toggleSelect = (id: string) => {
         const newIds = new Set(selectedIds);
@@ -73,12 +80,18 @@ export default function QuestionBank({
     return (
         <div className="space-y-4 animate-fade-in w-full max-w-full pb-10">
             <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm sticky top-0 z-30 flex flex-col md:flex-row gap-2">
-                <div className="flex gap-2 shrink-0">
-                    <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bGradeFilter} onChange={e => setBGradeFilter(e.target.value as any)}>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                    <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bGradeFilter} onChange={e => { setBGradeFilter(e.target.value as any); setBChapterFilter('all'); }}>
                         <option value="all">Khối: Tất cả</option>
                         <option value="12">Khối 12</option>
                         <option value="11">Khối 11</option>
                         <option value="10">Khối 10</option>
+                    </select>
+                    <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none max-w-[150px]" value={bChapterFilter} onChange={e => setBChapterFilter(e.target.value)}>
+                        <option value="all">Chương: Tất cả</option>
+                        {chapters.filter(c => bGradeFilter === 'all' || c.grade === bGradeFilter).map(c => (
+                            <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
                     </select>
                     <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bTypeFilter} onChange={e => setBTypeFilter(e.target.value as any)}>
                         <option value="all">Dạng: Tất cả</option>
@@ -114,6 +127,7 @@ export default function QuestionBank({
                                         {bq.type.toUpperCase()}
                                     </span>
                                     <span className="text-[8px] text-slate-400 font-bold uppercase">Khối {bq.quizGrade || 'all'}</span>
+                                    {bq.quizCategory && <span className="text-[8px] text-purple-400 font-bold uppercase bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{bq.quizCategory}</span>}
                                     {bq.quizTitle && (
                                         <span className="flex items-center gap-1 text-[8px] text-blue-400 font-black uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                                             <BookOpen size={10}/> {bq.quizTitle}
