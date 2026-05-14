@@ -40,6 +40,7 @@ export interface Question {
   subQuestions?: SubQuestion[];
   quizTitle?: string;
   quizGrade?: Grade;
+  quizCategory?: string;
 }
 
 export interface Quiz {
