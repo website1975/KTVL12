@@ -14,9 +14,10 @@ import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText }
 import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Papa from 'papaparse';
 import { 
   LayoutDashboard, Users, BarChart3, ShieldAlert, Sparkles, FolderTree, 
-  Plus, Database, Loader2, X, RefreshCw 
+  Plus, Database, Loader2, X, RefreshCw, AlertTriangle, FileUp, DatabaseZap
 } from 'lucide-react';
 
 import QuizList from './QuizList';
@@ -36,7 +37,7 @@ import QuizPreviewModal from './QuizPreviewModal';
 
 type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
 
-const AdminDashboard: React.FC = () => {
+export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -55,6 +56,7 @@ const AdminDashboard: React.FC = () => {
 
   // Lazy loading data
   const loadTabData = useCallback(async (tab: AdminTab) => {
+    if (!isDatabaseConnected()) return;
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
@@ -139,7 +141,7 @@ const AdminDashboard: React.FC = () => {
   // Server-side filtering for results
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (activeTab === 'results') {
+      if (activeTab === 'results' && isDatabaseConnected()) {
         setIsDataLoading(true);
         try {
           const paged = await getResultsMetadataPage(1, 50, rQuizFilter, rSearch);
@@ -159,7 +161,7 @@ const AdminDashboard: React.FC = () => {
   // Server-side filtering for students
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (activeTab === 'students') {
+      if (activeTab === 'students' && isDatabaseConnected()) {
         setIsDataLoading(true);
         try {
           const paged = await getUsersPage(1, 50, sSearch);
@@ -449,64 +451,64 @@ const AdminDashboard: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n').filter(line => line.trim());
-      if (lines.length <= 1) return alert("File CSV trống hoặc không hợp lệ!");
+    if (isDatabaseConnected() && !confirm("Bạn đang có kết nối Cloud. Việc nhập CSV này chỉ nên dùng để xem dữ liệu tạm thời. Tiếp tục?")) return;
 
-      const newStudents: User[] = [];
-      const duplicates: string[] = [];
-      const existingCodes = new Set(students.map(s => s.studentCode?.toUpperCase()));
-
-      // Bỏ qua dòng tiêu đề
-      for (let i = 1; i < lines.length; i++) {
-        const [fullName, studentCode, grade, password] = lines[i].split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    setIsDataLoading(true);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results: any) => {
+        const data = results.data as any[];
+        const firstRow = data[0];
         
-        if (!fullName || !studentCode) continue;
+        try {
+          if (!firstRow) throw new Error("File CSV trống.");
 
-        const code = studentCode.toUpperCase();
-        if (existingCodes.has(code)) {
-          duplicates.push(code);
-          continue;
+          // Detect type based on headers
+          const headers = Object.keys(firstRow).map(h => h.toLowerCase());
+          const isUserFile = headers.includes('role') || headers.includes('student_code');
+          const isResultFile = headers.includes('score') || headers.includes('quiz_id');
+
+          if (isUserFile) {
+            const parsedUsers = data.map(row => ({
+              ...row,
+              id: row.id || uuidv4(),
+              studentCode: row.studentCode || row.student_code || 'N/A',
+              fullName: row.fullName || row.full_name || 'Học sinh',
+              role: row.role || 'student'
+            })).filter(u => u.role === 'student');
+            setStudents(parsedUsers);
+            setStudentsTotal(parsedUsers.length);
+            alert(`Đã tải ${parsedUsers.length} học sinh từ file CSV.`);
+          } else if (isResultFile) {
+            const parsedResults = data.map(row => {
+                const sId = row.studentId || row.student_id;
+                const scStr = String(row.studentCode || row.student_code || "").trim();
+                return {
+                    ...row,
+                    id: row.id || uuidv4(),
+                    quizId: row.quizId || row.quiz_id,
+                    studentId: sId,
+                    studentCode: scStr || 'N/A',
+                    studentName: row.studentName || row.student_name || row.full_name || 'Học sinh',
+                    score: Number(row.score || 0),
+                    submittedAt: row.submittedAt || row.submitted_at || new Date().toISOString()
+                };
+            });
+            setResults(parsedResults);
+            setResultsTotal(parsedResults.length);
+            alert(`Đã tải ${parsedResults.length} kết quả từ file CSV.`);
+          } else {
+            alert("Không nhận diện được định dạng file.");
+          }
+        } catch (err: any) {
+          alert("Lỗi xử lý CSV: " + err.message);
+        } finally {
+          setIsDataLoading(false);
+          e.target.value = '';
         }
-
-        newStudents.push({
-          id: uuidv4(),
-          username: code.toLowerCase(),
-          password: password || '123',
-          role: 'student',
-          fullName,
-          studentCode: code,
-          grade: (grade as Grade) || '12',
-          points: 0
-        });
-        existingCodes.add(code);
       }
-
-      if (duplicates.length > 0) {
-        const proceed = confirm(`CẢNH BÁO: Phát hiện ${duplicates.length} mã học sinh đã tồn tại: ${duplicates.slice(0, 5).join(', ')}${duplicates.length > 5 ? '...' : ''}. Hệ thống sẽ bỏ qua các mã này. Tiếp tục nhập ${newStudents.length} học sinh mới?`);
-        if (!proceed) return;
-      }
-
-      if (newStudents.length === 0) return alert("Không có học sinh mới nào để nhập!");
-
-      setIsDataLoading(true);
-      try {
-        for (const s of newStudents) {
-          await saveUser(s);
-        }
-        alert(`Đã nhập thành công ${newStudents.length} học sinh!`);
-        loadTabData('students');
-      } catch (error) {
-        alert("Lỗi khi nhập danh sách học sinh.");
-      } finally {
-        setIsDataLoading(false);
-      }
-    };
-    reader.readAsText(file);
-    // Reset input
-    e.target.value = '';
+    });
   };
 
   const handleSaveStudent = async () => {
@@ -615,6 +617,8 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const dbConnected = isDatabaseConnected();
+
   return (
     <div className="min-h-screen bg-white flex">
       <aside className="w-16 lg:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all">
@@ -647,6 +651,24 @@ const AdminDashboard: React.FC = () => {
 
       <main className="flex-1 h-screen overflow-y-auto custom-scrollbar bg-slate-50">
         <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
+          {!dbConnected && (
+            <div className="mb-8 bg-red-50 border-2 border-red-100 p-8 rounded-[3rem] shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
+                <div className="flex items-center gap-5">
+                    <div className="p-4 bg-red-600 text-white rounded-[1.5rem] shadow-lg"><AlertTriangle size={28}/></div>
+                    <div>
+                        <h4 className="text-red-900 font-black uppercase text-sm">Hệ thống đang mất kết nối Database</h4>
+                        <p className="text-red-700 text-[10px] font-bold uppercase tracking-tight mt-1 leading-tight">Bạn không thể tải dữ liệu từ Cloud. Vui lòng sử dụng file CSV đã export từ Supabase để xem tạm thời.</p>
+                    </div>
+                </div>
+                <div className="flex gap-3">
+                    <label className="flex items-center gap-2 px-8 py-4 bg-white text-red-600 border border-red-200 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase shadow-sm cursor-pointer">
+                        <FileUp size={16}/> Chọn file CSV
+                        <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv}/>
+                    </label>
+                </div>
+            </div>
+          )}
+
           {activeTab === 'quizzes' && (
             isEditingQuiz ? (
               <>
@@ -761,6 +783,7 @@ const AdminDashboard: React.FC = () => {
                         onClearCache={clearLocalCache}
                         onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
                         onDeleteResult={handleDeleteResultBatch}
+                        onImportCsv={handleImportCsv}
                         totalCount={resultsTotal}
                         onLoadMore={handleLoadMoreResults}
                         isMoreLoading={isDataLoading}
@@ -844,6 +867,4 @@ const AdminDashboard: React.FC = () => {
       )}
     </div>
   );
-};
-
-export default AdminDashboard;
+}
