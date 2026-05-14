@@ -577,7 +577,8 @@ export const syncQuizzesToBank = async (): Promise<{ total: number, added: numbe
                     allQuestions.push({
                         ...q,
                         quizTitle: quiz.title,
-                        quizGrade: quiz.grade
+                        quizGrade: quiz.grade,
+                        quizCategory: quiz.category
                     });
                 });
             }
