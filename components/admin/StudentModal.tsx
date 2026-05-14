@@ -14,7 +14,7 @@ interface StudentModalProps {
     isDuplicate?: boolean;
 }
 
-const StudentModal: React.FC<StudentModalProps> = ({ isOpen, student, form, setForm, onClose, onSave, isSaving, isDuplicate }) => {
+export default function StudentModal({ isOpen, student, form, setForm, onClose, onSave, isSaving, isDuplicate }: StudentModalProps) {
     if (!isOpen) return null;
 
     return (
@@ -74,6 +74,4 @@ const StudentModal: React.FC<StudentModalProps> = ({ isOpen, student, form, setF
             </div>
         </div>
     );
-};
-
-export default StudentModal;
+}

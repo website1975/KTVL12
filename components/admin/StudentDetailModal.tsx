@@ -1,8 +1,8 @@
-
 import React from 'react';
 import { X, UserCog, BookOpen, Trophy, Clock, Eye } from 'lucide-react';
 import { User, Result, Quiz } from '../../types';
-import { format, parseISO, isAfter } from 'date-fns';
+// Fix: Removed parseISO from imports
+import { format, isAfter } from 'date-fns';
 
 interface StudentDetailModalProps {
     student: User | null;
@@ -12,10 +12,11 @@ interface StudentDetailModalProps {
     onViewResult: (res: Result) => void;
 }
 
-const StudentDetailModal: React.FC<StudentDetailModalProps> = ({ student, results, quizzes, onClose, onViewResult }) => {
+export default function StudentDetailModal({ student, results, quizzes, onClose, onViewResult }: StudentDetailModalProps) {
     if (!student) return null;
 
-    const studentResults = results.filter(r => r.studentCode === student.studentCode).sort((a,b)=>isAfter(parseISO(b.submittedAt), parseISO(a.submittedAt))?1:-1);
+    // Fix: Replaced parseISO with standard new Date() for sorting
+    const studentResults = results.filter(r => r.studentCode === student.studentCode).sort((a,b)=>isAfter(new Date(b.submittedAt), new Date(a.submittedAt))?1:-1);
     const totalQuizzes = studentResults.length;
     const avgScore = totalQuizzes > 0 ? (studentResults.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
     
@@ -61,7 +62,7 @@ const StudentDetailModal: React.FC<StudentDetailModalProps> = ({ student, result
                                     <tr key={r.id} className="hover:bg-slate-50">
                                         <td className="p-6 font-bold uppercase">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
                                         <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                        <td className="p-6 text-center text-slate-400 text-[10px]">{format(parseISO(r.submittedAt), 'dd/MM/yy')}</td>
+                                        <td className="p-6 text-center text-slate-400 text-[10px]">{format(new Date(r.submittedAt), 'dd/MM/yy')}</td>
                                         <td className="p-6 text-center">
                                             <button onClick={() => onViewResult(r)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button>
                                         </td>
@@ -74,6 +75,4 @@ const StudentDetailModal: React.FC<StudentDetailModalProps> = ({ student, result
             </div>
         </div>
     );
-};
-
-export default StudentDetailModal;
+}

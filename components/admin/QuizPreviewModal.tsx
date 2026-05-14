@@ -10,7 +10,7 @@ interface QuizPreviewModalProps {
     isAdmin?: boolean; // Thêm prop để phân biệt quyền xem
 }
 
-const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose, isAdmin = true }) => {
+export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: QuizPreviewModalProps) {
     
     // Tính toán số cột (Tab) linh hoạt dựa trên độ dài đáp án
     const getColumnCount = (options: string[]) => {
@@ -314,6 +314,4 @@ const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({ quiz, onClose, isAd
             </div>
         </div>
     );
-};
-
-export default QuizPreviewModal;
+}

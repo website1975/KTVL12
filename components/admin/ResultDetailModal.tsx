@@ -11,7 +11,7 @@ interface ResultDetailModalProps {
     onClose: () => void;
 }
 
-const ResultDetailModal: React.FC<ResultDetailModalProps> = ({ isOpen, result, quiz, onClose }) => {
+export default function ResultDetailModal({ isOpen, result, quiz, onClose }: ResultDetailModalProps) {
     if (!isOpen || !result || !quiz) return null;
 
     const userAnswers = result.userAnswers || {};
@@ -226,6 +226,4 @@ const ResultDetailModal: React.FC<ResultDetailModalProps> = ({ isOpen, result, q
             </div>
         </div>
     );
-};
-
-export default ResultDetailModal;
+}

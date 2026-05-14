@@ -19,7 +19,7 @@ interface AIRendererProps {
     hasQuestionsInEditor?: boolean;
 }
 
-const AIRenderer: React.FC<AIRendererProps> = ({ grade, setGrade, onGenerate, isLoading, hasQuestionsInEditor }) => {
+export default function AIRenderer({ grade, setGrade, onGenerate, isLoading, hasQuestionsInEditor }: AIRendererProps) {
     const [prompt, setPrompt] = useState('');
     const [p1, setP1] = useState(5);
     const [p2, setP2] = useState(2);
@@ -189,6 +189,4 @@ const AIRenderer: React.FC<AIRendererProps> = ({ grade, setGrade, onGenerate, is
             </div>
         </div>
     );
-};
-
-export default AIRenderer;
+}

@@ -10,7 +10,7 @@ interface ChapterManagerProps {
     onDelete: (id: string) => void;
 }
 
-const ChapterManager: React.FC<ChapterManagerProps> = ({ chapters, onSave, onDelete }) => {
+export default function ChapterManager({ chapters, onSave, onDelete }: ChapterManagerProps) {
     const [name, setName] = React.useState('');
     const [grade, setGrade] = React.useState<Grade>('12');
 
@@ -41,7 +41,4 @@ const ChapterManager: React.FC<ChapterManagerProps> = ({ chapters, onSave, onDel
             </div>
         </div>
     );
-};
-
-export default ChapterManager;
-
+}

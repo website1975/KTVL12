@@ -6,7 +6,7 @@ import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, 
 import { format, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
-const ExamMonitor: React.FC = () => {
+export default function ExamMonitor() {
     const [sessions, setSessions] = useState<ExamSession[]>([]);
     const [results, setResults] = useState<Result[]>([]);
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -196,6 +196,7 @@ const ExamMonitor: React.FC = () => {
                     <thead>
                         <tr className="bg-white border-b text-[10px] font-black uppercase text-slate-400">
                             <th className="p-6">Thí sinh</th>
+                            <th className="p-6">Đề thi</th>
                             <th className="p-6 text-center">Vi phạm</th>
                             <th className="p-6 text-center">Kết nối</th>
                             <th className="p-6 text-center">Thao tác</th>
@@ -207,6 +208,9 @@ const ExamMonitor: React.FC = () => {
                                 <td className="p-6">
                                     <p className="font-black uppercase text-xs text-slate-700">{s.studentName}</p>
                                     <p className="text-[9px] text-slate-400 font-bold">MSHS: {s.studentCode}</p>
+                                </td>
+                                <td className="p-6">
+                                    <p className="font-black uppercase text-[10px] text-blue-600 truncate max-w-[150px]">{s.quizTitle || 'Không rõ'}</p>
                                 </td>
                                 <td className="p-6 text-center">
                                     <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${s.violationCount > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-300'}`}>
@@ -342,6 +346,4 @@ const ExamMonitor: React.FC = () => {
             )}
         </div>
     );
-};
-
-export default ExamMonitor;
+}

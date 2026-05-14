@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Result, Quiz, Grade, Chapter, User as UserType } from '../../types';
-import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter, ShieldAlert, Sparkles, Loader2, CheckCircle2, AlertCircle, ChevronDown, RefreshCw } from 'lucide-react';
+import { Search, BarChart3, Eraser, Trash2, List, Eye, User, FileText, Filter, ShieldAlert, Sparkles, Loader2, CheckCircle2, AlertCircle, ChevronDown, RefreshCw, Clock, Medal } from 'lucide-react';
 import { format, isAfter } from 'date-fns';
 import { updateResultCode, deleteResult } from '../../services/storage';
 
@@ -22,6 +22,7 @@ interface ResultsBoardProps {
     onRefresh: () => void;
     onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void;
     onDeleteResult: (history: Result[]) => void;
+    onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void;
     totalCount: number;
     onLoadMore: () => void;
     isMoreLoading: boolean;
@@ -29,13 +30,13 @@ interface ResultsBoardProps {
 
 const PAGE_SIZE = 20;
 
-const ResultsBoard: React.FC<ResultsBoardProps> = ({ 
+export default function ResultsBoard({ 
     results, quizzes, users, chapters, rGradeFilter, setRGradeFilter, 
     rChapterFilter, setRChapterFilter, rQuizFilter, setRQuizFilter,
     rSearch, setRSearch,
-    onClearCache, onRefresh, onViewHistory, onDeleteResult,
+    onClearCache, onRefresh, onViewHistory, onDeleteResult, onImportCsv,
     totalCount, onLoadMore, isMoreLoading
-}) => {
+}: ResultsBoardProps) {
     const [isFixing, setIsFixing] = useState(false);
     const [fixReport, setFixReport] = useState<{updated: number, deleted: number} | null>(null);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -75,13 +76,21 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
     };
 
     const groupedResults = React.useMemo(() => {
+        const lowerSearch = rSearch.toLowerCase();
         const filtered = results.filter(r => {
             const quiz = quizzes.find(q => q.id === r.quizId);
-            // Nếu không tìm thấy quiz (đề đã bị xóa), nhưng filter là 'all' thì vẫn cho qua để hiện "Đề đã xóa"
+            const studentCode = getEffectiveStudentCode(r);
+            const studentName = (r.studentName || '').toLowerCase();
+            
+            const matchSearch = !rSearch || 
+                studentName.includes(lowerSearch) || 
+                studentCode.toLowerCase().includes(lowerSearch);
+
             const matchGrade = rGradeFilter === 'all' || (quiz && quiz.grade === rGradeFilter);
             const matchChapter = rChapterFilter === 'all' || (quiz && quiz.category === rChapterFilter);
             const matchQuiz = rQuizFilter === 'all' || r.quizId === rQuizFilter;
-            return matchGrade && matchChapter && matchQuiz;
+            
+            return matchSearch && matchGrade && matchChapter && matchQuiz;
         });
 
         const groups: Record<string, { key: string, latest: Result, history: Result[], effectiveCode: string }> = {};
@@ -103,7 +112,7 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
         );
 
         return sortedGroups;
-    }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter]);
+    }, [results, quizzes, users, rGradeFilter, rChapterFilter, rQuizFilter, rSearch]);
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
@@ -129,6 +138,15 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
             onDeleteResult(resultsToDelete);
             setSelectedGroups([]);
         }
+    };
+
+    const formatDuration = (seconds: number) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) return `${h}h ${m}p`;
+        if (m > 0) return `${m}p ${s}s`;
+        return `${s}s`;
     };
 
     const naCount = results.filter(r => !r.studentCode || r.studentCode === 'N/A').length;
@@ -183,6 +201,10 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         )}
                         <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
                             <RefreshCw size={14}/> Làm mới Cloud
+                        </button>
+                        <button onClick={() => document.getElementById('import-results-csv')?.click()} className="flex items-center gap-2 px-5 py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-2xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase">
+                            <FileText size={14}/> Nạp CSV
+                            <input id="import-results-csv" type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
                         </button>
                         <button onClick={onClearCache} className="flex items-center gap-2 px-5 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase">
                             <Eraser size={14}/> Xóa sạch Cache
@@ -241,6 +263,8 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                             <th className="p-6">Học sinh / Mã số</th>
                             <th className="p-6">Đề thi</th>
                             <th className="p-6 text-center">Lượt làm</th>
+                            <th className="p-6 text-center">Rèn luyện</th>
+                            <th className="p-6 text-center">Tích lũy</th>
                             <th className="p-6 text-center">Điểm cao nhất</th>
                             <th className="p-6 text-center">Hành động</th>
                         </tr>
@@ -249,6 +273,8 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                         {groupedResults.map((group, gIdx) => {
                             const quiz = quizzes.find(item => item.id === group.latest.quizId);
                             const maxScore = Math.max(...group.history.map(h => h.score));
+                            const totalTime = group.history.reduce((sum, h) => sum + (h.durationSeconds || 0), 0);
+                            const totalAccumulated = group.history.reduce((sum, h) => sum + (h.score + (h.bonusPoint || 0)), 0);
                             const isNA = group.effectiveCode === 'N/A';
                             const isSelected = selectedGroups.includes(group.key);
                             return (
@@ -278,6 +304,16 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
                                     </td>
                                     <td className="p-6 text-center">
                                         <span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-black text-slate-500">{group.history.length} lần</span>
+                                    </td>
+                                    <td className="p-6 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-[11px] font-black text-slate-600 flex items-center gap-1"><Clock size={10}/> {formatDuration(totalTime)}</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-6 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-[11px] font-black text-emerald-600 flex items-center gap-1"><Medal size={10}/> {totalAccumulated.toFixed(2)}</span>
+                                        </div>
                                     </td>
                                     <td className="p-6 text-center">
                                         <span className={`text-lg font-black ${maxScore >= 8 ? 'text-emerald-600' : maxScore >= 5 ? 'text-blue-600' : 'text-orange-500'}`}>
@@ -313,6 +349,4 @@ const ResultsBoard: React.FC<ResultsBoardProps> = ({
             </div>
         </div>
     );
-};
-
-export default ResultsBoard;
+}

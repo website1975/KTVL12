@@ -18,9 +18,9 @@ interface QuestionBankProps {
 
 const PAGE_SIZE = 40;
 
-const QuestionBank: React.FC<QuestionBankProps> = ({ 
+export default function QuestionBank({ 
     questions, bGradeFilter, setBGradeFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple 
-}) => {
+}: QuestionBankProps) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -141,6 +141,4 @@ const QuestionBank: React.FC<QuestionBankProps> = ({
             </div>
         </div>
     );
-};
-
-export default QuestionBank;
+}

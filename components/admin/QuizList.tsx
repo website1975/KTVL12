@@ -20,11 +20,11 @@ interface QuizListProps {
 
 const PAGE_SIZE = 12;
 
-const QuizList: React.FC<QuizListProps> = ({ 
+export default function QuizList({ 
     quizzes, results, chapters, onEdit, onDelete, onPreview, 
     qSearch, setQSearch, qGradeFilter, setQGradeFilter,
     qChapterFilter, setQChapterFilter
-}) => {
+}: QuizListProps) {
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
     const filtered = quizzes.filter(q => 
@@ -198,6 +198,4 @@ const QuizList: React.FC<QuizListProps> = ({
             )}
         </div>
     );
-};
-
-export default QuizList;
+}

@@ -15,9 +15,9 @@ interface ResultHistoryModalProps {
     onDeleteOne: (res: Result) => void;
 }
 
-const ResultHistoryModal: React.FC<ResultHistoryModalProps> = ({ 
+export default function ResultHistoryModal({ 
     isOpen, studentName, studentCode, quizTitle, history, onClose, onViewDetail, onDeleteOne 
-}) => {
+}: ResultHistoryModalProps) {
     if (!isOpen) return null;
 
     const sortedHistory = [...history].sort((a, b) => 
@@ -101,6 +101,4 @@ const ResultHistoryModal: React.FC<ResultHistoryModalProps> = ({
             </div>
         </div>
     );
-};
-
-export default ResultHistoryModal;
+}

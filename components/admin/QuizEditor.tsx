@@ -257,7 +257,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
     );
 };
 
-const QuizEditor: React.FC<QuizEditorProps> = (props) => {
+export default function QuizEditor(props: QuizEditorProps) {
     const [isTextInputOpen, setIsTextInputOpen] = useState(false);
     const [pastedText, setPastedText] = useState('');
 
@@ -438,6 +438,4 @@ const QuizEditor: React.FC<QuizEditorProps> = (props) => {
             <QuestionSection sectionTitle="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
         </div>
     );
-};
-
-export default QuizEditor;
+}

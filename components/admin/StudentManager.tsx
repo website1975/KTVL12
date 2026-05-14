@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Grade, Result, Quiz } from '../../types';
+import { isDatabaseConnected } from '../../services/storage';
 import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw, Loader2 } from 'lucide-react';
 
 interface StudentManagerProps {
@@ -26,11 +27,11 @@ interface StudentManagerProps {
 
 const PAGE_SIZE = 20;
 
-const StudentManager: React.FC<StudentManagerProps> = ({ 
+export default function StudentManager({ 
     students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
     onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onBulkDelete, onResetPassword,
     totalCount, onLoadMore, isMoreLoading
-}) => {
+}: StudentManagerProps) {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     const filtered = students.filter(u => 
@@ -247,7 +248,7 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                         })}
                     </tbody>
                 </table>
-                {students.length < totalCount && (
+                {students.length < totalCount && isDatabaseConnected() && (
                     <div className="p-8 text-center bg-slate-50/50">
                         <button 
                             onClick={onLoadMore}
@@ -262,6 +263,4 @@ const StudentManager: React.FC<StudentManagerProps> = ({
             </div>
         </div>
     );
-};
-
-export default StudentManager;
+}
