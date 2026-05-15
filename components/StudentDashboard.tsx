@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { User, Quiz, Result, PublishedResult } from '../types';
-import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions, deleteExamSession } from '../services/storage';
+import { User, Quiz, Result, PublishedResult, Chapter, Grade } from '../types';
+import { getQuizzes, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions, deleteExamSession, getChapters } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
@@ -18,7 +18,10 @@ interface StudentDashboardProps {
 
 export default function StudentDashboard({ user, targetQuizId }: StudentDashboardProps) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [results, setResults] = useState<Result[]>([]);
+  const [gradeFilter, setGradeFilter] = useState<Grade | 'all'>(user.grade || '12');
+  const [chapterFilter, setChapterFilter] = useState('all');
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [activePracticeQuiz, setActivePracticeQuiz] = useState<Quiz | null>(null);
@@ -31,23 +34,25 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const refreshData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-        const [allQuizzes, userResults, latestPubs] = await Promise.all([
-            getQuizzes(user.grade), 
+        const [allQuizzes, userResults, latestPubs, allChapters] = await Promise.all([
+            getQuizzes(gradeFilter), 
             getResultsForStudent(user.id, user.studentCode), 
-            getPublishedResults(20) 
+            getPublishedResults(20),
+            getChapters()
         ]);
         
+        setChapters(allChapters);
         // CHỈ HIỆN ĐỀ CÔNG KHAI (KHÔNG PHẢI UNLISTED) TRÊN DASHBOARD
         setQuizzes(allQuizzes.filter(q => q.isPublished && !q.isUnlisted));
 
-        const sortedResults = (userResults as Result[]).sort((a, b) => 
+        const sortedResults = (userResults as Result[]).sort((a: Result, b: Result) => 
             new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
         );
         setResults(sortedResults);
 
-        const userPubs = latestPubs.filter(p => 
-            user.studentCode && p.studentCodes.map(c => c.toUpperCase()).includes(user.studentCode.toUpperCase())
-        ).sort((a,b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+        const userPubs = latestPubs.filter((p: PublishedResult) => 
+            user.studentCode && p.studentCodes.map((c: string) => c.toUpperCase()).includes(user.studentCode.toUpperCase())
+        ).sort((a: PublishedResult, b: PublishedResult) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
         setPublishedResults(userPubs);
 
     } catch (err) {
@@ -215,17 +220,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
   };
 
-  if (activeQuiz) {
-    return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
-  }
-
-  if (activePracticeQuiz) {
-    return <QuickPractice quiz={activePracticeQuiz} student={user} onExit={handleExitQuiz} />;
-  }
-
   const now = new Date();
-  const practiceQuizzes = quizzes.filter(q => q.type === 'practice' && (!q.endTime || isBefore(now, new Date(q.endTime))));
-  
+
   // Logic kiểm tra lộ trình học tập (Prerequisite Path)
   const getQuizStatus = (q: Quiz) => {
     const qOrder = q.orderIndex ?? 1;
@@ -262,7 +258,24 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return { isLocked: false };
   };
 
-  const testQuizzes = quizzes.filter(q => q.type === 'test');
+  const filteredQuizzes = useMemo(() => {
+    return quizzes.filter((q: Quiz) => {
+        const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
+        const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
+        return matchGrade && matchChapter;
+    });
+  }, [quizzes, gradeFilter, chapterFilter]);
+
+  if (activeQuiz) {
+    return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
+  }
+
+  if (activePracticeQuiz) {
+    return <QuickPractice quiz={activePracticeQuiz} student={user} onExit={handleExitQuiz} />;
+  }
+
+  const testQuizzes = filteredQuizzes.filter(q => q.type === 'test');
+  const practiceQuizzes = filteredQuizzes.filter(q => q.type === 'practice' && (!q.endTime || isBefore(now, new Date(q.endTime))));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20">
@@ -293,6 +306,40 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             </div>
         </div>
       </header>
+
+      {/* Filters Section */}
+      <section className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
+            <ShieldAlert size={16} className="text-blue-600"/>
+            <span className="text-[10px] font-black uppercase text-slate-400">Chọn chương học:</span>
+        </div>
+        
+        <div className="flex flex-wrap gap-3">
+          <select 
+            className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[250px]"
+            value={chapterFilter}
+            onChange={(e) => setChapterFilter(e.target.value)}
+          >
+            <option value="all">Tất cả chương</option>
+            {chapters.filter((c: Chapter) => gradeFilter === 'all' || c.grade === gradeFilter).map((c: Chapter) => (
+              <option key={c.id} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+
+          {chapterFilter !== 'all' && (
+            <button 
+                onClick={() => setChapterFilter('all')}
+                className="px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
+            >
+                Xóa lọc
+            </button>
+          )}
+        </div>
+
+        <div className="ml-auto text-[9px] font-black uppercase text-slate-400 italic">
+            Học sinh Khối {user.grade || '12'} | Hiển thị: {filteredQuizzes.length} đề thi
+        </div>
+      </section>
 
       {isLoading && results.length === 0 && (
           <div className="py-20 text-center space-y-4">
@@ -358,7 +405,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                       <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Bài kiểm tra định kỳ</h2>
                       <div className="h-px flex-1 bg-red-100"></div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {testQuizzes.map(q => {
                           const startTime = q.startTime ? new Date(q.startTime) : now;
                           const endTime = addMinutes(startTime, q.durationMinutes);
@@ -367,28 +414,28 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                           const alreadyDone = results.some(r => r.quizId === q.id);
 
                           return (
-                              <div key={q.id} className={`bg-white rounded-[2.5rem] border p-8 flex flex-col transition-all border-b-8 ${alreadyDone ? 'border-emerald-500' : (isEnded ? 'border-slate-300 opacity-60' : (isStarted ? 'border-red-500 shadow-xl' : 'border-slate-200 opacity-60 grayscale'))}`}>
-                                  <div className="flex justify-between items-start mb-4">
-                                      <div className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase ${alreadyDone ? 'bg-emerald-50 text-emerald-600' : (isEnded ? 'bg-slate-100 text-slate-400' : (isStarted ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'))}`}>
-                                          {alreadyDone ? 'ĐÃ HOÀN THÀNH' : (isEnded ? 'ĐÃ KẾT THÚC' : (isStarted ? 'ĐANG DIỄN RA' : 'CHƯA ĐẾN GIỜ'))}
+                              <div key={q.id} className={`bg-white rounded-[1.5rem] border p-6 flex flex-col transition-all border-b-4 ${alreadyDone ? 'border-emerald-500' : (isEnded ? 'border-slate-300 opacity-60' : (isStarted ? 'border-red-500 shadow-xl' : 'border-slate-200 opacity-60 grayscale'))}`}>
+                                  <div className="flex justify-between items-start mb-3">
+                                      <div className={`px-3 py-1 rounded-xl text-[8px] font-black uppercase ${alreadyDone ? 'bg-emerald-50 text-emerald-600' : (isEnded ? 'bg-slate-100 text-slate-400' : (isStarted ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'))}`}>
+                                          {alreadyDone ? 'ĐÃ XONG' : (isEnded ? 'KẾT THÚC' : (isStarted ? 'DIỄN RA' : 'CHỜ GIỜ'))}
                                       </div>
-                                      <span className="text-[10px] font-black text-slate-300 uppercase">{q.durationMinutes}p</span>
+                                      <span className="text-[9px] font-black text-slate-300 uppercase">{q.durationMinutes}p</span>
                                   </div>
-                                  {q.category && <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1 italic">{q.category}</p>}
-                                  <h3 className="font-black text-slate-800 text-[16px] leading-tight mb-4 uppercase">{q.title}</h3>
+                                  {q.category && <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
+                                  <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-4 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
                                   <div className="mt-auto">
                                       {alreadyDone ? (
                                           <button onClick={() => {
                                               const res = results.find(r => r.quizId === q.id);
                                               if (res) setSelectedResult({ result: res, quiz: q });
-                                          }} className="w-full py-4 rounded-2xl border-2 border-slate-100 text-slate-600 font-black uppercase text-[10px] hover:bg-slate-50 flex items-center justify-center gap-2"><Eye size={14}/> Xem lại bài làm</button>
+                                          }} className="w-full py-2.5 rounded-xl border-2 border-slate-100 text-slate-600 font-black uppercase text-[9px] hover:bg-slate-50 flex items-center justify-center gap-2"><Eye size={12}/> Xem lại</button>
                                       ) : (
                                           <button 
                                             disabled={!isStarted || isEnded}
                                             onClick={() => isStarted && !isEnded ? handleStartQuiz(q) : null} 
-                                            className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] transition-all ${isStarted && !isEnded ? 'bg-slate-900 text-white shadow-2xl hover:bg-black' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                                            className={`w-full py-2.5 rounded-xl font-black uppercase text-[9px] transition-all ${isStarted && !isEnded ? 'bg-slate-900 text-white shadow-xl hover:bg-black' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                                           >
-                                              {isEnded ? 'Đã hết giờ thi' : (isStarted ? 'Vào làm bài ngay' : `Bắt đầu lúc ${format(startTime, 'HH:mm')}`)}
+                                              {isEnded ? 'Hết giờ' : (isStarted ? 'Vào làm bài' : `${format(startTime, 'HH:mm')}`)}
                                           </button>
                                       )}
                                   </div>
@@ -404,7 +451,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Kho đề luyện tập</h2>
                   <div className="h-px flex-1 bg-slate-100"></div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {practiceQuizzes.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).map(q => {
                     const status = getQuizStatus(q);
                     const qStats = (qid: string) => {
@@ -414,31 +461,31 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                     };
                     const qs = qStats(q.id);
                     return (
-                      <div key={q.id} className={`bg-white rounded-[2.5rem] border border-slate-200 p-8 flex flex-col transition-all border-b-8 ${status.isLocked ? 'opacity-75 grayscale' : 'hover:shadow-2xl hover:-translate-y-2 group hover:border-b-blue-600'}`}>
-                        <div className="flex justify-between items-start mb-4">
-                          <div className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl font-black text-[10px] uppercase">{q.questions.length} câu</div>
-                          <span className="text-[10px] font-black text-slate-300 uppercase">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
+                      <div key={q.id} className={`bg-white rounded-[1.5rem] border border-slate-200 p-6 flex flex-col transition-all border-b-4 ${status.isLocked ? 'opacity-75 grayscale' : 'hover:shadow-xl hover:-translate-y-1 group hover:border-b-blue-600'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg font-black text-[8px] uppercase">{q.questions.length} câu</div>
+                          <span className="text-[9px] font-black text-slate-300 uppercase">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
                         </div>
-                        {q.category && <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1 italic">{q.category}</p>}
-                        <h3 className="font-black text-slate-800 text-[15px] leading-tight mb-4 group-hover:text-blue-600 uppercase flex items-center gap-2">
-                            {status.isLocked && <Lock size={16} className="text-slate-400 shrink-0"/>}
+                        {q.category && <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
+                        <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-4 group-hover:text-blue-600 uppercase flex items-center gap-2 line-clamp-2 min-h-[2.5em]">
+                            {status.isLocked && <Lock size={14} className="text-slate-400 shrink-0"/>}
                             {q.title}
                         </h3>
                         
                         {status.isLocked ? (
-                            <div className="mt-auto bg-slate-100 p-4 rounded-2xl border-2 border-slate-200">
-                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Trạng thái: Đang khóa</p>
-                                <p className="text-[10px] font-bold text-slate-600 leading-tight">{status.reason}</p>
+                            <div className="mt-auto bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <p className="text-[8px] font-black text-slate-400 uppercase mb-0.5">Đang khóa</p>
+                                <p className="text-[9px] font-bold text-slate-600 leading-tight">{status.reason}</p>
                             </div>
                         ) : (
                             <>
-                                <div className="bg-slate-50/50 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-8 text-center">
-                                    <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Đã làm</p><p className="text-sm font-black text-slate-700">{qs?.count || 0} lần</p></div>
-                                    <div><p className="text-[8px] font-black text-slate-400 uppercase text-blue-500 mb-1">Max</p><p className="text-sm font-black text-blue-600">{qs ? qs.max.toFixed(2) : '-'}</p></div>
+                                <div className="bg-slate-50/50 rounded-xl p-3 grid grid-cols-2 gap-2 mb-6 text-center">
+                                    <div><p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Đã làm</p><p className="text-xs font-black text-slate-700">{qs?.count || 0}</p></div>
+                                    <div><p className="text-[7px] font-black text-blue-500 uppercase mb-0.5">Max</p><p className="text-xs font-black text-blue-600">{qs ? qs.max.toFixed(1) : '-'}</p></div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 mt-auto">
-                                  <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-lg"><Zap size={16}/> Luyện câu</button>
-                                  <button onClick={() => handleStartQuiz(q)} className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase shadow-xl hover:bg-blue-700 transition-all">Làm bài</button>
+                                <div className="grid grid-cols-2 gap-2 mt-auto">
+                                  <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-md"><Zap size={12}/> Luyện</button>
+                                  <button onClick={() => handleStartQuiz(q)} className="flex items-center justify-center gap-1.5 bg-blue-600 text-white py-2.5 rounded-xl text-[9px] font-black uppercase shadow-lg hover:bg-blue-700 transition-all">Làm</button>
                                 </div>
                             </>
                         )}
