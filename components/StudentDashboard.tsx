@@ -20,7 +20,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [results, setResults] = useState<Result[]>([]);
-  const [gradeFilter, setGradeFilter] = useState<Grade | 'all'>(user.grade || '12');
+  const gradeFilter = user.grade || '12';
   const [chapterFilter, setChapterFilter] = useState('all');
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
@@ -316,17 +316,6 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         
         <div className="flex flex-wrap gap-3">
           <select 
-            className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
-            value={gradeFilter}
-            onChange={(e) => { setGradeFilter(e.target.value as any); setChapterFilter('all'); }}
-          >
-            <option value="all">Tất cả khối</option>
-            <option value="12">Khối 12</option>
-            <option value="11">Khối 11</option>
-            <option value="10">Khối 10</option>
-          </select>
-
-          <select 
             className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[200px]"
             value={chapterFilter}
             onChange={(e) => setChapterFilter(e.target.value)}
@@ -340,9 +329,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             }
           </select>
 
-          {(gradeFilter !== (user.grade || '12') || chapterFilter !== 'all') && (
+          {chapterFilter !== 'all' && (
             <button 
-                onClick={() => { setGradeFilter(user.grade || '12'); setChapterFilter('all'); }}
+                onClick={() => { setChapterFilter('all'); }}
                 className="px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
             >
                 Đặt lại
