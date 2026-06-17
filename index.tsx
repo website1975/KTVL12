@@ -1,9 +1,11 @@
-import React from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  // Fix: Making children optional to resolve "property missing" errors in various TypeScript/React configurations
+  children?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -12,18 +14,28 @@ interface ErrorBoundaryState {
 }
 
 // Tạo Component bắt lỗi (Error Boundary) để hiển thị lỗi thay vì trắng màn hình
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false, error: null };
+// Fix: Use explicit property access and ensured inheritance via property declarations to resolve TS "property missing" errors
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Explicitly declare state to resolve "Property 'state' does not exist" errors
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  // Fix: Explicitly declare props to resolve "Property 'props' does not exist" errors in specific TypeScript environments
+  public props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    // Fix: Manually assign props to ensure it's recognized in environments with inheritance issues
+    this.props = props;
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
   }
 
@@ -43,7 +55,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    return this.props.children;
+    // Fix: Correctly returning children from props with verified inheritance and direct access
+    return this.props.children || null;
   }
 }
 

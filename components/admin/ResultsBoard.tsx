@@ -150,7 +150,7 @@ export default function ResultsBoard({
     };
 
     const naCount = results.filter(r => !r.studentCode || r.studentCode === 'N/A').length;
-    const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || c.grade === rGradeFilter);
+    const relevantChapters = chapters.filter(c => rGradeFilter === 'all' || String(c.grade) === String(rGradeFilter));
     const relevantQuizzes = quizzes.filter(q => 
         (rGradeFilter === 'all' || q.grade === rGradeFilter) &&
         (rChapterFilter === 'all' || q.category === rChapterFilter)
@@ -202,10 +202,6 @@ export default function ResultsBoard({
                         <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
                             <RefreshCw size={14}/> Làm mới Cloud
                         </button>
-                        <button onClick={() => document.getElementById('import-results-csv')?.click()} className="flex items-center gap-2 px-5 py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-2xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase">
-                            <FileText size={14}/> Nạp CSV
-                            <input id="import-results-csv" type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
-                        </button>
                         <button onClick={onClearCache} className="flex items-center gap-2 px-5 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase">
                             <Eraser size={14}/> Xóa sạch Cache
                         </button>
@@ -235,7 +231,7 @@ export default function ResultsBoard({
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><Filter size={10}/> Chương học</label>
                         <select className="w-full bg-slate-50 border rounded-2xl p-4 text-xs font-black uppercase outline-none focus:border-blue-400" value={rChapterFilter} onChange={e => { setRChapterFilter(e.target.value); setRQuizFilter('all'); }}>
                             <option value="all">Tất cả Chương</option>
-                            {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>)}
                         </select>
                     </div>
                     <div className="space-y-1">

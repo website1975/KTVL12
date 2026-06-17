@@ -14,6 +14,8 @@ export default function ChapterManager({ chapters, onSave, onDelete }: ChapterMa
     const [name, setName] = React.useState('');
     const [grade, setGrade] = React.useState<Grade>('12');
 
+    console.log("CHAPTERS IN MANAGER:", chapters);
+
     return (
         <div className="max-w-3xl mx-auto space-y-8 animate-fade-in pb-20">
             <div className="bg-white p-10 rounded-[3rem] border shadow-sm space-y-6">
@@ -30,9 +32,9 @@ export default function ChapterManager({ chapters, onSave, onDelete }: ChapterMa
                 {['12', '11', '10'].map(g => (
                     <div key={g} className="space-y-2">
                         <h5 className="text-[10px] font-black uppercase px-6 text-slate-400">Khối {g}</h5>
-                        {chapters.filter(c => c.grade === g).map(c => (
+                        {chapters.filter(c => String(c.grade) === String(g)).map(c => (
                             <div key={c.id} className="bg-white p-5 px-8 rounded-2xl border flex justify-between items-center group">
-                                <span className="font-black text-sm text-slate-700 uppercase">{c.name}</span>
+                                <span className="font-black text-sm text-slate-700 uppercase">{c.name || (c as any).title || "Chương chưa đặt tên"}</span>
                                 <button onClick={() => onDelete(c.id)} className="text-slate-200 hover:text-red-500"><Trash2 size={18}/></button>
                             </div>
                         ))}

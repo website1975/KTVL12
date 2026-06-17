@@ -262,7 +262,7 @@ export default function QuizEditor(props: QuizEditorProps) {
     const [pastedText, setPastedText] = useState('');
 
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
-    const relevantChapters = props.chapters.filter(c => c.grade === props.grade);
+    const relevantChapters = props.chapters.filter(c => String(c.grade) === String(props.grade));
 
     const handleConfirmTextExtract = () => {
         if (!pastedText.trim()) return;
@@ -364,7 +364,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Chương học</label>
                         <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.category} onChange={e => props.setCategory(e.target.value)}>
                             <option value="">Chọn chương...</option>
-                            {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>)}
                         </select>
                     </div>
                     <div className="space-y-2">

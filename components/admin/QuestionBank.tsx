@@ -35,7 +35,8 @@ export default function QuestionBank({
 
             // Lọc chương
             const qChapter = (q.quizCategory || '').toString().trim().toLowerCase();
-            const matchChapter = bChapterFilter === 'all' || qChapter === bChapterFilter.trim().toLowerCase();
+            const filterVal = bChapterFilter.trim().toLowerCase();
+            const matchChapter = bChapterFilter === 'all' || qChapter === filterVal;
             
             // Lọc dạng - Quan trọng: Xử lý cả 'group_tf' và 'group-tf'
             let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
@@ -89,10 +90,16 @@ export default function QuestionBank({
                     </select>
                     <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none max-w-[150px]" value={bChapterFilter} onChange={e => setBChapterFilter(e.target.value)}>
                         <option value="all">Chương: Tất cả</option>
-                        {chapters.filter(c => bGradeFilter === 'all' || c.grade === bGradeFilter).map(c => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
+                        {chapters.filter(c => bGradeFilter === 'all' || String(c.grade) === String(bGradeFilter)).map(c => (
+                            <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
                         ))}
                     </select>
+                    <button 
+                        onClick={() => { setBGradeFilter('all'); setBChapterFilter('all'); setBTypeFilter('all'); setBSearch(''); }}
+                        className="bg-red-50 text-red-500 border border-red-100 px-2 rounded-lg text-[8px] font-black uppercase"
+                    >
+                        Xóa lọc
+                    </button>
                     <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bTypeFilter} onChange={e => setBTypeFilter(e.target.value as any)}>
                         <option value="all">Dạng: Tất cả</option>
                         <option value="mcq">P.I (MCQ)</option>

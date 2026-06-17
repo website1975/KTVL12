@@ -38,7 +38,7 @@ export default function QuizList({
     }, [qSearch, qGradeFilter, qChapterFilter]);
 
     const visibleQuizzes = filtered.slice(0, visibleCount);
-    const relevantChapters = chapters.filter(c => qGradeFilter === 'all' || c.grade === qGradeFilter);
+    const relevantChapters = chapters.filter(c => qGradeFilter === 'all' || String(c.grade) === String(qGradeFilter));
 
     const copyQuizLink = (quizId: string) => {
         const url = `${window.location.origin}/?quiz=${quizId}`;
@@ -77,7 +77,7 @@ export default function QuizList({
                     >
                         <option value="all">TẤT CẢ CHƯƠNG</option>
                         {relevantChapters.map(c => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
+                            <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
                         ))}
                     </select>
                 </div>

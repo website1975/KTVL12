@@ -35,7 +35,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     if (!isSilent) setIsLoading(true);
     try {
         const [allQuizzes, userResults, latestPubs, allChapters] = await Promise.all([
-            getQuizzes(gradeFilter), 
+            getQuizzes('all'), 
             getResultsForStudent(user.id, user.studentCode), 
             getPublishedResults(20),
             getChapters()
@@ -311,27 +311,41 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       <section className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
             <ShieldAlert size={16} className="text-blue-600"/>
-            <span className="text-[10px] font-black uppercase text-slate-400">Chọn chương học:</span>
+            <span className="text-[10px] font-black uppercase text-slate-400">Bộ lọc thông minh:</span>
         </div>
         
         <div className="flex flex-wrap gap-3">
           <select 
-            className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[250px]"
+            className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+            value={gradeFilter}
+            onChange={(e) => { setGradeFilter(e.target.value as any); setChapterFilter('all'); }}
+          >
+            <option value="all">Tất cả khối</option>
+            <option value="12">Khối 12</option>
+            <option value="11">Khối 11</option>
+            <option value="10">Khối 10</option>
+          </select>
+
+          <select 
+            className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[200px]"
             value={chapterFilter}
             onChange={(e) => setChapterFilter(e.target.value)}
           >
             <option value="all">Tất cả chương</option>
-            {chapters.filter((c: Chapter) => gradeFilter === 'all' || c.grade === gradeFilter).map((c: Chapter) => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
+            {chapters
+              .filter((c: Chapter) => gradeFilter === 'all' || String(c.grade) === String(gradeFilter))
+              .map((c: Chapter) => (
+                <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
+              ))
+            }
           </select>
 
-          {chapterFilter !== 'all' && (
+          {(gradeFilter !== (user.grade || '12') || chapterFilter !== 'all') && (
             <button 
-                onClick={() => setChapterFilter('all')}
+                onClick={() => { setGradeFilter(user.grade || '12'); setChapterFilter('all'); }}
                 className="px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
             >
-                Xóa lọc
+                Đặt lại
             </button>
           )}
         </div>
