@@ -20,7 +20,7 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         return 4;
     };
 
-    // Render các phương án theo dạng bảng
+    // Render các phương án theo dạng bảng (Không đánh dấu đáp án đúng trong các câu nữa)
     const renderOptionsTable = (q: Question) => {
         if (!q.options) return null;
         const cols = getColumnCount(q.options);
@@ -34,31 +34,24 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                 <tbody>
                     {rows.map((row, rIdx) => (
                         <tr key={rIdx}>
-                            {row.map((opt, cIdx) => {
-                                // Chỉ đánh dấu đáp án đúng nếu là Admin
-                                const isCorrect = isAdmin && q.correctAnswer === opt;
-                                return (
-                                    <td 
-                                        key={cIdx} 
-                                        style={{ 
-                                            width: `${100 / cols}%`, 
-                                            textAlign: 'left', 
-                                            padding: '4px 8px 4px 0',
-                                            verticalAlign: 'top',
-                                            wordBreak: 'break-word',
-                                            backgroundColor: isCorrect ? '#f0fdf4' : 'transparent',
-                                            borderRadius: '4px'
-                                        }} 
-                                        className={`option-cell ${isCorrect ? 'text-emerald-700 font-bold' : ''}`}
-                                    >
-                                        <span style={{ fontWeight: 'bold', marginRight: '4px', whiteSpace: 'nowrap' }}>
-                                            {String.fromCharCode(65 + (rIdx * cols + cIdx))}.
-                                        </span>
-                                        <LatexText text={opt} />
-                                        {isCorrect && <span className="ml-1 text-[10px] opacity-40">(Đúng)</span>}
-                                    </td>
-                                );
-                            })}
+                            {row.map((opt, cIdx) => (
+                                <td 
+                                    key={cIdx} 
+                                    style={{ 
+                                        width: `${100 / cols}%`, 
+                                        textAlign: 'left', 
+                                        padding: '4px 8px 4px 0',
+                                        verticalAlign: 'top',
+                                        wordBreak: 'break-word'
+                                    }} 
+                                    className="option-cell"
+                                >
+                                    <span style={{ fontWeight: 'bold', marginRight: '4px', whiteSpace: 'nowrap' }}>
+                                        {String.fromCharCode(65 + (rIdx * cols + cIdx))}.
+                                    </span>
+                                    <LatexText text={opt} />
+                                </td>
+                            ))}
                             {row.length < cols && Array(cols - row.length).fill(0).map((_, i) => (
                                 <td key={`empty-${i}`} style={{ width: `${100 / cols}%` }}></td>
                             ))}
@@ -69,7 +62,7 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         );
     };
 
-    // Tạo nội dung bảng đáp án tổng hợp (Chỉ hiện cho Admin)
+    // Tạo nội dung bảng đáp án tổng hợp (Chỉ hiện cho Admin / Bảng đáp án ở cuối)
     const renderAnswerKey = () => {
         if (!isAdmin) return null;
         
@@ -77,52 +70,108 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         const groupTfQs = quiz.questions.filter(q => q.type === 'group-tf');
         const shortQs = quiz.questions.filter(q => q.type === 'short');
 
-        const sectionStyle = { fontWeight: 'bold', textTransform: 'uppercase' as const, marginTop: '20px', marginBottom: '10px' };
+        const sectionStyle = { fontWeight: 'bold', textTransform: 'uppercase' as const, marginTop: '20px', marginBottom: '10px', fontSize: '11pt' };
         
         return (
-            <div id="answer-key-section" style={{ marginTop: '50px', borderTop: '2px solid #e2e8f0', paddingTop: '30px' }}>
-                <h3 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', textTransform: 'uppercase' }}>Đáp án</h3>
+            <div id="answer-key-section" style={{ marginTop: '50px', borderTop: '2pt solid #000', paddingTop: '20px', pageBreakBefore: 'always' }}>
+                <h3 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', textTransform: 'uppercase', marginBottom: '20px' }}>BẢNG ĐÁP ÁN</h3>
                 
                 {mcqQs.length > 0 && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN I</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                            {mcqQs.map((q, i) => {
-                                const correctIdx = q.options?.indexOf(q.correctAnswer || '') ?? -1;
-                                const label = correctIdx !== -1 ? String.fromCharCode(65 + correctIdx) : '?';
-                                return (
-                                    <span key={q.id}>
-                                        <span style={{ fontWeight: 'bold' }}>{i + 1}</span>{label}
-                                        {i < mcqQs.length - 1 ? ',' : ''}
-                                    </span>
-                                );
-                            })}
-                        </div>
+                    <div style={{ marginBottom: '25px' }}>
+                        <p style={sectionStyle}>PHẦN I. CÂU HỎI TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN</p>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                            <tbody>
+                                {Array.from({ length: Math.ceil(mcqQs.length / 10) }).map((_, rowIndex) => {
+                                    const chunk = mcqQs.slice(rowIndex * 10, (rowIndex + 1) * 10);
+                                    return (
+                                        <React.Fragment key={rowIndex}>
+                                            <tr>
+                                                {chunk.map((_, colIndex) => (
+                                                    <td key={colIndex} style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold', backgroundColor: '#f8fafc', width: '10%' }}>
+                                                        Câu {rowIndex * 10 + colIndex + 1}
+                                                    </td>
+                                                ))}
+                                                {Array.from({ length: 10 - chunk.length }).map((_, i) => (
+                                                    <td key={`empty-h-${i}`} style={{ border: '1pt solid black', width: '10%' }}></td>
+                                                ))}
+                                            </tr>
+                                            <tr>
+                                                {chunk.map((q, colIndex) => {
+                                                    const correctIdx = q.options?.indexOf(q.correctAnswer || '') ?? -1;
+                                                    const label = correctIdx !== -1 ? String.fromCharCode(65 + correctIdx) : '?';
+                                                    return (
+                                                        <td key={colIndex} style={{ border: '1pt solid black', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#166534', width: '10%' }}>
+                                                            {label}
+                                                        </td>
+                                                    );
+                                                })}
+                                                {Array.from({ length: 10 - chunk.length }).map((_, i) => (
+                                                    <td key={`empty-b-${i}`} style={{ border: '1pt solid black', width: '10%' }}></td>
+                                                ))}
+                                            </tr>
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 )}
 
                 {groupTfQs.length > 0 && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN II</p>
-                        {groupTfQs.map((q, i) => {
-                            const answers = q.subQuestions?.map(sq => sq.correctAnswer === 'True' ? 'Đ' : 'S').join(',') || '';
-                            return (
-                                <p key={q.id} style={{ margin: '5px 0' }}>
-                                    <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {answers}
-                                </p>
-                            );
-                        })}
+                    <div style={{ marginBottom: '25px' }}>
+                        <p style={sectionStyle}>PHẦN II. CÂU HỎI TRẮC NGHIỆM ĐÚNG SAI</p>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '15%' }}>Câu</th>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '20%' }}>a</th>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '20%' }}>b</th>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '20%' }}>c</th>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '20%' }}>d</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupTfQs.map((q, i) => {
+                                    const subAns = q.subQuestions || [];
+                                    return (
+                                        <tr key={q.id}>
+                                            <td style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold' }}>Câu {i + 1}</td>
+                                            {[0, 1, 2, 3].map(subIndex => {
+                                                const sq = subAns[subIndex];
+                                                const val = sq ? (sq.correctAnswer === 'True' ? 'Đ' : 'S') : '-';
+                                                return (
+                                                    <td key={subIndex} style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold' }}>
+                                                        {val}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 )}
 
                 {shortQs.length > 0 && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <p style={sectionStyle}>PHẦN III.</p>
-                        {shortQs.map((q, i) => (
-                            <p key={q.id} style={{ margin: '5px 0' }}>
-                                <span style={{ fontWeight: 'bold' }}>Câu {i + 1}:</span> {q.correctAnswer}
-                            </p>
-                        ))}
+                    <div style={{ marginBottom: '25px' }}>
+                        <p style={sectionStyle}>PHẦN III. CÂU HỎI TRẮC NGHIỆM TRẢ LỜI NGẮN</p>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '25%' }}>Câu</th>
+                                    <th style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', backgroundColor: '#f8fafc', width: '75%' }}>Đáp án</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {shortQs.map((q, i) => (
+                                    <tr key={q.id}>
+                                        <td style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold' }}>Câu {i + 1}</td>
+                                        <td style={{ border: '1pt solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8' }}>{q.correctAnswer || 'N/A'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
             </div>
@@ -224,21 +273,21 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                                 <tbody>
                                     <tr>
-                                        <td style={{ width: '45%', textAlign: 'center', padding: '10px' }}>
-                                            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', margin: '2px 0', fontSize: '11pt' }}>SỞ GD&ĐT EDUQUIZ VN</p>
-                                            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', textDecoration: 'underline', margin: '2px 0', fontSize: '11pt' }}>TRƯỜNG THPT CHUYÊN AI</p>
+                                        <td style={{ width: '50%', textAlign: 'center', verticalAlign: 'top', padding: '5px' }}>
+                                            <p style={{ fontWeight: 'bold', margin: '2px 0', fontSize: '11pt' }}>SỞ GDĐT TP. HỒ CHÍ MINH</p>
+                                            <p style={{ fontWeight: 'bold', margin: '2px 0', fontSize: '11pt' }}>Trường : THPT Nguyễn Hữu Cầu</p>
                                         </td>
-                                        <td style={{ width: '55%', textAlign: 'center', padding: '10px' }}>
-                                            <p style={{ fontWeight: 'bold', fontSize: '13pt', margin: '2px 0' }}>ĐỀ THI {quiz.type === 'test' ? 'CHÍNH THỨC' : 'LUYỆN TẬP'}</p>
-                                            <p style={{ fontWeight: 'bold', margin: '2px 0', fontSize: '11pt' }}>MÔN: TOÁN - KHỐI {quiz.grade}</p>
+                                        <td style={{ width: '50%', textAlign: 'center', verticalAlign: 'top', padding: '5px' }}>
+                                            <p style={{ fontWeight: 'bold', fontSize: '12pt', margin: '2px 0' }}>Đề thi chính thức</p>
+                                            <p style={{ fontWeight: 'bold', margin: '2px 0', fontSize: '11pt' }}>Môn : {quiz.category || 'Vật lý'}</p>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
-                            <div style={{ border: '1.5pt solid black', padding: '12px', marginTop: '20px', textAlign: 'left' }}>
-                                <p style={{ fontWeight: 'bold', margin: 0, fontSize: '11pt' }}>Họ và tên: ................................................................... SBD: ......................</p>
+                            <div style={{ border: '1.5pt solid black', padding: '10px 15px', marginTop: '12px', textAlign: 'left' }}>
+                                <p style={{ fontWeight: 'bold', margin: 0, fontSize: '11pt' }}>Họ và tên: ..................................................... SBD: .................</p>
                             </div>
-                            <h2 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15pt', marginTop: '30px', textTransform: 'uppercase' }}>{quiz.title}</h2>
+                            <h2 style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15pt', marginTop: '25px', textTransform: 'uppercase' }}>{quiz.title}</h2>
                         </div>
 
                         {['mcq', 'group-tf', 'short'].map((type) => {
@@ -275,11 +324,6 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                             <div key={si} style={{ display: 'flex', width: '100%', marginBottom: '6px', textAlign: 'left', gap: '10px' }}>
                                                                 <div style={{ fontWeight: 'bold', textAlign: 'left', minWidth: '25px' }}>{String.fromCharCode(97 + si)})</div>
                                                                 <div style={{ textAlign: 'left', flex: 1 }}><LatexText text={sq.text}/></div>
-                                                                {isAdmin && (
-                                                                    <div style={{ fontWeight: 'bold', color: sq.correctAnswer === 'True' ? '#059669' : '#dc2626' }}>
-                                                                        [{sq.correctAnswer === 'True' ? 'Đ' : 'S'}]
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -290,11 +334,6 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                         <div style={{ border: '1.5pt solid black', width: '180px', height: '40px', textAlign: 'center', lineHeight: '40px', color: '#999', fontStyle: 'italic', fontSize: '10pt', borderRadius: '4px' }}>
                                                             Đáp số: .........
                                                         </div>
-                                                        {isAdmin && (
-                                                            <div style={{ fontWeight: 'bold', color: '#2563eb' }}>
-                                                                [Đáp án: {q.correctAnswer}]
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 )}
                                             </div>
