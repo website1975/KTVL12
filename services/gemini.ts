@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Question } from "../types";
+import { Question, Grade } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
 const cleanJsonString = (str: string): string => {
@@ -246,6 +246,149 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   } catch (error: any) {
     throw new Error("Lỗi đọc PDF: " + error.message);
   }
+};
+
+export const parseQuestionsFromJSON = (input: string | any): { questions: Question[]; quizTitle?: string; grade?: Grade; category?: string; durationMinutes?: number } => {
+    let parsed: any;
+    if (typeof input === 'string') {
+        try {
+            const cleanStr = cleanJsonString(input);
+            parsed = JSON.parse(cleanStr);
+        } catch (e: any) {
+            throw new Error("Cấu trúc file hoặc chuỗi JSON không hợp lệ. Vui lòng kiểm tra lại cú pháp JSON!");
+        }
+    } else {
+        parsed = input;
+    }
+
+    let rawQuestions: any[] = [];
+    let quizTitle: string | undefined;
+    let grade: Grade | undefined;
+    let category: string | undefined;
+    let durationMinutes: number | undefined;
+
+    if (Array.isArray(parsed)) {
+        rawQuestions = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+        if (parsed.title || parsed.quizTitle || parsed.name) {
+            quizTitle = parsed.title || parsed.quizTitle || parsed.name;
+        }
+        if (parsed.grade) grade = String(parsed.grade) as Grade;
+        if (parsed.category || parsed.subject) category = parsed.category || parsed.subject;
+        if (parsed.durationMinutes || parsed.duration || parsed.timeLimit) durationMinutes = Number(parsed.durationMinutes || parsed.duration || parsed.timeLimit);
+
+        if (Array.isArray(parsed.questions)) {
+            rawQuestions = parsed.questions;
+        } else if (Array.isArray(parsed.data)) {
+            rawQuestions = parsed.data;
+        } else if (Array.isArray(parsed.items)) {
+            rawQuestions = parsed.items;
+        } else if (parsed.quiz && Array.isArray(parsed.quiz.questions)) {
+            rawQuestions = parsed.quiz.questions;
+        } else {
+            const possibleArray = Object.values(parsed).find(val => Array.isArray(val));
+            if (possibleArray) {
+                rawQuestions = possibleArray as any[];
+            }
+        }
+    }
+
+    if (!rawQuestions || rawQuestions.length === 0) {
+        throw new Error("Không tìm thấy danh sách câu hỏi hợp lệ trong dữ liệu JSON!");
+    }
+
+    const normalizedRaw = rawQuestions.map((q: any) => {
+        let typeStr = (q.type || q.questionType || '').toLowerCase().trim();
+        let type = 'mcq';
+        if (typeStr === 'mc' || typeStr.includes('mcq') || typeStr.includes('trac_nghiem') || typeStr.includes('multiple')) {
+            type = 'mcq';
+        } else if (typeStr === 'tf' || typeStr.includes('group') || typeStr.includes('dung_sai') || typeStr.includes('true_false')) {
+            type = 'group-tf';
+        } else if (typeStr === 'sa' || typeStr.includes('short') || typeStr.includes('ngan') || typeStr.includes('tra_loi')) {
+            type = 'short';
+        } else {
+            if (q.subQuestions || q.sub_questions || q.statements || q.y_con) {
+                type = 'group-tf';
+            } else if (q.options || q.choices || q.phuong_an) {
+                type = 'mcq';
+            } else {
+                type = 'short';
+            }
+        }
+
+        const rawOptionsArray = q.options || q.choices || q.phuong_an || q.dap_an_lua_chon || q.answers;
+
+        let subQuestions = q.subQuestions || q.sub_questions || q.statements || q.y_con;
+        
+        // Trường hợp câu hỏi Đúng/Sai (TF) mà danh sách mệnh đề nằm trong q.options
+        if (type === 'group-tf' && !subQuestions && Array.isArray(rawOptionsArray)) {
+            subQuestions = rawOptionsArray;
+        }
+
+        if (Array.isArray(subQuestions)) {
+            subQuestions = subQuestions.map((sq: any) => {
+                let ans = sq.correctAnswer ?? sq.answer ?? sq.dap_an ?? sq.isTrue ?? sq.isCorrect ?? sq.correct;
+                if (ans === true || ans === 'True' || ans === 'true' || ans === 'Đ' || ans === 'Đúng' || ans === '1') {
+                    ans = 'True';
+                } else {
+                    ans = 'False';
+                }
+                const sqText = sq.text || sq.content || sq.noi_dung || '';
+                return {
+                    text: sqText.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
+                    correctAnswer: ans
+                };
+            });
+        }
+
+        let options: string[] | undefined = undefined;
+        let correctAnswer = q.correctAnswer || q.answer || q.correct || q.dap_an_dung || q.dap_an || '';
+
+        if (type === 'mcq' && Array.isArray(rawOptionsArray)) {
+            options = rawOptionsArray.map((opt: any) => {
+                const str = typeof opt === 'string' ? opt : (opt.text || opt.content || opt.label || String(opt));
+                return str.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$');
+            });
+
+            // Tìm đáp án đúng nếu nằm trong thuộc tính isCorrect của option object
+            if (!correctAnswer) {
+                const correctObj = rawOptionsArray.find((opt: any) => typeof opt === 'object' && (opt.isCorrect === true || opt.is_correct === true || opt.correct === true));
+                if (correctObj) {
+                    const str = typeof correctObj === 'string' ? correctObj : (correctObj.text || correctObj.content || correctObj.label || String(correctObj));
+                    correctAnswer = str.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$');
+                } else {
+                    const idx = q.correctOptionIndex ?? q.correct_option_index ?? q.correctIndex ?? q.correct_index ?? q.answerIndex;
+                    if (typeof idx === 'number' && idx >= 0 && idx < options.length) {
+                        correctAnswer = options[idx];
+                    }
+                }
+            }
+        }
+
+        const rawText = q.text || q.question || q.content || q.cau_hoi || q.title || '';
+        const rawSolution = q.solution || q.explanation || q.loi_giai || q.huong_dan_giai || q.guide || '';
+
+        return {
+            ...q,
+            type,
+            text: rawText.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
+            options: type === 'mcq' ? options : undefined,
+            correctAnswer: typeof correctAnswer === 'string' ? correctAnswer.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$') : String(correctAnswer),
+            solution: rawSolution.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
+            points: q.points || q.score || q.diem || (type === 'mcq' ? 0.25 : 1.0),
+            subQuestions: type === 'group-tf' ? subQuestions : undefined
+        };
+    });
+
+    const questions = processAIQuestions(normalizedRaw);
+
+    return {
+        questions,
+        quizTitle,
+        grade,
+        category,
+        durationMinutes
+    };
 };
 
 export const parseQuestionsFromText = async (rawText: string): Promise<Question[]> => {
