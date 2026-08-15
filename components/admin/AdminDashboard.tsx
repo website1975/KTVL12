@@ -1,7 +1,7 @@
 
 import { 
   getQuizzesMetadata, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
-  getUsers, saveUser, deleteUser, changePassword, getUsersPage,
+  getUsers, saveUser, deleteUser, changePassword, getUsersPage, saveUsersBatch,
   getResultsMetadata, getResultById, deleteResult, getResultsMetadataPage,
   getChapters, saveChapter, deleteChapter,
   getBankQuestions, saveBankQuestion,
@@ -11,7 +11,8 @@ import {
   syncQuizzesToBank
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
-import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType } from '../../types';
+import { normalizeFullText } from '../../services/vietnameseFixer';
+import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType, Role } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Papa from 'papaparse';
@@ -186,6 +187,58 @@ export default function AdminDashboard() {
   const [bChapterFilter, setBChapterFilter] = useState('all');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('all');
   const [bSearch, setBSearch] = useState('');
+
+  // Alert and Confirmation Modal State
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'warning' | 'error' | 'info';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm?: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+
+  const showAlert = useCallback((title: string, message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info', onConfirm?: () => void) => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      type,
+      confirmText: 'Đóng',
+      onConfirm: () => {
+        setAlertModal(null);
+        if (onConfirm) onConfirm();
+      }
+    });
+  }, []);
+
+  const showConfirm = useCallback((
+    title: string, 
+    message: string, 
+    onConfirm: () => void, 
+    onCancel?: () => void,
+    confirmText: string = 'Xác nhận',
+    cancelText: string = 'Hủy'
+  ) => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      type: 'warning',
+      confirmText,
+      cancelText,
+      onConfirm: () => {
+        setAlertModal(null);
+        onConfirm();
+      },
+      onCancel: () => {
+        setAlertModal(null);
+        if (onCancel) onCancel();
+      }
+    });
+  }, []);
 
   // Modals
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
@@ -406,7 +459,7 @@ export default function AdminDashboard() {
   const handleCleanLabels = () => {
     const stripLabel = (text: string): string => {
         if (!text) return "";
-        let cleaned = text.trim();
+        let cleaned = normalizeFullText(text.trim());
         const labelRegex = /^(\*?[A-Za-z0-9][\.\)\/\-:\s]\s*)/g;
         while (labelRegex.test(cleaned)) {
             cleaned = cleaned.replace(labelRegex, "").trim();
@@ -417,6 +470,7 @@ export default function AdminDashboard() {
     const cleanedQuestions = questions.map(q => {
         const newQ = { ...q };
         newQ.text = stripLabel(q.text);
+        if (q.solution) newQ.solution = normalizeFullText(q.solution);
         
         if (q.options) {
             newQ.options = q.options.map(opt => stripLabel(opt));
@@ -449,82 +503,162 @@ export default function AdminDashboard() {
     });
 
     setQuestions(cleanedQuestions);
-    alert("Đã dọn dẹp nhãn cho tất cả câu hỏi!");
+    showAlert("Thành công", "Đã chuẩn hóa dấu tiếng Việt, sửa lỗi vỡ chữ và dọn dẹp nhãn cho toàn bộ câu hỏi!", "success");
   };
 
   const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (isDatabaseConnected() && !confirm("Bạn đang có kết nối Cloud. Việc nhập CSV này chỉ nên dùng để xem dữ liệu tạm thời. Tiếp tục?")) return;
-
     setIsDataLoading(true);
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: async (results: any) => {
-        const data = results.data as any[];
+      complete: async (resultsObj: any) => {
+        setIsDataLoading(false);
+        const data = resultsObj.data as any[];
+        if (!data || data.length === 0) {
+          showAlert("Không có dữ liệu", "File CSV rỗng hoặc không đúng định dạng.", "error");
+          e.target.value = '';
+          return;
+        }
+
         const firstRow = data[0];
+        const headers = Object.keys(firstRow).map(h => h.toLowerCase().trim());
         
-        try {
-          if (!firstRow) throw new Error("File CSV trống.");
+        // Cụ thể hóa kiểm tra file học sinh
+        const isUserFile = headers.includes('role') || 
+                           headers.includes('student_code') || 
+                           headers.includes('studentcode') || 
+                           headers.includes('mahs') || 
+                           headers.includes('hoten');
+                           
+        const isResultFile = headers.includes('score') || headers.includes('quiz_id') || headers.includes('quizid');
 
-          // Detect type based on headers
-          const headers = Object.keys(firstRow).map(h => h.toLowerCase());
-          const isUserFile = headers.includes('role') || headers.includes('student_code');
-          const isResultFile = headers.includes('score') || headers.includes('quiz_id');
+        if (isUserFile) {
+          const parsedUsers: User[] = data.map(row => {
+            const getVal = (keys: string[]) => {
+              for (const k of keys) {
+                const foundKey = Object.keys(row).find(x => x.toLowerCase().trim() === k.toLowerCase().trim());
+                if (foundKey && row[foundKey] !== undefined) {
+                  return String(row[foundKey]).trim();
+                }
+              }
+              return '';
+            };
 
-          if (isUserFile) {
-            const parsedUsers = data.map(row => ({
-              ...row,
-              id: row.id || uuidv4(),
-              studentCode: row.studentCode || row.student_code || 'N/A',
-              fullName: row.fullName || row.full_name || 'Học sinh',
-              role: row.role || 'student'
-            })).filter(u => u.role === 'student');
+            const rawMahs = getVal(['mahs', 'studentCode', 'student_code', 'studentcode']);
+            const fullName = getVal(['hoten', 'fullName', 'full_name', 'fullname']) || 'Học sinh';
+            const grade = (getVal(['khoi', 'grade']) || '12') as Grade;
+            const password = getVal(['pass', 'password']) || '123';
+            const role = (getVal(['role']) || 'student') as Role;
+
+            const studentCode = rawMahs.toUpperCase();
+            const username = studentCode.toLowerCase();
+
+            return {
+              id: String(row.id || uuidv4()),
+              username,
+              password,
+              role,
+              fullName,
+              studentCode,
+              grade,
+              points: Number(row.points || 0)
+            };
+          }).filter(u => u.role === 'student' && u.studentCode);
+
+          if (parsedUsers.length === 0) {
+            showAlert(
+              "Định dạng không khớp", 
+              "Không tìm thấy học sinh hợp lệ. Yêu cầu file CSV chứa các cột thông tin: Mahs (hoặc studentCode), Hoten (hoặc fullName), khoi (hoặc grade), pass (hoặc password).", 
+              "error"
+            );
+            e.target.value = '';
+            return;
+          }
+
+          if (isDatabaseConnected()) {
+            showConfirm(
+              "Nạp học sinh từ CSV",
+              `Bạn đang kết nối Cloud. Bạn có chắc chắn muốn nạp và lưu trữ vĩnh viễn ${parsedUsers.length} học sinh này vào Database Cloud? Các học sinh có mã số trùng lặp sẽ tự động cập nhật thông tin mới.`,
+              async () => {
+                setIsDataLoading(true);
+                try {
+                  await saveUsersBatch(parsedUsers);
+                  await loadTabData('students');
+                  showAlert(
+                    "Thành công", 
+                    `Đã nạp và lưu thành công ${parsedUsers.length} học sinh lên Database Cloud!`, 
+                    "success"
+                  );
+                } catch (err: any) {
+                  showAlert("Lỗi", "Không thể lưu học sinh lên Database: " + err.message, "error");
+                } finally {
+                  setIsDataLoading(false);
+                }
+              },
+              undefined,
+              "Đồng ý lưu Cloud",
+              "Hủy"
+            );
+          } else {
             setStudents(parsedUsers);
             setStudentsTotal(parsedUsers.length);
-            alert(`Đã tải ${parsedUsers.length} học sinh từ file CSV.`);
-          } else if (isResultFile) {
-            const parsedResults = data.map(row => {
-                const sId = row.studentId || row.student_id;
-                const scStr = String(row.studentCode || row.student_code || "").trim();
-                return {
-                    ...row,
-                    id: row.id || uuidv4(),
-                    quizId: row.quizId || row.quiz_id,
-                    studentId: sId,
-                    studentCode: scStr || 'N/A',
-                    studentName: row.studentName || row.student_name || row.full_name || 'Học sinh',
-                    score: Number(row.score || 0),
-                    submittedAt: row.submittedAt || row.submitted_at || new Date().toISOString()
-                };
-            });
-            setResults(parsedResults);
-            setResultsTotal(parsedResults.length);
-            alert(`Đã tải ${parsedResults.length} kết quả từ file CSV.`);
-          } else {
-            alert("Không nhận diện được định dạng file.");
+            showAlert(
+              "Đã tải tạm thời", 
+              `Đã tải tạm thời ${parsedUsers.length} học sinh vào bộ nhớ (Chưa lưu trữ Cloud vì mất kết nối Database).`, 
+              "success"
+            );
           }
-        } catch (err: any) {
-          alert("Lỗi xử lý CSV: " + err.message);
-        } finally {
-          setIsDataLoading(false);
-          e.target.value = '';
+        } else if (isResultFile) {
+          // File kết quả thi
+          const parsedResults = data.map(row => {
+            const sId = row.studentId || row.student_id;
+            const scStr = String(row.studentCode || row.student_code || "").trim();
+            return {
+              ...row,
+              id: row.id || uuidv4(),
+              quizId: row.quizId || row.quiz_id,
+              studentId: sId,
+              studentCode: scStr || 'N/A',
+              studentName: row.studentName || row.student_name || row.full_name || 'Học sinh',
+              score: Number(row.score || 0),
+              submittedAt: row.submittedAt || row.submitted_at || new Date().toISOString()
+            };
+          });
+
+          setResults(parsedResults);
+          setResultsTotal(parsedResults.length);
+          showAlert("Thành công", `Đã tải ${parsedResults.length} kết quả thi từ file CSV.`, "success");
+        } else {
+          showAlert(
+            "Không thể nhận diện", 
+            "Định dạng file CSV không được hỗ trợ. Hãy sử dụng các cột tiêu đề sau: Mahs, Hoten, khoi, pass.", 
+            "error"
+          );
         }
+        e.target.value = '';
+      },
+      error: (err: any) => {
+        setIsDataLoading(false);
+        showAlert("Lỗi đọc file", "Không thể parse file CSV: " + err.message, "error");
+        e.target.value = '';
       }
     });
   };
 
   const handleSaveStudent = async () => {
-    if (!studentForm.fullName || !studentForm.studentCode) return alert("Vui lòng điền đủ thông tin!");
+    if (!studentForm.fullName || !studentForm.studentCode) {
+      return showAlert("Thiếu thông tin", "Vui lòng điền đủ thông tin học sinh!", "warning");
+    }
     
     const code = studentForm.studentCode.trim().toUpperCase();
     
     // Kiểm tra trùng mã học sinh (MAHS)
     const isDuplicate = students.some(s => s.studentCode === code && s.id !== selectedStudent?.id);
     if (isDuplicate) {
-      return alert(`CẢNH BÁO: Mã học sinh "${code}" đã tồn tại trong hệ thống. Vui lòng kiểm tra lại!`);
+      return showAlert("Trùng mã số học sinh", `Mã học sinh "${code}" đã tồn tại trong hệ thống. Vui lòng kiểm tra lại!`, "error");
     }
 
     setIsSavingStudent(true);
@@ -536,24 +670,32 @@ export default function AdminDashboard() {
         points: selectedStudent?.points || 0
       };
       await saveUser(newUser); setIsStudentModalOpen(false); loadTabData('students');
-    } catch (e: any) { alert("Lỗi lưu học sinh"); } finally { setIsSavingStudent(false); }
+      showAlert("Thành công", `Đã lưu học sinh ${studentForm.fullName} thành công!`, "success");
+    } catch (e: any) { 
+      showAlert("Lỗi", "Lỗi lưu học sinh trên Cloud", "error"); 
+    } finally { 
+      setIsSavingStudent(false); 
+    }
   };
 
   const handleDeleteStudent = async (id: string, name: string) => {
-    if (confirm(`CẢNH BÁO: Xóa học sinh "${name}" sẽ xóa vĩnh viễn toàn bộ lịch sử bài làm của học sinh này trên Database. Tiếp tục?`)) { 
-      await handleDeleteStudentsBatch([id]);
-    }
+    showConfirm(
+      "Xác nhận xóa học sinh",
+      `CẢNH BÁO: Xóa học sinh "${name}" sẽ xóa vĩnh viễn toàn bộ lịch sử bài làm của học sinh này trên Database. Bạn có chắc chắn muốn tiếp tục?`,
+      async () => {
+        await handleDeleteStudentsBatch([id]);
+      }
+    );
   };
 
   const handleDeleteResultBatch = async (resultsToDelete: Result[]) => {
     setIsDataLoading(true);
     try {
-        // Xóa tuần tự hoặc song song nhưng chỉ load lại data 1 lần ở cuối
         await Promise.all(resultsToDelete.map(r => deleteResult(r.id)));
         await loadTabData('results');
-        alert(`Đã xóa thành công ${resultsToDelete.length} bản ghi.`);
+        showAlert("Thành công", `Đã xóa thành công ${resultsToDelete.length} bản ghi kết quả thi.`, "success");
     } catch (e: any) {
-        alert("Lỗi khi xóa kết quả: " + e.message);
+        showAlert("Lỗi", "Lỗi khi xóa kết quả: " + e.message, "error");
     } finally {
         setIsDataLoading(false);
     }
@@ -564,9 +706,9 @@ export default function AdminDashboard() {
     try {
         await Promise.all(studentIds.map(id => deleteUser(id)));
         await loadTabData('students');
-        alert(`Đã xóa thành công ${studentIds.length} học sinh.`);
+        showAlert("Thành công", `Đã xóa thành công ${studentIds.length} học sinh.`, "success");
     } catch (e: any) {
-        alert("Lỗi khi xóa học sinh: " + e.message);
+        showAlert("Lỗi", "Lỗi khi xóa học sinh: " + e.message, "error");
     } finally {
         setIsDataLoading(false);
     }
@@ -574,22 +716,26 @@ export default function AdminDashboard() {
 
   const handleResetPassword = async (student: User) => {
     const defaultPass = '123';
-    if (confirm(`Đặt lại mật khẩu cho học sinh "${student.fullName}" về mặc định "${defaultPass}"?`)) {
-      setIsDataLoading(true);
-      try {
-        const success = await changePassword(student.id, defaultPass);
-        if (success) {
-          alert(`Đã đặt lại mật khẩu cho ${student.fullName} thành công!`);
-          loadTabData('students');
-        } else {
-          alert("Có lỗi xảy ra khi đặt lại mật khẩu trên Cloud.");
+    showConfirm(
+      "Đặt lại mật khẩu",
+      `Đặt lại mật khẩu cho học sinh "${student.fullName}" về mặc định "${defaultPass}"?`,
+      async () => {
+        setIsDataLoading(true);
+        try {
+          const success = await changePassword(student.id, defaultPass);
+          if (success) {
+            showAlert("Thành công", `Đã đặt lại mật khẩu cho ${student.fullName} thành công về "123"!`, "success");
+            loadTabData('students');
+          } else {
+            showAlert("Thất bại", "Có lỗi xảy ra khi đặt lại mật khẩu trên Cloud.", "error");
+          }
+        } catch (e: any) {
+          showAlert("Lỗi", "Lỗi: " + e.message, "error");
+        } finally {
+          setIsDataLoading(false);
         }
-      } catch (e: any) {
-        alert("Lỗi: " + e.message);
-      } finally {
-        setIsDataLoading(false);
       }
-    }
+    );
   };
 
   const handleLoadMoreStudents = async () => {
@@ -871,6 +1017,59 @@ export default function AdminDashboard() {
                     />
                 </div>
              </div>
+        </div>
+      )}
+
+      {/* Alert and Confirmation Modal Overlay */}
+      {alertModal && alertModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-3xl border shadow-2xl p-6 overflow-hidden animate-scale-up">
+            <div className="flex items-start gap-4 mb-4">
+              <div className={`p-3 rounded-2xl shrink-0 ${
+                alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
+                alertModal.type === 'error' ? 'bg-red-50 text-red-600' :
+                alertModal.type === 'warning' ? 'bg-amber-50 text-amber-600' :
+                'bg-blue-50 text-blue-600'
+              }`}>
+                {alertModal.type === 'success' && <DatabaseZap size={24} className="text-emerald-600" />}
+                {alertModal.type === 'error' && <AlertTriangle size={24} className="text-red-600" />}
+                {alertModal.type === 'warning' && <AlertTriangle size={24} />}
+                {alertModal.type === 'info' && <DatabaseZap size={24} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-1 leading-tight">{alertModal.title}</h3>
+                <p className="text-xs text-slate-500 font-bold leading-relaxed break-words">{alertModal.message}</p>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              {alertModal.cancelText && (
+                <button 
+                  onClick={() => {
+                    if (alertModal.onCancel) alertModal.onCancel();
+                    setAlertModal(null);
+                  }}
+                  className="px-5 py-2.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase transition-all"
+                >
+                  {alertModal.cancelText}
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  if (alertModal.onConfirm) alertModal.onConfirm();
+                  else setAlertModal(null);
+                }}
+                className={`px-5 py-2.5 text-white rounded-xl text-[10px] font-black uppercase transition-all shadow-md ${
+                  alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' :
+                  alertModal.type === 'error' ? 'bg-red-600 hover:bg-red-700 shadow-red-100' :
+                  alertModal.type === 'warning' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' :
+                  'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                }`}
+              >
+                {alertModal.confirmText || 'Đồng ý'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
