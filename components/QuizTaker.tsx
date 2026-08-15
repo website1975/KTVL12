@@ -16,7 +16,7 @@ interface QuizTakerProps {
 export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
     const backupKey = `quiz_backup_${student.id}_${quiz.id}`;
-    const initialStartTimeRef = useRef(new Date().toISOString());
+    const sessionStartKey = `quiz_session_start_${student.id}_${quiz.id}`;
     const isInternalActionRef = useRef(false);
     
     const orderedQuestions = useMemo(() => {
@@ -34,12 +34,43 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
         return {};
     };
 
-    const deadline = useMemo(() => {
-        if (quiz.type === 'test' && quiz.startTime) {
-            return addMinutes(new Date(quiz.startTime), quiz.durationMinutes);
+    // Khởi tạo hoặc khôi phục thời điểm học sinh bấm bắt đầu làm bài
+    const studentStartTime = useMemo(() => {
+        const saved = localStorage.getItem(sessionStartKey);
+        if (saved) {
+            try {
+                const parsed = new Date(saved);
+                if (!isNaN(parsed.getTime())) return parsed;
+            } catch (e) {}
         }
-        return addMinutes(new Date(), quiz.durationMinutes);
-    }, [quiz]);
+        const now = new Date();
+        localStorage.setItem(sessionStartKey, now.toISOString());
+        return now;
+    }, [sessionStartKey]);
+
+    const initialStartTimeRef = useRef(studentStartTime.toISOString());
+
+    const deadline = useMemo(() => {
+        if (quiz.type === 'test') {
+            const startX = quiz.startTime ? new Date(quiz.startTime) : null;
+            const endY = quiz.endTime ? new Date(quiz.endTime) : null;
+            
+            // TH 1: Khung giờ mở đề linh hoạt từ X đến Y (với Y > X)
+            // Trong khung X -> Y, học sinh vào lúc nào được tính TRỌN VẸN durationMinutes kể từ lúc vào
+            if (startX && endY && endY.getTime() > startX.getTime()) {
+                return addMinutes(studentStartTime, quiz.durationMinutes);
+            }
+            
+            // TH 2: Thi đồng loạt (X = Y hoặc không có Y)
+            // Cả lớp kết thúc đồng loạt trước hạn chót chung: startX + durationMinutes
+            if (startX) {
+                return addMinutes(startX, quiz.durationMinutes);
+            }
+        }
+        
+        // Mặc định hoặc Luyện tập: Tính trọn vẹn durationMinutes từ lúc học sinh bắt đầu
+        return addMinutes(studentStartTime, quiz.durationMinutes);
+    }, [quiz, studentStartTime]);
 
     const calculateTimeLeft = () => {
         const diff = differenceInSeconds(deadline, new Date());
@@ -213,6 +244,7 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             await addPointsToUser(student.id, score);
             await deleteExamSession(sessionIdRef.current); 
             localStorage.removeItem(backupKey);
+            localStorage.removeItem(sessionStartKey);
             
             setFinalResult(result);
             setSubmitStatus('done');
