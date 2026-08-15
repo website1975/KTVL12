@@ -89,8 +89,28 @@ export default function QuizList({
                     const attempts = (q as any).attemptCount || 0;
                     
                     const now = new Date();
-                    const isStarted = !q.startTime || new Date(q.startTime) <= now;
-                    const isExpired = q.endTime && new Date(q.endTime) < now;
+                    const startX = q.startTime ? new Date(q.startTime) : null;
+                    const endY = q.endTime ? new Date(q.endTime) : null;
+                    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+
+                    let isStarted = true;
+                    let isExpired = false;
+
+                    if (q.type === 'test') {
+                        if (startX) {
+                            if (isFlexibleWindow && endY) {
+                                isStarted = now.getTime() >= startX.getTime();
+                                isExpired = now.getTime() > endY.getTime();
+                            } else {
+                                const globalEnd = new Date(startX.getTime() + q.durationMinutes * 60000);
+                                isStarted = now.getTime() >= startX.getTime();
+                                isExpired = now.getTime() > globalEnd.getTime();
+                            }
+                        }
+                    } else {
+                        isStarted = true;
+                        isExpired = Boolean(endY && now.getTime() > endY.getTime());
+                    }
                     const isActive = isStarted && !isExpired;
                     
                     let cardStyle = "";
