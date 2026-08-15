@@ -445,11 +445,164 @@ export default function QuizEditor(props: QuizEditorProps) {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-blue-600 uppercase ml-2 flex items-center gap-1"><Zap size={12}/> Hạn chót nộp bài</label>
-                        <input type="datetime-local" className="w-full border-2 border-blue-100 rounded-[1.5rem] p-4 text-xs font-black bg-blue-50/20 focus:bg-white outline-none" value={props.quizType === 'test' ? props.startTime : props.endTime} onChange={e => props.quizType === 'test' ? props.setStartTime(e.target.value) : props.setEndTime(e.target.value)} />
+                {/* Khung thời gian và cài đặt kỳ thi */}
+                <div className="bg-slate-50/70 p-6 rounded-[2.5rem] border-2 border-slate-100 space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <Zap size={18} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                {props.quizType === 'test' ? 'Khung thời gian mở đề & Quy chế thi' : 'Thời hạn luyện tập'}
+                            </h4>
+                        </div>
+                        {props.quizType === 'test' && props.startTime && (
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => props.setEndTime(props.startTime)}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${props.endTime === props.startTime ? 'bg-blue-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                    title="Tất cả học sinh vào làm cùng lúc và hết giờ cùng lúc"
+                                >
+                                    🎯 Đặt X = Y (Thi đồng loạt)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const d = new Date(props.startTime);
+                                        d.setMinutes(d.getMinutes() + 30);
+                                        const tzOffset = d.getTimezoneOffset() * 60000;
+                                        props.setEndTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase transition-all"
+                                >
+                                    +30 phút mở
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const d = new Date(props.startTime);
+                                        d.setHours(d.getHours() + 1);
+                                        const tzOffset = d.getTimezoneOffset() * 60000;
+                                        props.setEndTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase transition-all"
+                                >
+                                    +1 giờ mở
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const d = new Date(props.startTime);
+                                        d.setHours(d.getHours() + 2);
+                                        const tzOffset = d.getTimezoneOffset() * 60000;
+                                        props.setEndTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase transition-all"
+                                >
+                                    +2 giờ mở
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const d = new Date(props.startTime);
+                                        d.setHours(23, 59, 0, 0);
+                                        const tzOffset = d.getTimezoneOffset() * 60000;
+                                        props.setEndTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase transition-all"
+                                >
+                                    Hết ngày (23:59)
+                                </button>
+                            </div>
+                        )}
                     </div>
+
+                    {props.quizType === 'test' ? (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-blue-600 uppercase ml-2 flex items-center gap-1.5">
+                                        <span>📅 Giờ mở đề (Mốc X - Bắt đầu cho vào thi)</span>
+                                    </label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="w-full border-2 border-blue-200 rounded-[1.5rem] p-4 text-xs font-black bg-white focus:border-blue-500 outline-none shadow-sm" 
+                                        value={props.startTime} 
+                                        onChange={e => {
+                                            props.setStartTime(e.target.value);
+                                            // Nếu chưa có endTime thì gán tạm endTime = startTime
+                                            if (!props.endTime) props.setEndTime(e.target.value);
+                                        }} 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-indigo-600 uppercase ml-2 flex items-center gap-1.5">
+                                        <span>⏳ Giờ đóng mở đề (Mốc Y - Hết hạn vào thi)</span>
+                                    </label>
+                                    <input 
+                                        type="datetime-local" 
+                                        className="w-full border-2 border-indigo-200 rounded-[1.5rem] p-4 text-xs font-black bg-white focus:border-indigo-500 outline-none shadow-sm" 
+                                        value={props.endTime} 
+                                        onChange={e => props.setEndTime(e.target.value)} 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Banner giải thích quy tắc thời gian làm bài */}
+                            {props.startTime ? (
+                                props.endTime && props.startTime !== props.endTime && new Date(props.endTime) > new Date(props.startTime) ? (
+                                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-start gap-3">
+                                        <div className="p-2 bg-emerald-600 text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
+                                            <Zap size={14} />
+                                        </div>
+                                        <div className="text-xs text-emerald-900 leading-relaxed">
+                                            <p className="font-black uppercase text-[11px] text-emerald-800 mb-0.5">
+                                                Chế độ Khung giờ mở đề linh hoạt (Mở từ X đến Y)
+                                            </p>
+                                            <p className="font-medium text-emerald-700">
+                                                Học sinh vào làm bài tại bất kỳ thời điểm nào trong khung giờ 
+                                                từ <b>{new Date(props.startTime).toLocaleString('vi-VN')}</b> đến <b>{new Date(props.endTime).toLocaleString('vi-VN')}</b> đều 
+                                                được <b>tính trọn vẹn {props.duration} phút làm bài</b> kể từ lúc bấm vào thi.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+                                        <div className="p-2 bg-amber-600 text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
+                                            <ShieldAlert size={14} />
+                                        </div>
+                                        <div className="text-xs text-amber-900 leading-relaxed">
+                                            <p className="font-black uppercase text-[11px] text-amber-800 mb-0.5">
+                                                Chế độ Thi đồng loạt (X = Y)
+                                            </p>
+                                            <p className="font-medium text-amber-700">
+                                                Đề thi mở vào lúc <b>{new Date(props.startTime).toLocaleString('vi-VN')}</b>. Tất cả học sinh 
+                                                phải <b>nộp bài đồng thời trước hạn chót</b> (sau {props.duration} phút). Nếu học sinh vào trễ sau giờ mở đề, thời gian làm bài sẽ bị rút ngắn tương ứng.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )
+                            ) : (
+                                <p className="text-[11px] font-bold text-slate-400 italic">
+                                    💡 Để trống nếu muốn mở đề tự do bất kỳ lúc nào sau khi công khai.
+                                </p>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-blue-600 uppercase ml-2">
+                                Hạn chót luyện tập (Để trống nếu mở vĩnh viễn)
+                            </label>
+                            <input 
+                                type="datetime-local" 
+                                className="w-full border-2 border-slate-200 rounded-[1.5rem] p-4 text-xs font-black bg-white focus:border-blue-300 outline-none" 
+                                value={props.endTime} 
+                                onChange={e => props.setEndTime(e.target.value)} 
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-red-600 uppercase ml-2 flex items-center gap-1"><ShieldAlert size={12}/> Chế độ bảo mật</label>
                         <button 
