@@ -157,6 +157,34 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             try {
                 const quiz = await getQuizById(targetQuizId);
                 if (quiz && quiz.isPublished) {
+                    const curNow = new Date();
+                    const startX = quiz.startTime ? new Date(quiz.startTime) : null;
+                    const endY = quiz.endTime ? new Date(quiz.endTime) : null;
+                    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+
+                    if (quiz.type === 'test' && startX) {
+                        if (isFlexibleWindow && endY) {
+                            if (isBefore(curNow, startX)) {
+                                alert(`Đề thi chưa mở. Khung giờ mở đề: ${format(startX, 'HH:mm dd/MM/yyyy')} đến ${format(endY, 'HH:mm dd/MM/yyyy')}.`);
+                                return;
+                            }
+                            if (isAfter(curNow, endY)) {
+                                alert(`Đã hết thời hạn vào làm đề thi này (Hạn chót vào thi: ${format(endY, 'HH:mm dd/MM/yyyy')}).`);
+                                return;
+                            }
+                        } else {
+                            const globalDeadline = addMinutes(startX, quiz.durationMinutes);
+                            if (isBefore(curNow, startX)) {
+                                alert(`Đề thi chưa đến giờ. Giờ thi bắt đầu lúc ${format(startX, 'HH:mm dd/MM/yyyy')}.`);
+                                return;
+                            }
+                            if (isAfter(curNow, globalDeadline)) {
+                                alert(`Đề thi đã kết thúc lúc ${format(globalDeadline, 'HH:mm dd/MM/yyyy')}.`);
+                                return;
+                            }
+                        }
+                    }
+
                     // Kiểm tra phiên trước khi tự động mở
                     const canStart = await checkActiveSession(quiz.id);
                     if (canStart) {
@@ -410,28 +438,58 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {testQuizzes.map(q => {
-                          const startTime = q.startTime ? new Date(q.startTime) : now;
-                          const endTime = addMinutes(startTime, q.durationMinutes);
-                          const isStarted = isAfter(now, startTime);
-                          const isEnded = isAfter(now, endTime);
+                          const startX = q.startTime ? new Date(q.startTime) : null;
+                          const endY = q.endTime ? new Date(q.endTime) : null;
+                          const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+                          
+                          let isStarted = true;
+                          let isEnded = false;
+                          
+                          if (startX) {
+                              if (isFlexibleWindow && endY) {
+                                  isStarted = !isBefore(now, startX);
+                                  isEnded = isAfter(now, endY);
+                              } else {
+                                  const globalDeadline = addMinutes(startX, q.durationMinutes);
+                                  isStarted = !isBefore(now, startX);
+                                  isEnded = isAfter(now, globalDeadline);
+                              }
+                          }
+                          
                           const alreadyDone = results.some(r => r.quizId === q.id);
 
                           return (
-                              <div key={q.id} className={`bg-white rounded-[1.5rem] border p-6 flex flex-col transition-all border-b-4 ${alreadyDone ? 'border-emerald-500' : (isEnded ? 'border-slate-300 opacity-60' : (isStarted ? 'border-red-500 shadow-xl' : 'border-slate-200 opacity-60 grayscale'))}`}>
+                              <div key={q.id} className={`bg-white rounded-[1.5rem] border p-6 flex flex-col transition-all border-b-4 ${alreadyDone ? 'border-emerald-500' : (isEnded ? 'border-slate-300 opacity-60' : (isStarted ? 'border-blue-600 shadow-xl' : 'border-slate-200 opacity-60 grayscale'))}`}>
                                   <div className="flex justify-between items-start mb-3">
-                                      <div className={`px-3 py-1 rounded-xl text-[8px] font-black uppercase ${alreadyDone ? 'bg-emerald-50 text-emerald-600' : (isEnded ? 'bg-slate-100 text-slate-400' : (isStarted ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'))}`}>
-                                          {alreadyDone ? 'ĐÃ XONG' : (isEnded ? 'KẾT THÚC' : (isStarted ? 'DIỄN RA' : 'CHỜ GIỜ'))}
+                                      <div className={`px-3 py-1 rounded-xl text-[8px] font-black uppercase ${alreadyDone ? 'bg-emerald-50 text-emerald-600' : (isEnded ? 'bg-slate-100 text-slate-400' : (isStarted ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'))}`}>
+                                          {alreadyDone ? 'ĐÃ XONG' : (isEnded ? 'HẾT HẠN' : (isStarted ? (isFlexibleWindow ? 'ĐANG MỞ ĐỀ' : 'ĐANG THI') : 'CHỜ GIỜ'))}
                                       </div>
-                                      <span className="text-[9px] font-black text-slate-300 uppercase">{q.durationMinutes}p</span>
+                                      <span className="text-[9px] font-black text-slate-400 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
                                   </div>
                                   {q.category && <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
                                   <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
-                                  {q.startTime && (
-                                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                          <Calendar size={13} className="text-blue-600 shrink-0" />
-                                          <span>Ngày thi: <strong className="text-slate-900">{format(startTime, 'dd/MM/yyyy')}</strong> ({format(startTime, 'HH:mm')})</span>
+                                  
+                                  {startX && (
+                                      <div className="text-[10px] font-bold text-slate-600 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
+                                          {isFlexibleWindow && endY ? (
+                                              <>
+                                                  <div className="flex items-center gap-1.5 text-blue-700">
+                                                      <Calendar size={13} className="shrink-0" />
+                                                      <span>Khung mở: <strong>{format(startX, 'HH:mm dd/MM')}</strong> → <strong>{format(endY, 'HH:mm dd/MM')}</strong></span>
+                                                  </div>
+                                                  <div className="text-[9px] text-slate-500 font-medium pl-4">
+                                                      ⚡ Vào bất kỳ lúc nào cũng được tính đủ {q.durationMinutes} phút làm bài.
+                                                  </div>
+                                              </>
+                                          ) : (
+                                              <div className="flex items-center gap-1.5 text-slate-800">
+                                                  <Calendar size={13} className="text-blue-600 shrink-0" />
+                                                  <span>Giờ thi: <strong>{format(startX, 'HH:mm - dd/MM/yyyy')}</strong> (Đồng loạt)</span>
+                                              </div>
+                                          )}
                                       </div>
                                   )}
+
                                   <div className="mt-auto">
                                       {alreadyDone ? (
                                           <button onClick={() => {
@@ -442,9 +500,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                           <button 
                                             disabled={!isStarted || isEnded}
                                             onClick={() => isStarted && !isEnded ? handleStartQuiz(q) : null} 
-                                            className={`w-full py-2.5 rounded-xl font-black uppercase text-[9px] transition-all ${isStarted && !isEnded ? 'bg-slate-900 text-white shadow-xl hover:bg-black' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                            className={`w-full py-2.5 rounded-xl font-black uppercase text-[9px] transition-all ${isStarted && !isEnded ? 'bg-slate-900 text-white shadow-xl hover:bg-black active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
                                           >
-                                              {isEnded ? 'Hết giờ' : (isStarted ? 'Vào làm bài' : `Mở đề: ${format(startTime, 'HH:mm - dd/MM/yyyy')}`)}
+                                              {isEnded ? 'Đã hết hạn vào thi' : (isStarted ? (isFlexibleWindow ? `Vào làm bài (${q.durationMinutes} phút)` : 'Vào thi ngay') : `Mở lúc: ${format(startX || now, 'HH:mm - dd/MM')}`)}
                                           </button>
                                       )}
                                   </div>
