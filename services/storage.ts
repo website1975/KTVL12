@@ -275,6 +275,18 @@ export const saveUser = async (user: User): Promise<void> => {
   await supabase.from('users').upsert(payload);
 };
 
+export const saveUsersBatch = async (users: User[]): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database Cloud");
+  if (users.length === 0) return;
+  const payloads = users.map(user => ({
+    id: user.id,
+    username: user.username.toLowerCase().trim(),
+    data: user
+  }));
+  const { error } = await supabase.from('users').upsert(payloads);
+  handleSupabaseError(error, "Lưu danh sách học sinh");
+};
+
 export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
     if (!supabase) return;
     const { data } = await supabase.from('users').select('data').eq('id', userId).single();

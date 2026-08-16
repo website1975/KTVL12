@@ -33,6 +33,7 @@ export default function StudentManager({
     totalCount, onLoadMore, isMoreLoading
 }: StudentManagerProps) {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [deleteBulkConfirm, setDeleteBulkConfirm] = useState(false);
 
     const filtered = students.filter(u => 
         (sGradeFilter === 'all' || u.grade === sGradeFilter) &&
@@ -55,10 +56,13 @@ export default function StudentManager({
 
     const handleBulkDelete = () => {
         if (selectedIds.length === 0) return;
-        if (confirm(`Bạn có chắc muốn xóa vĩnh viễn ${selectedIds.length} học sinh đã chọn? Hành động này sẽ xóa toàn bộ lịch sử điểm số liên quan và không thể hoàn tác.`)) {
-            onBulkDelete(selectedIds);
-            setSelectedIds([]);
-        }
+        setDeleteBulkConfirm(true);
+    };
+
+    const confirmBulkDelete = () => {
+        onBulkDelete(selectedIds);
+        setSelectedIds([]);
+        setDeleteBulkConfirm(false);
     };
 
     const formatTime = (seconds: number) => {
@@ -261,6 +265,33 @@ export default function StudentManager({
                     </div>
                 )}
             </div>
+
+            {deleteBulkConfirm && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">
+                    <div className="bg-white max-w-md w-full rounded-3xl border shadow-2xl p-6 overflow-hidden animate-scale-up">
+                        <div className="flex items-start gap-4 mb-4">
+                            <div className="p-3 bg-red-50 text-red-600 rounded-2xl shrink-0">
+                                <Trash2 size={24} className="text-red-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-1 leading-tight">Xóa vĩnh viễn học sinh</h3>
+                                <p className="text-xs text-slate-500 font-bold leading-relaxed break-words">
+                                    Bạn có chắc muốn xóa vĩnh viễn <strong className="text-slate-800">{selectedIds.length} học sinh</strong> đã chọn? Hành động này sẽ xóa toàn bộ lịch sử điểm số liên quan và <strong className="text-red-600">không thể hoàn tác</strong>.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => setDeleteBulkConfirm(false)} className="px-5 py-2.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase transition-all">
+                                Hủy
+                            </button>
+                            <button onClick={confirmBulkDelete} className="px-5 py-2.5 bg-red-600 text-white hover:bg-red-700 rounded-xl text-[10px] font-black uppercase transition-all shadow-md shadow-red-100">
+                                Xác nhận xóa
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
