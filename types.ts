@@ -4,6 +4,15 @@ export type Grade = '10' | '11' | '12' | 'all';
 export type QuizType = 'practice' | 'test';
 export type QuestionType = 'mcq' | 'group-tf' | 'short';
 
+export interface ClassRoom {
+  id: string; // e.g. "class_12a1_2026" or uuid
+  name: string; // e.g. "12A1", "11A2", "10A1", "Lớp Nâng Cao"
+  academicYear: string; // e.g. "2025-2026", "2026-2027", "2026"
+  grade: Grade; // '10' | '11' | '12' | 'all'
+  description?: string; // Ghi chú, giáo viên phụ trách, phân loại trình độ
+  createdAt?: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -13,6 +22,10 @@ export interface User {
   studentCode?: string; 
   grade?: Grade;
   points?: number;
+  // Thông tin Lớp học & Niên khóa (có thể thay đổi qua các năm mà không đổi tài khoản)
+  classId?: string; 
+  className?: string; 
+  academicYear?: string;
 }
 
 export interface Chapter {
@@ -61,6 +74,10 @@ export interface Quiz {
   isMonitored?: boolean;
   isUnlisted?: boolean; 
   orderIndex?: number; // Thứ tự trong chương
+  // Phân quyền giao đề theo Lớp học & Niên khóa
+  targetType?: 'all' | 'classes'; // 'all' (tất cả hs cùng khối) | 'classes' (chỉ giao cho các lớp chỉ định)
+  assignedClassIds?: string[]; // IDs của các lớp được giao đề
+  assignedClasses?: { id: string; name: string; academicYear?: string }[]; // Thông tin chi tiết lớp để hiển thị nhanh
 }
 
 export interface Result {
