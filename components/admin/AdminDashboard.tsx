@@ -5,6 +5,7 @@ import {
   getResultsMetadata, getResultById, deleteResult, getResultsMetadataPage,
   getChapters, saveChapter, deleteChapter,
   getBankQuestions, saveBankQuestion,
+  getClasses, saveClass, deleteClass, saveClassesBatch, assignStudentsToClass,
   clearLocalCache,
   isDatabaseConnected,
   syncAllQuizzesMetadata,
@@ -12,13 +13,13 @@ import {
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { normalizeFullText } from '../../services/vietnameseFixer';
-import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType, Role } from '../../types';
+import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType, Role, ClassRoom } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Papa from 'papaparse';
 import { 
   LayoutDashboard, Users, BarChart3, ShieldAlert, Sparkles, FolderTree, 
-  Plus, Database, Loader2, X, RefreshCw, AlertTriangle, FileUp, DatabaseZap
+  Plus, Database, Loader2, X, RefreshCw, AlertTriangle, FileUp, DatabaseZap, GraduationCap
 } from 'lucide-react';
 
 import QuizList from './QuizList';
@@ -29,6 +30,7 @@ import ExamMonitor from './ExamMonitor';
 import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
 import AIRenderer from './AIRenderer';
+import ClassManager from './ClassManager';
 
 import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
@@ -36,7 +38,7 @@ import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 
-type AdminTab = 'quizzes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
+type AdminTab = 'quizzes' | 'classes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
@@ -46,6 +48,7 @@ export default function AdminDashboard() {
 
   // Data states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [classes, setClasses] = useState<ClassRoom[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [studentsTotal, setStudentsTotal] = useState(0);
   const [studentsPage, setStudentsPage] = useState(1);
@@ -61,19 +64,35 @@ export default function AdminDashboard() {
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
-        const [q, c, r] = await Promise.all([
+        const [q, c, r, cls] = await Promise.all([
           getQuizzesMetadata(), 
           getChapters(),
-          getResultsMetadata() 
+          getResultsMetadata(),
+          getClasses()
         ]);
         setQuizzes(q);
         setChapters(c);
         setResults(r);
+        setClasses(cls);
+      } else if (tab === 'classes') {
+        const [cls, u, q, r, c] = await Promise.all([
+          getClasses(),
+          getUsers(),
+          getQuizzesMetadata(),
+          getResultsMetadata(),
+          getChapters()
+        ]);
+        setClasses(cls);
+        setStudents(u.filter(user => user.role === 'student'));
+        setQuizzes(q);
+        setResults(r);
+        setChapters(c);
       } else if (tab === 'students') {
-        const [paged, r, q] = await Promise.all([
+        const [paged, r, q, cls] = await Promise.all([
           getUsersPage(1, 50),
           getResultsMetadata(),
-          getQuizzesMetadata()
+          getQuizzesMetadata(),
+          getClasses()
         ]);
         
         setStudents(paged.data.filter(user => user.role === 'student'));
@@ -81,17 +100,20 @@ export default function AdminDashboard() {
         setStudentsPage(1);
         setResults(r);
         setQuizzes(q);
+        setClasses(cls);
       } else if (tab === 'results') {
-        const [paged, q, u] = await Promise.all([
+        const [paged, q, u, cls] = await Promise.all([
           getResultsMetadataPage(1, 50),
           getQuizzesMetadata(),
-          getUsers()
+          getUsers(),
+          getClasses()
         ]);
         setResults(paged.data);
         setResultsTotal(paged.total);
         setResultsPage(1);
         setQuizzes(q);
         setStudents(u.filter(user => user.role === 'student'));
+        setClasses(cls);
       } else if (tab === 'bank') {
         const [b, c] = await Promise.all([
           getBankQuestions(),
@@ -123,6 +145,8 @@ export default function AdminDashboard() {
   const [isPublished, setIsPublished] = useState(false);
   const [isMonitored, setIsMonitored] = useState(false);
   const [isUnlisted, setIsUnlisted] = useState(false);
+  const [targetType, setTargetType] = useState<'all' | 'classes'>('all');
+  const [assignedClassIds, setAssignedClassIds] = useState<string[]>([]);
   const [duration, setDuration] = useState(45);
   const [orderIndex, setOrderIndex] = useState(1);
   const [category, setCategory] = useState('');
@@ -243,7 +267,15 @@ export default function AdminDashboard() {
   // Modals
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
-  const [studentForm, setStudentForm] = useState({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
+  const [studentForm, setStudentForm] = useState<{
+    fullName: string;
+    studentCode: string;
+    grade: Grade;
+    password: string;
+    classId?: string;
+    className?: string;
+    academicYear?: string;
+  }>({ fullName: '', studentCode: '', grade: '12' as Grade, password: '123' });
   const [isSavingStudent, setIsSavingStudent] = useState(false);
   const [viewingStudent, setViewingStudent] = useState<User | null>(null);
   const [historyData, setHistoryData] = useState<{ studentName: string, studentCode: string, quizTitle: string, history: Result[] } | null>(null);
@@ -258,7 +290,9 @@ export default function AdminDashboard() {
   // Quiz Handlers
   const handleCreateQuiz = () => {
     setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
-    setIsPublished(false); setIsMonitored(false); setIsUnlisted(false); setDuration(45); setOrderIndex(1); setCategory('');
+    setIsPublished(false); setIsMonitored(false); setIsUnlisted(false);
+    setTargetType('all'); setAssignedClassIds([]);
+    setDuration(45); setOrderIndex(1); setCategory('');
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
     setActiveTab('quizzes');
   };
@@ -271,6 +305,8 @@ export default function AdminDashboard() {
             setEditingQuizId(fullQuiz.id); setQuizTitle(fullQuiz.title); setQuizGrade(fullQuiz.grade);
             setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
             setIsUnlisted(fullQuiz.isUnlisted || false);
+            setTargetType(fullQuiz.targetType || 'all');
+            setAssignedClassIds(fullQuiz.assignedClassIds || []);
             setDuration(fullQuiz.durationMinutes); setOrderIndex(fullQuiz.orderIndex || 1); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
             setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
             setActiveTab('quizzes');
@@ -386,6 +422,7 @@ export default function AdminDashboard() {
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
       isPublished, isMonitored, isUnlisted, durationMinutes: duration, orderIndex, category, startTime, endTime,
+      targetType, assignedClassIds,
       questions, createdAt: new Date().toISOString(), description: ''
     };
     
@@ -552,9 +589,17 @@ export default function AdminDashboard() {
             const grade = (getVal(['khoi', 'grade']) || '12') as Grade;
             const password = getVal(['pass', 'password']) || '123';
             const role = (getVal(['role']) || 'student') as Role;
+            const rawClassName = getVal(['lop', 'class', 'className', 'classname']);
+            const rawAcademicYear = getVal(['nienkhoa', 'academicYear', 'academic_year', 'namhoc']);
 
             const studentCode = rawMahs.toUpperCase();
             const username = studentCode.toLowerCase();
+
+            // Tìm class tương ứng nếu có
+            let matchedClass = classes.find(c => 
+              c.name.trim().toLowerCase() === rawClassName.trim().toLowerCase() &&
+              (!rawAcademicYear || c.academicYear.trim() === rawAcademicYear.trim())
+            );
 
             return {
               id: String(row.id || uuidv4()),
@@ -563,7 +608,10 @@ export default function AdminDashboard() {
               role,
               fullName,
               studentCode,
-              grade,
+              grade: (matchedClass ? matchedClass.grade : grade) as Grade,
+              classId: matchedClass?.id || (row.classId || row.class_id || undefined),
+              className: matchedClass?.name || (rawClassName || undefined),
+              academicYear: matchedClass?.academicYear || (rawAcademicYear || undefined),
               points: Number(row.points || 0)
             };
           }).filter(u => u.role === 'student' && u.studentCode);
@@ -667,6 +715,9 @@ export default function AdminDashboard() {
         id: selectedStudent?.id || uuidv4(), username: code.toLowerCase(),
         password: studentForm.password, role: 'student', fullName: studentForm.fullName,
         studentCode: code, grade: studentForm.grade,
+        classId: studentForm.classId,
+        className: studentForm.className,
+        academicYear: studentForm.academicYear,
         points: selectedStudent?.points || 0
       };
       await saveUser(newUser); setIsStudentModalOpen(false); loadTabData('students');
@@ -675,6 +726,28 @@ export default function AdminDashboard() {
       showAlert("Lỗi", "Lỗi lưu học sinh trên Cloud", "error"); 
     } finally { 
       setIsSavingStudent(false); 
+    }
+  };
+
+  const handleBulkAssignClass = async (studentIds: string[], classInfo: any) => {
+    setIsDataLoading(true);
+    try {
+      if (classInfo) {
+        await assignStudentsToClass(studentIds, {
+          classId: classInfo.classId,
+          className: classInfo.className,
+          academicYear: classInfo.academicYear,
+          grade: classInfo.grade
+        });
+      } else {
+        await assignStudentsToClass(studentIds, null);
+      }
+      await loadTabData('students');
+      showAlert("Thành công", `Đã cập nhật phân lớp cho ${studentIds.length} học sinh!`, "success");
+    } catch (e: any) {
+      showAlert("Lỗi", "Không thể phân lớp: " + (e.message || "Lỗi không xác định"), "error");
+    } finally {
+      setIsDataLoading(false);
     }
   };
 
@@ -782,6 +855,7 @@ export default function AdminDashboard() {
         <nav className="flex-1 p-2 lg:p-4 space-y-1 mt-4">
           {[
             { id: 'quizzes', icon: LayoutDashboard, label: 'Đề thi' },
+            { id: 'classes', icon: GraduationCap, label: 'Lớp học' },
             { id: 'ai', icon: Sparkles, label: 'AI Soạn đề' },
             { id: 'students', icon: Users, label: 'Học sinh' },
             { id: 'results', icon: BarChart3, label: 'Bảng điểm' },
@@ -836,6 +910,9 @@ export default function AdminDashboard() {
                     grade={quizGrade} setGrade={setQuizGrade} quizType={quizType} setQuizType={setQuizType}
                     isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
                     isUnlisted={isUnlisted} setIsUnlisted={setIsUnlisted}
+                    targetType={targetType} setTargetType={setTargetType}
+                    assignedClassIds={assignedClassIds} setAssignedClassIds={setAssignedClassIds}
+                    classes={classes}
                     duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
                     orderIndex={orderIndex} setOrderIndex={setOrderIndex}
                     startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
@@ -871,7 +948,7 @@ export default function AdminDashboard() {
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải Cloud...</p></div>
                 ) : (
                     <QuizList 
-                        quizzes={quizzes} results={results} chapters={chapters}
+                        quizzes={quizzes} results={results} chapters={chapters} classes={classes}
                         onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                         qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
@@ -879,6 +956,35 @@ export default function AdminDashboard() {
                 )}
               </div>
             )
+          )}
+
+          {activeTab === 'classes' && (
+            <ClassManager 
+              classes={classes}
+              students={students}
+              quizzes={quizzes}
+              results={results}
+              chapters={chapters}
+              onSaveClass={async (c) => {
+                await saveClass(c);
+                await loadTabData('classes');
+              }}
+              onDeleteClass={async (id, name) => {
+                showConfirm(
+                  "Xác nhận xóa lớp học",
+                  `Bạn có chắc chắn muốn xóa lớp "${name}" không? Học sinh thuộc lớp này sẽ không bị xóa khỏi hệ thống mà chỉ gỡ liên kết lớp.`,
+                  async () => {
+                    await deleteClass(id);
+                    await loadTabData('classes');
+                  }
+                );
+              }}
+              onAssignStudents={async (studentIds, classInfo) => {
+                await assignStudentsToClass(studentIds, classInfo);
+                await loadTabData('classes');
+              }}
+              onRefresh={() => loadTabData('classes')}
+            />
           )}
 
           {activeTab === 'ai' && (
@@ -901,15 +1007,16 @@ export default function AdminDashboard() {
                     <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" size={40}/><p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải...</p></div>
                 ) : (
                     <StudentManager 
-                        students={students} results={results} quizzes={quizzes}
+                        students={students} results={results} quizzes={quizzes} classes={classes}
                         sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
                         onRefresh={() => loadTabData('students')}
-                        onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123'}); setIsStudentModalOpen(true); }}
+                        onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123', classId: '', className: '', academicYear: ''}); setIsStudentModalOpen(true); }}
                         onImportCsv={handleImportCsv} onViewDetail={setViewingStudent}
-                        onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password}); setIsStudentModalOpen(true); }}
+                        onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password, classId: u.classId || '', className: u.className || '', academicYear: u.academicYear || ''}); setIsStudentModalOpen(true); }}
                         onDelete={handleDeleteStudent} 
                         onBulkDelete={handleDeleteStudentsBatch}
                         onResetPassword={handleResetPassword}
+                        onBulkAssignClass={handleBulkAssignClass}
                         totalCount={studentsTotal}
                         onLoadMore={handleLoadMoreStudents}
                         isMoreLoading={isDataLoading}
@@ -982,6 +1089,7 @@ export default function AdminDashboard() {
           student={selectedStudent} 
           form={studentForm} 
           setForm={setStudentForm} 
+          classes={classes}
           onClose={() => setIsStudentModalOpen(false)} 
           onSave={handleSaveStudent} 
           isSaving={isSavingStudent} 
