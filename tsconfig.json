@@ -16,6 +16,10 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["node", "vite/client", "papaparse"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
 
     /* Linting */
     "strict": true,
