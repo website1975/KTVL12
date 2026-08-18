@@ -1,7 +1,12 @@
 
 import React, { useState } from 'react';
-import { Quiz, Question, Grade, QuestionType, Chapter, QuizType } from '../../types';
-import { Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, EyeOff, FileCode } from 'lucide-react';
+import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom } from '../../types';
+import { 
+  Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, 
+  Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
+  ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
+  EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users
+} from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 import { parseQuestionsFromJSON } from '../../services/gemini';
@@ -31,6 +36,11 @@ interface QuizEditorProps {
     questions: Question[];
     setQuestions: (val: Question[]) => void;
     chapters: Chapter[];
+    classes?: ClassRoom[];
+    targetType?: 'all' | 'classes';
+    setTargetType?: (val: 'all' | 'classes') => void;
+    assignedClassIds?: string[];
+    setAssignedClassIds?: (val: string[]) => void;
     onSave: () => void;
     onCleanLabels: () => void;
     onOpenBank: (type: QuestionType) => void;
@@ -599,6 +609,134 @@ export default function QuizEditor(props: QuizEditorProps) {
                                 onChange={e => props.setEndTime(e.target.value)} 
                             />
                         </div>
+                    )}
+                </div>
+
+                {/* GIAO ĐỀ CHO LỚP VÀ PHÂN HÓA ĐỐI TƯỢNG HỌC SINH */}
+                <div className="bg-indigo-50/40 border-2 border-indigo-100 p-6 rounded-[2.5rem] space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-sm">
+                                <GraduationCap size={18} />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                    Đối tượng giao đề & Phân hóa lớp học
+                                </h4>
+                                <p className="text-[10px] text-slate-500 font-bold">
+                                    Chỉ định lớp nào được quyền nhìn thấy và làm đề thi này
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Switch giữa Toàn khối và Giao cho Lớp chỉ định */}
+                        <div className="flex bg-white p-1 rounded-2xl border shadow-sm shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (props.setTargetType) props.setTargetType('all');
+                                    if (props.setAssignedClassIds) props.setAssignedClassIds([]);
+                                }}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${(!props.targetType || props.targetType === 'all') ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                            >
+                                🌐 Toàn khối {props.grade}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (props.setTargetType) props.setTargetType('classes');
+                                }}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${props.targetType === 'classes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                            >
+                                🎯 Giao lớp chỉ định
+                            </button>
+                        </div>
+                    </div>
+
+                    {props.targetType === 'classes' ? (
+                        <div className="space-y-4 pt-2">
+                            <div className="flex flex-wrap justify-between items-center gap-2 bg-white/80 p-3 rounded-2xl border border-indigo-100">
+                                <span className="text-[11px] font-black text-indigo-900">
+                                    Danh sách Lớp học ({props.assignedClassIds?.length || 0} lớp được chọn):
+                                </span>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (props.classes && props.setAssignedClassIds) {
+                                                const relevantIds = props.classes
+                                                    .filter(c => props.grade === 'all' || String(c.grade) === String(props.grade))
+                                                    .map(c => c.id);
+                                                props.setAssignedClassIds(relevantIds);
+                                            }
+                                        }}
+                                        className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
+                                    >
+                                        Chọn tất cả
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (props.setAssignedClassIds) props.setAssignedClassIds([]);
+                                        }}
+                                        className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors"
+                                    >
+                                        Bỏ chọn
+                                    </button>
+                                </div>
+                            </div>
+
+                            {props.classes && props.classes.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                    {props.classes
+                                        .filter(c => props.grade === 'all' || String(c.grade) === String(props.grade))
+                                        .map(c => {
+                                            const isChecked = Boolean(props.assignedClassIds?.includes(c.id));
+                                            return (
+                                                <div
+                                                    key={c.id}
+                                                    onClick={() => {
+                                                        if (!props.setAssignedClassIds) return;
+                                                        const current = props.assignedClassIds || [];
+                                                        if (isChecked) {
+                                                            props.setAssignedClassIds(current.filter(id => id !== c.id));
+                                                        } else {
+                                                            props.setAssignedClassIds([...current, c.id]);
+                                                        }
+                                                    }}
+                                                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${isChecked ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        {isChecked ? <CheckSquare size={16} className="text-white" /> : <Square size={16} className="text-slate-300" />}
+                                                        <div>
+                                                            <p className="font-black text-xs uppercase leading-tight">
+                                                                {c.name}
+                                                            </p>
+                                                            <p className={`text-[9px] font-bold ${isChecked ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                                                Niên khóa {c.academicYear} • Khối {c.grade}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-white rounded-2xl border border-dashed text-center text-xs text-slate-400 font-bold">
+                                    Chưa có lớp nào được tạo cho Khối {props.grade}. Hãy vào tab <strong>"LỚP & NIÊN KHÓA"</strong> để tạo lớp trước.
+                                </div>
+                            )}
+
+                            {(props.assignedClassIds?.length || 0) === 0 && (
+                                <p className="text-[10px] text-amber-600 font-bold italic">
+                                    ⚠️ Chú ý: Bạn chưa chọn lớp nào! Nếu lưu bây giờ, chưa học sinh nào có thể thấy đề này.
+                                </p>
+                            )}
+                        </div>
+                    ) : (
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            Đề thi này sẽ hiển thị công khai cho <strong>tất cả học sinh thuộc Khối {props.grade}</strong>.
+                        </p>
                     )}
                 </div>
 

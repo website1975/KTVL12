@@ -290,9 +290,18 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return quizzes.filter((q: Quiz) => {
         const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
         const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
-        return matchGrade && matchChapter;
+        
+        // Kiểm tra phân quyền giao đề theo Lớp
+        let matchClass = true;
+        if (q.targetType === 'classes') {
+          if (q.assignedClassIds && q.assignedClassIds.length > 0) {
+            matchClass = Boolean(user.classId && q.assignedClassIds.includes(user.classId));
+          }
+        }
+
+        return matchGrade && matchChapter && matchClass;
     });
-  }, [quizzes, gradeFilter, chapterFilter]);
+  }, [quizzes, gradeFilter, chapterFilter, user.classId]);
 
   if (activeQuiz) {
     return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
@@ -319,7 +328,12 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="relative z-10">
             <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic">Chào mừng, {user.fullName} 👋</h1>
-            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">Khối {user.grade} • Mã số: {user.studentCode}</p>
+            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">
+              Khối {user.grade}
+              {user.className ? ` • Lớp ${user.className}` : ''}
+              {user.academicYear ? ` (${user.academicYear})` : ''}
+              {` • Mã số: ${user.studentCode}`}
+            </p>
         </div>
         <div className="flex items-center gap-4 relative z-10">
             <button onClick={() => refreshData()} className={`p-3 rounded-2xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-all ${isLoading ? 'animate-spin' : ''}`}>
@@ -368,7 +382,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         </div>
 
         <div className="ml-auto text-[9px] font-black uppercase text-slate-400 italic">
-            Học sinh Khối {user.grade || '12'} | Hiển thị: {filteredQuizzes.length} đề thi
+            {user.className ? `Lớp ${user.className} • ` : ''}Học sinh Khối {user.grade || '12'} | Hiển thị: {filteredQuizzes.length} đề thi
         </div>
       </section>
 

@@ -1,21 +1,62 @@
 
 import React from 'react';
-import { X, UserPlus, Save, Loader2 } from 'lucide-react';
-import { User, Grade } from '../../types';
+import { X, UserPlus, Save, Loader2, GraduationCap } from 'lucide-react';
+import { User, Grade, ClassRoom } from '../../types';
 
 interface StudentModalProps {
     isOpen: boolean;
     student: User | null;
-    form: { fullName: string, studentCode: string, grade: Grade, password: string };
+    form: { 
+        fullName: string; 
+        studentCode: string; 
+        grade: Grade; 
+        password: string;
+        classId?: string;
+        className?: string;
+        academicYear?: string;
+    };
     setForm: (form: any) => void;
+    classes?: ClassRoom[];
     onClose: () => void;
     onSave: () => void;
     isSaving?: boolean;
     isDuplicate?: boolean;
 }
 
-export default function StudentModal({ isOpen, student, form, setForm, onClose, onSave, isSaving, isDuplicate }: StudentModalProps) {
+export default function StudentModal({ 
+    isOpen, 
+    student, 
+    form, 
+    setForm, 
+    classes = [], 
+    onClose, 
+    onSave, 
+    isSaving, 
+    isDuplicate 
+}: StudentModalProps) {
     if (!isOpen) return null;
+
+    const handleClassChange = (selectedClassId: string) => {
+        if (!selectedClassId) {
+            setForm({
+                ...form,
+                classId: '',
+                className: '',
+                academicYear: ''
+            });
+            return;
+        }
+        const found = classes.find(c => c.id === selectedClassId);
+        if (found) {
+            setForm({
+                ...form,
+                classId: found.id,
+                className: found.name,
+                academicYear: found.academicYear,
+                grade: found.grade
+            });
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
@@ -27,7 +68,7 @@ export default function StudentModal({ isOpen, student, form, setForm, onClose, 
                     </div>
                     <button onClick={onClose} disabled={isSaving} className="p-3 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-30"><X/></button>
                 </div>
-                <div className="p-10 space-y-6">
+                <div className="p-10 space-y-5">
                     <div className="space-y-1">
                         <div className="flex justify-between items-center">
                             <label className="text-[10px] font-black text-blue-500 uppercase">1. Mã học sinh (MAHS)</label>
@@ -41,13 +82,35 @@ export default function StudentModal({ isOpen, student, form, setForm, onClose, 
                             placeholder="VÍ DỤ: HS001" 
                         />
                     </div>
+
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase">2. Họ và tên</label>
                         <input disabled={isSaving} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none disabled:opacity-50" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} placeholder="Nhập tên..." />
                     </div>
+
+                    {/* Lớp học & Niên khóa */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-1">
+                            <GraduationCap size={13} /> 3. Lớp học & Niên khóa
+                        </label>
+                        <select 
+                            disabled={isSaving}
+                            className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-black disabled:opacity-50 outline-none focus:border-indigo-500"
+                            value={form.classId || ''}
+                            onChange={e => handleClassChange(e.target.value)}
+                        >
+                            <option value="">-- Chưa phân lớp --</option>
+                            {classes.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name} • Niên khóa {c.academicYear} (Khối {c.grade})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase">3. Khối</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase">4. Khối</label>
                             <select disabled={isSaving} className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-black disabled:opacity-50" value={form.grade} onChange={e => setForm({...form, grade: e.target.value as Grade})}>
                                 <option value="12">Khối 12</option>
                                 <option value="11">Khối 11</option>
@@ -55,10 +118,11 @@ export default function StudentModal({ isOpen, student, form, setForm, onClose, 
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase">4. Mật khẩu</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase">5. Mật khẩu</label>
                             <input disabled={isSaving} type="password" title="password" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold disabled:opacity-50" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
                         </div>
                     </div>
+
                     <button 
                         onClick={onSave} 
                         disabled={isSaving}

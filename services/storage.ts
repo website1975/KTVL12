@@ -2,7 +2,7 @@
 /// <reference types="vite/client" />
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade } from '../types';
+import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade, ClassRoom } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 let cleanedUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://lchfhsioxvgkjfsikycl.supabase.co').trim();
@@ -544,6 +544,126 @@ export const saveChapter = async (c: Chapter): Promise<void> => {
 
 export const deleteChapter = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
+};
+
+// --- Classroom & Academic Year Management ---
+export const getClasses = async (): Promise<ClassRoom[]> => {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('classes').select('*');
+      if (!error && data && data.length > 0) {
+        const classes = data.map((row: any) => ({
+          ...(row.data || {}),
+          id: row.id,
+          name: row.name || (row.data && row.data.name) || '',
+          academicYear: row.academic_year || (row.data && row.data.academicYear) || '',
+          grade: row.grade || (row.data && row.data.grade) || '12',
+          description: row.description || (row.data && row.data.description) || ''
+        } as ClassRoom));
+        
+        // Cache to localStorage for fast offline read
+        try {
+          localStorage.setItem('eduquiz_classes_cache', JSON.stringify(classes));
+        } catch (e) {}
+        return classes;
+      }
+    } catch (e) {
+      console.warn("Chưa có bảng classes trên Supabase hoặc lỗi đọc, fallback sang cache/local:", e);
+    }
+  }
+
+  // Fallback to localStorage
+  try {
+    const local = localStorage.getItem('eduquiz_classes_cache');
+    if (local) return JSON.parse(local);
+  } catch (e) {}
+  return [];
+};
+
+export const saveClass = async (c: ClassRoom): Promise<void> => {
+  // Update local cache first
+  try {
+    const list = await getClasses();
+    const idx = list.findIndex(item => item.id === c.id);
+    if (idx >= 0) list[idx] = c;
+    else list.push(c);
+    localStorage.setItem('eduquiz_classes_cache', JSON.stringify(list));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      await supabase.from('classes').upsert({ 
+        id: c.id, 
+        name: c.name,
+        academic_year: c.academicYear,
+        grade: c.grade,
+        data: c 
+      });
+    } catch (e) {
+      console.warn("Lưu classes vào Supabase (bảng có thể chưa tạo):", e);
+    }
+  }
+};
+
+export const saveClassesBatch = async (classesList: ClassRoom[]): Promise<void> => {
+  if (classesList.length === 0) return;
+  try {
+    localStorage.setItem('eduquiz_classes_cache', JSON.stringify(classesList));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      const payload = classesList.map(c => ({
+        id: c.id,
+        name: c.name,
+        academic_year: c.academicYear,
+        grade: c.grade,
+        data: c
+      }));
+      await supabase.from('classes').upsert(payload);
+    } catch (e) {
+      console.warn("Lưu batch classes vào Supabase:", e);
+    }
+  }
+};
+
+export const deleteClass = async (id: string): Promise<void> => {
+  try {
+    const list = await getClasses();
+    const updated = list.filter(item => item.id !== id);
+    localStorage.setItem('eduquiz_classes_cache', JSON.stringify(updated));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      await supabase.from('classes').delete().eq('id', id);
+    } catch (e) {
+      console.warn("Xóa class trên Supabase:", e);
+    }
+  }
+};
+
+// Gán học sinh vào lớp hàng loạt
+export const assignStudentsToClass = async (studentIds: string[], classInfo: { classId?: string; className?: string; academicYear?: string; grade?: Grade } | null): Promise<number> => {
+  if (!supabase || studentIds.length === 0) return 0;
+  try {
+    const allUsers = await getUsers();
+    const targetUsers = allUsers.filter(u => studentIds.includes(u.id));
+    
+    const updatedUsers: User[] = targetUsers.map(u => ({
+      ...u,
+      classId: classInfo?.classId || undefined,
+      className: classInfo?.className || undefined,
+      academicYear: classInfo?.academicYear || undefined,
+      grade: classInfo?.grade || u.grade
+    }));
+
+    await saveUsersBatch(updatedUsers);
+    return updatedUsers.length;
+  } catch (e) {
+    console.error("Lỗi gán học sinh vào lớp:", e);
+    throw e;
+  }
 };
 
 // --- Question Bank ---

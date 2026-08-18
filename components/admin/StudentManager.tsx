@@ -1,13 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Grade, Result, Quiz } from '../../types';
+import { User, Grade, Result, Quiz, ClassRoom } from '../../types';
 import { isDatabaseConnected } from '../../services/storage';
-import { Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw, Loader2 } from 'lucide-react';
+import { 
+  Search, UserPlus, Eye, Trash2, FileSpreadsheet, Key, Edit3, Clock, 
+  Medal, Info, ChevronDown, CloudCheck, Database, RefreshCw, Loader2, 
+  GraduationCap, Check, X 
+} from 'lucide-react';
 
 interface StudentManagerProps {
     students: User[];
     results: Result[]; 
     quizzes: Quiz[];
+    classes?: ClassRoom[];
     sSearch: string;
     setSSearch: (val: string) => void;
     sGradeFilter: Grade | 'all';
@@ -19,6 +24,7 @@ interface StudentManagerProps {
     onEdit: (user: User) => void;
     onDelete: (id: string, name: string) => void;
     onBulkDelete: (ids: string[]) => void;
+    onBulkAssignClass?: (studentIds: string[], classInfo: any) => Promise<void>;
     onResetPassword: (user: User) => void;
     totalCount: number;
     onLoadMore: () => void;
@@ -28,17 +34,28 @@ interface StudentManagerProps {
 const PAGE_SIZE = 20;
 
 export default function StudentManager({ 
-    students, results, quizzes, sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
-    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onBulkDelete, onResetPassword,
+    students, results, quizzes, classes = [], sSearch, setSSearch, sGradeFilter, setSGradeFilter, 
+    onAdd, onRefresh, onImportCsv, onViewDetail, onEdit, onDelete, onBulkDelete, onBulkAssignClass, onResetPassword,
     totalCount, onLoadMore, isMoreLoading
 }: StudentManagerProps) {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [deleteBulkConfirm, setDeleteBulkConfirm] = useState(false);
+    const [sClassFilter, setSClassFilter] = useState<string>('all');
+    const [isBulkClassModalOpen, setIsBulkClassModalOpen] = useState(false);
+    const [targetClassId, setTargetClassId] = useState<string>('');
+    const [isAssigning, setIsAssigning] = useState(false);
 
-    const filtered = students.filter(u => 
-        (sGradeFilter === 'all' || u.grade === sGradeFilter) &&
-        (u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())))
-    );
+    const filtered = students.filter(u => {
+        const matchGrade = sGradeFilter === 'all' || u.grade === sGradeFilter;
+        const matchSearch = u.fullName.toLowerCase().includes(sSearch.toLowerCase()) || 
+                            (u.studentCode && u.studentCode.toLowerCase().includes(sSearch.toLowerCase())) ||
+                            (u.className && u.className.toLowerCase().includes(sSearch.toLowerCase()));
+        const matchClass = sClassFilter === 'all' || 
+                           (sClassFilter === 'unassigned' && !u.classId && !u.className) ||
+                           u.classId === sClassFilter ||
+                           u.className === sClassFilter;
+        return matchGrade && matchSearch && matchClass;
+    });
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
@@ -65,6 +82,34 @@ export default function StudentManager({
         setDeleteBulkConfirm(false);
     };
 
+    const handleConfirmBulkAssignClass = async () => {
+        if (!onBulkAssignClass || selectedIds.length === 0) return;
+        setIsAssigning(true);
+        try {
+            if (!targetClassId) {
+                // Bỏ phân lớp
+                await onBulkAssignClass(selectedIds, null);
+            } else {
+                const found = classes.find(c => c.id === targetClassId);
+                if (found) {
+                    await onBulkAssignClass(selectedIds, {
+                        classId: found.id,
+                        className: found.name,
+                        academicYear: found.academicYear,
+                        grade: found.grade
+                    });
+                }
+            }
+            setIsBulkClassModalOpen(false);
+            setSelectedIds([]);
+            setTargetClassId('');
+        } catch (e) {
+            alert("Lỗi gán lớp hàng loạt.");
+        } finally {
+            setIsAssigning(false);
+        }
+    };
+
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -72,7 +117,7 @@ export default function StudentManager({
     };
 
     const handleExportCsv = () => {
-        const headers = ['Tên học sinh', 'Mã số (MAHS)', 'Khối', 'Điểm rèn (Tích lũy)', 'Thời gian luyện'];
+        const headers = ['Tên học sinh', 'Mã số (MAHS)', 'Khối', 'Lớp', 'Niên khóa', 'Điểm rèn (Tích lũy)', 'Thời gian luyện'];
         const rows = filtered.map(u => {
             const userResults = results.filter(r => 
                 r.studentId === u.id || 
@@ -94,25 +139,21 @@ export default function StudentManager({
             const totalAccumulated = timePoints + bonusPoints;
 
             return [
-                u.fullName,
-                u.studentCode || 'N/A',
-                u.grade || '-',
+                `"${u.fullName.replace(/"/g, '""')}"`,
+                `"${(u.studentCode || 'N/A').replace(/"/g, '""')}"`,
+                `"${u.grade || '-'}"`,
+                `"${(u.className || 'Chưa phân lớp').replace(/"/g, '""')}"`,
+                `"${(u.academicYear || '-').replace(/"/g, '""')}"`,
                 totalAccumulated.toFixed(2),
-                formatTime(totalSeconds)
-            ];
+                `"${formatTime(totalSeconds)}"`
+            ].join(',');
         });
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-
-        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `ket_qua_ren_luyen_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
+        const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(','), ...rows].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `danh_sach_hoc_sinh_lop_${new Date().toISOString().slice(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -123,33 +164,58 @@ export default function StudentManager({
             <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-6 rounded-[2.5rem] border shadow-sm gap-4">
                 <div className="flex-1 flex gap-4 px-5 py-2 items-center bg-slate-50 border rounded-2xl w-full">
                     <Search className="text-slate-300" size={18}/>
-                    <input className="bg-transparent outline-none text-xs font-black w-full py-2" placeholder="Tìm tên hoặc MAHS..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
+                    <input className="bg-transparent outline-none text-xs font-black w-full py-2" placeholder="Tìm tên, MAHS hoặc lớp..." value={sSearch} onChange={e => setSSearch(e.target.value)} />
                 </div>
                 
                 <div className="flex flex-col gap-2 w-full lg:w-auto">
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap">
                         {selectedIds.length > 0 && (
-                            <button onClick={handleBulkDelete} className="flex items-center gap-2 px-6 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-black shadow-xl transition-all">
-                                <Trash2 size={16}/> XÓA ĐÃ CHỌN ({selectedIds.length})
-                            </button>
+                            <>
+                                <button 
+                                    onClick={() => {
+                                        setTargetClassId('');
+                                        setIsBulkClassModalOpen(true);
+                                    }} 
+                                    className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-indigo-700 shadow-xl transition-all"
+                                >
+                                    <GraduationCap size={16}/> GÁN LỚP ({selectedIds.length})
+                                </button>
+                                <button onClick={handleBulkDelete} className="flex items-center gap-2 px-5 py-3 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-black shadow-xl transition-all">
+                                    <Trash2 size={16}/> XÓA ({selectedIds.length})
+                                </button>
+                            </>
                         )}
-                        <button onClick={onRefresh} className="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
-                            <RefreshCw size={14}/> Làm mới Cloud
+                        <button onClick={onRefresh} className="flex items-center gap-2 px-4 py-3 bg-slate-100 text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase">
+                            <RefreshCw size={14}/> Làm mới
                         </button>
+                        
+                        {/* Lọc theo Khối */}
                         <select className="px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" value={sGradeFilter} onChange={e => setSGradeFilter(e.target.value as any)}>
                             <option value="all">TẤT CẢ KHỐI</option>
                             <option value="12">KHỐI 12</option>
                             <option value="11">KHỐI 11</option>
                             <option value="10">KHỐI 10</option>
                         </select>
-                        <button onClick={handleExportCsv} className="flex items-center gap-2 px-6 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-blue-700 shadow-lg transition-all">
-                            <FileSpreadsheet size={16}/> KẾT QUẢ RÈN
+
+                        {/* Lọc theo Lớp học */}
+                        <select className="px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none max-w-[200px]" value={sClassFilter} onChange={e => setSClassFilter(e.target.value)}>
+                            <option value="all">TẤT CẢ LỚP</option>
+                            <option value="unassigned">CHƯA PHÂN LỚP</option>
+                            {classes.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name} ({c.academicYear})
+                                </option>
+                            ))}
+                        </select>
+
+                        <button onClick={handleExportCsv} className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-blue-700 shadow-lg transition-all">
+                            <FileSpreadsheet size={16}/> XUẤT CSV
                         </button>
-                        <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all">
+                        <label className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase cursor-pointer hover:bg-emerald-700 shadow-lg transition-all">
                             <FileSpreadsheet size={16}/> NHẬP CSV
                             <input type="file" accept=".csv" className="hidden" onChange={onImportCsv}/>
                         </label>
-                        <button onClick={onAdd} className="bg-slate-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-black shadow-xl transition-all">
+                        <button onClick={onAdd} className="bg-slate-900 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-black shadow-xl transition-all">
                             <UserPlus size={16}/> THÊM MỚI
                         </button>
                     </div>
@@ -171,6 +237,7 @@ export default function StudentManager({
                             <th className="p-6">Học sinh (Cloud ID)</th>
                             <th className="p-6 text-center">Mã số (MAHS)</th>
                             <th className="p-6 text-center">Khối</th>
+                            <th className="p-6 text-center">Lớp & Niên khóa</th>
                             <th className="p-6 text-center">Điểm tích lũy</th>
                             <th className="p-6 text-center">Tổng TG</th>
                             <th className="p-6 text-center">Thao tác</th>
@@ -226,6 +293,22 @@ export default function StudentManager({
                                         <span className="font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg text-xs">{u.grade || '-'}</span>
                                     </td>
                                     <td className="p-6 text-center">
+                                        {u.className ? (
+                                            <div className="inline-flex flex-col items-center">
+                                                <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-lg text-xs uppercase">
+                                                    {u.className}
+                                                </span>
+                                                {u.academicYear && (
+                                                    <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                        {u.academicYear}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="text-slate-400 text-xs italic">Chưa phân lớp</span>
+                                        )}
+                                    </td>
+                                    <td className="p-6 text-center">
                                         <div className="flex flex-col items-center">
                                             <div className="flex items-center gap-1.5 text-yellow-600 font-black text-sm">
                                                 <Medal size={14} className="text-yellow-500"/>
@@ -241,10 +324,10 @@ export default function StudentManager({
                                     </td>
                                     <td className="p-6">
                                         <div className="flex items-center justify-center gap-2">
-                                            <button onClick={() => onViewDetail(u)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Eye size={16}/></button>
-                                            <button onClick={() => onEdit(u)} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"><Edit3 size={16}/></button>
-                                            <button onClick={() => onResetPassword(u)} className="p-3 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all shadow-sm"><Key size={16}/></button>
-                                            <button onClick={() => onDelete(u.id, u.fullName)} className="p-3 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                                            <button onClick={() => onViewDetail(u)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Chi tiết"><Eye size={16}/></button>
+                                            <button onClick={() => onEdit(u)} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm" title="Sửa"><Edit3 size={16}/></button>
+                                            <button onClick={() => onResetPassword(u)} className="p-3 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all shadow-sm" title="Đổi mật khẩu"><Key size={16}/></button>
+                                            <button onClick={() => onDelete(u.id, u.fullName)} className="p-3 text-slate-200 hover:text-red-500 transition-colors" title="Xóa"><Trash2 size={16}/></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -265,6 +348,61 @@ export default function StudentManager({
                     </div>
                 )}
             </div>
+
+            {/* MODAL BULK GÁN LỚP */}
+            {isBulkClassModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">
+                    <div className="bg-white max-w-md w-full rounded-[2.5rem] border shadow-2xl p-8 overflow-hidden animate-scale-up space-y-6">
+                        <div className="flex items-center gap-3 border-b pb-4">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                                <GraduationCap size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase">
+                                    Gán {selectedIds.length} học sinh vào Lớp
+                                </h3>
+                                <p className="text-[10px] text-slate-400 font-bold">
+                                    Tài khoản & điểm số của học sinh vẫn giữ nguyên
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-500 uppercase ml-1">
+                                Chọn Lớp học & Niên khóa đích:
+                            </label>
+                            <select
+                                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-xs outline-none focus:border-indigo-500"
+                                value={targetClassId}
+                                onChange={e => setTargetClassId(e.target.value)}
+                            >
+                                <option value="">-- Bỏ phân lớp (Trở về Chưa phân lớp) --</option>
+                                {classes.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.name} • Niên khóa {c.academicYear} (Khối {c.grade})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => setIsBulkClassModalOpen(false)}
+                                className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-black uppercase hover:bg-slate-200 transition-all"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleConfirmBulkAssignClass}
+                                disabled={isAssigning}
+                                className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-700 shadow-lg disabled:opacity-50 transition-all flex items-center gap-2"
+                            >
+                                <Check size={16} /> {isAssigning ? 'Đang cập nhật...' : 'Xác nhận gán'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {deleteBulkConfirm && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">

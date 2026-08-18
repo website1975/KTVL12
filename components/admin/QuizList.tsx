@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quiz, Result, Grade, Chapter } from '../../types';
-import { Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, Link as LinkIcon, EyeOff, ShieldCheck } from 'lucide-react';
+import { Quiz, Result, Grade, Chapter, ClassRoom } from '../../types';
+import { Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, Link as LinkIcon, EyeOff, ShieldCheck, GraduationCap } from 'lucide-react';
 
 interface QuizListProps {
     quizzes: Quiz[];
     results: Result[];
     chapters: Chapter[];
+    classes?: ClassRoom[];
     onEdit: (quiz: Quiz) => void;
     onDelete: (id: string) => void;
     onPreview: (quiz: Quiz) => void;
@@ -21,7 +22,7 @@ interface QuizListProps {
 const PAGE_SIZE = 12;
 
 export default function QuizList({ 
-    quizzes, results, chapters, onEdit, onDelete, onPreview, 
+    quizzes, results, chapters, classes = [], onEdit, onDelete, onPreview, 
     qSearch, setQSearch, qGradeFilter, setQGradeFilter,
     qChapterFilter, setQChapterFilter
 }: QuizListProps) {
@@ -135,6 +136,19 @@ export default function QuizList({
                                         <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? (isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600')) : 'bg-slate-200 text-slate-500'}`}>
                                             KHỐI {q.grade}
                                         </span>
+                                        {q.targetType === 'classes' && q.assignedClassIds && q.assignedClassIds.length > 0 && (
+                                            <span className="px-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                                <GraduationCap size={11}/>
+                                                {(() => {
+                                                    const assignedNames = q.assignedClassIds.map(id => {
+                                                        const found = classes?.find(c => c.id === id);
+                                                        return found ? `${found.name} (${found.academicYear})` : id;
+                                                    });
+                                                    if (assignedNames.length === 1) return `Lớp ${assignedNames[0]}`;
+                                                    return `Giao ${assignedNames.length} lớp`;
+                                                })()}
+                                            </span>
+                                        )}
                                         {q.isPublished && (
                                             isExpired ? (
                                                 <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">

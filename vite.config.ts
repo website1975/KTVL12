@@ -12,6 +12,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      host: '0.0.0.0',
+      port: 3000,
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 3000,
+    },
     define: {
       // Đẩy biến này vào code chạy ở trình duyệt
       'process.env.API_KEY': JSON.stringify(apiKey)
