@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, QuestionType, Grade, Chapter } from '../../types';
+import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../types';
 import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
@@ -26,6 +26,7 @@ export default function QuestionBank({
 }: QuestionBankProps) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    const [bLevelFilter, setBLevelFilter] = useState<QuestionLevel | 'all'>('all');
 
     const filteredQuestions = useMemo(() => {
         return questions.filter(q => {
@@ -41,19 +42,30 @@ export default function QuestionBank({
             // Lọc dạng - Quan trọng: Xử lý cả 'group_tf' và 'group-tf'
             let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
             const targetType = bTypeFilter.toString().trim().toLowerCase().replace('_', '-');
-            
             const matchType = bTypeFilter === 'all' || qTypeRaw === targetType;
             
+            // Lọc mức độ nhận thức (B, H, VD, VDC)
+            let matchLevel = true;
+            if (bLevelFilter !== 'all') {
+                if (q.level) {
+                    matchLevel = q.level === bLevelFilter;
+                } else if (q.subQuestions && q.subQuestions.length > 0) {
+                    matchLevel = q.subQuestions.some(sq => sq.level === bLevelFilter);
+                } else {
+                    matchLevel = false;
+                }
+            }
+
             // Tìm kiếm
             const matchSearch = !bSearch || 
                               q.text.toLowerCase().includes(bSearch.toLowerCase()) ||
                               (q.quizTitle && q.quizTitle.toLowerCase().includes(bSearch.toLowerCase()));
             
-            return matchGrade && matchChapter && matchType && matchSearch;
+            return matchGrade && matchChapter && matchType && matchLevel && matchSearch;
         });
-    }, [questions, bGradeFilter, bChapterFilter, bTypeFilter, bSearch]);
+    }, [questions, bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch]);
 
-    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [bGradeFilter, bChapterFilter, bTypeFilter, bSearch]);
+    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch]);
 
     const toggleSelect = (id: string) => {
         const newIds = new Set(selectedIds);
@@ -94,18 +106,25 @@ export default function QuestionBank({
                             <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
                         ))}
                     </select>
-                    <button 
-                        onClick={() => { setBGradeFilter('all'); setBChapterFilter('all'); setBTypeFilter('all'); setBSearch(''); }}
-                        className="bg-red-50 text-red-500 border border-red-100 px-2 rounded-lg text-[8px] font-black uppercase"
-                    >
-                        Xóa lọc
-                    </button>
                     <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bTypeFilter} onChange={e => setBTypeFilter(e.target.value as any)}>
                         <option value="all">Dạng: Tất cả</option>
                         <option value="mcq">P.I (MCQ)</option>
                         <option value="group-tf">P.II (D/S)</option>
                         <option value="short">P.III (Ngắn)</option>
                     </select>
+                    <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none" value={bLevelFilter} onChange={e => setBLevelFilter(e.target.value as any)}>
+                        <option value="all">Mức độ: Tất cả</option>
+                        <option value="B">🟢 [B] Biết</option>
+                        <option value="H">🔵 [H] Hiểu</option>
+                        <option value="VD">🟠 [VD] Vận dụng</option>
+                        <option value="VDC">🔴 [VDC] Vận dụng cao</option>
+                    </select>
+                    <button 
+                        onClick={() => { setBGradeFilter('all'); setBChapterFilter('all'); setBTypeFilter('all'); setBLevelFilter('all'); setBSearch(''); }}
+                        className="bg-red-50 text-red-500 border border-red-100 px-2 rounded-lg text-[8px] font-black uppercase"
+                    >
+                        Xóa lọc
+                    </button>
                 </div>
                 <div className="flex-1 flex items-center bg-slate-50 border rounded-lg px-3">
                     <Search size={14} className="text-slate-300"/>
@@ -133,6 +152,11 @@ export default function QuestionBank({
                                     <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${bq.type === 'mcq' ? 'bg-blue-500' : bq.type.includes('tf') ? 'bg-purple-500' : 'bg-orange-500'}`}>
                                         {bq.type.toUpperCase()}
                                     </span>
+                                    {bq.level && (
+                                        <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${bq.level === 'B' ? 'bg-emerald-600' : bq.level === 'H' ? 'bg-blue-600' : bq.level === 'VD' ? 'bg-amber-600' : 'bg-red-600'}`}>
+                                            [{bq.level}] {bq.level === 'B' ? 'Biết' : bq.level === 'H' ? 'Hiểu' : bq.level === 'VD' ? 'V.Dụng' : 'VDC'}
+                                        </span>
+                                    )}
                                     <span className="text-[8px] text-slate-400 font-bold uppercase">Khối {bq.quizGrade || 'all'}</span>
                                     {bq.quizCategory && <span className="text-[8px] text-purple-400 font-bold uppercase bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{bq.quizCategory}</span>}
                                     {bq.quizTitle && (
@@ -142,6 +166,20 @@ export default function QuestionBank({
                                     )}
                                 </div>
                                 <div className="text-slate-800 text-sm font-bold leading-relaxed overflow-x-auto"><LatexText text={bq.text}/></div>
+                                {bq.type === 'group-tf' && bq.subQuestions && bq.subQuestions.some(sq => sq.level) && (
+                                    <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100">
+                                        {bq.subQuestions.map((sq, sqi) => (
+                                            <span key={sqi} className="text-[9px] font-bold text-slate-600 flex items-center gap-1">
+                                                <span>{String.fromCharCode(97+sqi)})</span>
+                                                {sq.level && (
+                                                    <span className={`text-[8px] font-black px-1.5 py-0.2 rounded text-white ${sq.level === 'B' ? 'bg-emerald-600' : sq.level === 'H' ? 'bg-blue-600' : sq.level === 'VD' ? 'bg-amber-600' : 'bg-red-600'}`}>
+                                                        {sq.level}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
