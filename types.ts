@@ -3,6 +3,7 @@ export type Role = 'admin' | 'student';
 export type Grade = '10' | '11' | '12' | 'all';
 export type QuizType = 'practice' | 'test';
 export type QuestionType = 'mcq' | 'group-tf' | 'short';
+export type QuestionLevel = 'B' | 'H' | 'VD' | 'VDC';
 
 export interface ClassRoom {
   id: string; // e.g. "class_12a1_2026" or uuid
@@ -39,6 +40,7 @@ export interface SubQuestion {
   id: string;
   text: string;
   correctAnswer: 'True' | 'False';
+  level?: QuestionLevel;
 }
 
 export interface Question {
@@ -46,6 +48,7 @@ export interface Question {
   type: QuestionType;
   text: string;
   points: number | string;
+  level?: QuestionLevel;
   imageUrl?: string;
   solution?: string; 
   options?: string[]; 
