@@ -158,9 +158,40 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                 <div key={q.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-50 shadow-sm relative group animate-fade-in-up">
                     <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl"><Trash2 size={24}/></button>
                     
-                    <div className="flex items-center gap-4 mb-6">
+                    <div className="flex flex-wrap items-center gap-4 mb-6">
                         <span className="text-[11px] font-black px-5 py-2 rounded-xl uppercase bg-slate-900 text-white">Câu {idx + 1}</span>
-                        <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-2xl border-2 border-blue-100">
+                        
+                        {/* MỨC ĐỘ NHẬN THỨC CÂU HỎI */}
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                            <span className="text-[9px] font-black text-slate-400 uppercase px-2">Mức độ:</span>
+                            {(['B', 'H', 'VD', 'VDC'] as const).map(lvl => {
+                                const isSelected = q.level === lvl;
+                                const colors = {
+                                    B: isSelected ? 'bg-emerald-600 text-white shadow-md' : 'text-emerald-700 hover:bg-emerald-50',
+                                    H: isSelected ? 'bg-blue-600 text-white shadow-md' : 'text-blue-700 hover:bg-blue-50',
+                                    VD: isSelected ? 'bg-amber-600 text-white shadow-md' : 'text-amber-700 hover:bg-amber-50',
+                                    VDC: isSelected ? 'bg-red-600 text-white shadow-md' : 'text-red-700 hover:bg-red-50'
+                                };
+                                const labels = { B: 'Biết', H: 'Hiểu', VD: 'V.Dụng', VDC: 'VDC' };
+                                return (
+                                    <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => {
+                                            const nl = [...questions];
+                                            const i = nl.findIndex(x => x.id === q.id);
+                                            nl[i].level = isSelected ? undefined : lvl;
+                                            setQuestions(nl);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${colors[lvl]}`}
+                                    >
+                                        [{lvl}] {labels[lvl]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-2xl border-2 border-blue-100 ml-auto">
                             <TargetIcon size={14} className="text-blue-500" />
                             <input type="text" className="bg-transparent text-sm font-black text-blue-700 outline-none w-14 text-center" value={q.points} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].points = e.target.value; setQuestions(nl); }} />
                         </div>
@@ -227,9 +258,28 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         <div className="space-y-3 mb-8">
                             {q.subQuestions.map((sq, si) => (
                                 <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
-                                    <span className="text-xs font-black text-blue-600 w-10">{String.fromCharCode(97+si)})</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-xs font-black text-blue-600">{String.fromCharCode(97+si)})</span>
+                                        <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200">
+                                            {(['B', 'H', 'VD', 'VDC'] as const).map(lvl => (
+                                                <button
+                                                    key={lvl}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const nl = [...questions];
+                                                        const i = nl.findIndex(x => x.id === q.id);
+                                                        nl[i].subQuestions![si].level = sq.level === lvl ? undefined : lvl;
+                                                        setQuestions(nl);
+                                                    }}
+                                                    className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase transition-all ${sq.level === lvl ? (lvl === 'B' ? 'bg-emerald-600 text-white' : lvl === 'H' ? 'bg-blue-600 text-white' : lvl === 'VD' ? 'bg-amber-600 text-white' : 'bg-red-600 text-white') : 'text-slate-400 hover:text-slate-700'}`}
+                                                >
+                                                    {lvl}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                     <input type="text" className="flex-1 bg-transparent text-sm font-bold outline-none" value={sq.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].text = e.target.value; setQuestions(nl); }} placeholder="Nội dung ý trắc nghiệm..." />
-                                    <div className="flex bg-white rounded-xl p-1 border-2 border-slate-200">
+                                    <div className="flex bg-white rounded-xl p-1 border-2 border-slate-200 shrink-0">
                                         {['True', 'False'].map(v => (
                                             <button key={v} onClick={() => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].subQuestions![si].correctAnswer = v as any; setQuestions(nl); }} className={`px-5 py-1.5 text-[10px] font-black rounded-lg transition-all ${sq.correctAnswer === v ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
                                         ))}
