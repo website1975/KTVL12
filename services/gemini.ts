@@ -1,11 +1,39 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Question, Grade } from "../types";
+import { Question, Grade, QuestionLevel, SubQuestion } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 import { normalizeFullText } from './vietnameseFixer';
 
 const cleanJsonString = (str: string): string => {
     return str.replace(/```json/gi, "").replace(/```/gi, "").trim();
+};
+
+const normalizeLevel = (val: any): QuestionLevel | undefined => {
+    if (!val) return undefined;
+    const str = String(val).trim().toUpperCase();
+    if (str === 'B' || str === 'NB' || str.includes('NHẬN BIẾT') || str.includes('BIẾT') || str === 'EASY' || str === 'KNOWLEDGE') return 'B';
+    if (str === 'H' || str === 'TH' || str.includes('THÔNG HIỂU') || str.includes('HIỂU') || str === 'MEDIUM' || str === 'UNDERSTANDING') return 'H';
+    if (str === 'VD' || str.includes('VẬN DỤNG CAO') || str === 'VDC' || str === 'VERY HARD' || str === 'VHARD') {
+        if (str === 'VDC' || str.includes('CAO') || str === 'VERY HARD' || str === 'VHARD') return 'VDC';
+        return 'VD';
+    }
+    if (str === 'HARD' || str === 'APPLICATION') return 'VD';
+    return undefined;
+};
+
+const extractLevelFromText = (text: string): { cleanText: string; level?: QuestionLevel } => {
+    if (!text) return { cleanText: "" };
+    let cleanText = text;
+    let level: QuestionLevel | undefined = undefined;
+
+    // Pattern: [B], (B), <B>, [NB], [H], [TH], [VD], [VDC] at start or inside
+    const levelRegex = /(?:\[|\(|\<)\s*(B|NB|H|TH|VD|VDC|Nhận biết|Thông hiểu|Vận dụng cao|Vận dụng|Biết|Hiểu)\s*(?:\]|\)|\>)/i;
+    const match = cleanText.match(levelRegex);
+    if (match) {
+        level = normalizeLevel(match[1]);
+        cleanText = cleanText.replace(match[0], "").trim();
+    }
+    return { cleanText, level };
 };
 
 const stripOptionLabel = (text: string): string => {
@@ -26,23 +54,26 @@ NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách J
 
 QUY TẮC TRÍCH XUẤT (CỰC KỲ QUAN TRỌNG):
 1. PHÂN TÍCH ĐÁP ÁN: Quét toàn bộ nội dung để tìm bảng đáp án (thường ở cuối).
-2. MCQ (Trắc nghiệm 4 lựa chọn):
+2. NHẬN DIỆN MỨC ĐỘ (level: "B" | "H" | "VD" | "VDC"):
+   - Tự động nhận diện nhãn mức độ: [B], (B) -> "B" (Nhận biết); [H], (H) -> "H" (Thông hiểu); [VD], (VD) -> "VD" (Vận dụng); [VDC], (VDC) -> "VDC" (Vận dụng cao).
+   - Áp dụng cho cả câu hỏi chính và từng ý con a, b, c, d của câu Đúng/Sai (Group-TF).
+3. MCQ (Trắc nghiệm 4 lựa chọn):
    - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B...).
    - LaTeX: Mọi phương án nếu chứa ký hiệu toán học BẮT BUỘC phải bọc trong $...$. (VD: "$x^2$").
-3. GROUP-TF (Đúng/Sai):
-   - 'subQuestions': Phải có đủ 4 ý.
+4. GROUP-TF (Đúng/Sai):
+   - 'subQuestions': Phải có đủ 4 ý (a, b, c, d). Mỗi ý có 'text', 'correctAnswer' ("True" hoặc "False") và 'level' ("B"|"H"|"VD"|"VDC" nếu có).
    - 'solution': BẮT BUỘC giải thích chi tiết cho cả 4 ý theo mẫu: a) Đúng... b) Sai...
-4. SHORT (Trả lời ngắn):
+5. SHORT (Trả lời ngắn):
    - 'type': BẮT BUỘC là "short".
    - 'correctAnswer': BẮT BUỘC là giá trị số (VD: "12", "0.5").
    - 'options': Để null hoặc [].
-5. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
-6. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)" ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
+6. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
+7. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)", "[B]", "(H)"... ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
 
 VÍ DỤ CẤU TRÚC:
-- MCQ: {"type": "mcq", "text": "Câu 1...", "options": ["$1$", "$2$", "$3$", "$4$"], "correctAnswer": "$1$", "solution": "..."}
-- GROUP-TF: {"type": "group-tf", "text": "Câu 2...", "subQuestions": [{"text": "...", "correctAnswer": "True"}, ...], "solution": "a) Đúng... b) Sai..."}
-- SHORT: {"type": "short", "text": "Câu 3...", "correctAnswer": "12.5", "solution": "..."}
+- MCQ: {"type": "mcq", "level": "B", "text": "Cho hàm số...", "options": ["$1$", "$2$", "$3$", "$4$"], "correctAnswer": "$1$", "solution": "..."}
+- GROUP-TF: {"type": "group-tf", "level": "H", "text": "Cho hàm số...", "subQuestions": [{"text": "...", "correctAnswer": "True", "level": "B"}, {"text": "...", "correctAnswer": "False", "level": "H"}, ...], "solution": "a) Đúng... b) Sai..."}
+- SHORT: {"type": "short", "level": "VD", "text": "Tìm số nghiệm...", "correctAnswer": "12.5", "solution": "..."}
 `;
 
 const processAIQuestions = (rawData: any[]): Question[] => {
@@ -50,6 +81,11 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         const type = item.type?.toLowerCase() || 'mcq';
         const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : (type === 'mcq' ? [] : undefined);
         let finalCorrectAnswer = item.correctAnswer;
+
+        // Xử lý trích xuất level từ text câu hỏi nếu chưa có
+        let extractedMain = extractLevelFromText(item.text || "");
+        let finalLevel = normalizeLevel(item.level) || extractedMain.level;
+        let cleanedText = extractedMain.cleanText;
 
         if (type === 'mcq' && item.correctAnswer && item.options) {
             let ansText = item.correctAnswer.trim();
@@ -89,15 +125,21 @@ const processAIQuestions = (rawData: any[]): Question[] => {
             ...item,
             type,
             id: uuidv4(),
+            text: cleanedText,
+            level: finalLevel,
             points: item.points || (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5),
             options: strippedOptions,
             correctAnswer: finalCorrectAnswer,
-            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => ({ 
-                ...sq, 
-                id: uuidv4(),
-                text: stripOptionLabel(sq.text),
-                correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true' || sq.correctAnswer === '1') ? 'True' : 'False'
-            })) : undefined
+            subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => {
+                const sqExtract = extractLevelFromText(sq.text || "");
+                return { 
+                    ...sq, 
+                    id: uuidv4(),
+                    text: stripOptionLabel(sqExtract.cleanText),
+                    level: normalizeLevel(sq.level) || sqExtract.level,
+                    correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true' || sq.correctAnswer === '1') ? 'True' : 'False'
+                };
+            }) : undefined
         };
     });
 };
@@ -165,6 +207,7 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
                         properties: {
                             type: { type: Type.STRING },
                             text: { type: Type.STRING },
+                            level: { type: Type.STRING, nullable: true },
                             points: { type: Type.NUMBER },
                             options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             correctAnswer: { type: Type.STRING, nullable: true },
@@ -176,7 +219,8 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
                                     type: Type.OBJECT,
                                     properties: {
                                         text: { type: Type.STRING },
-                                        correctAnswer: { type: Type.STRING }
+                                        correctAnswer: { type: Type.STRING },
+                                        level: { type: Type.STRING, nullable: true }
                                     },
                                     required: ["text", "correctAnswer"]
                                 }
@@ -218,6 +262,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                 properties: {
                     type: { type: Type.STRING },
                     text: { type: Type.STRING },
+                    level: { type: Type.STRING, nullable: true },
                     points: { type: Type.NUMBER },
                     options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                     correctAnswer: { type: Type.STRING, nullable: true },
@@ -229,7 +274,8 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                             type: Type.OBJECT,
                             properties: {
                                 text: { type: Type.STRING },
-                                correctAnswer: { type: Type.STRING }
+                                correctAnswer: { type: Type.STRING },
+                                level: { type: Type.STRING, nullable: true }
                             },
                             required: ["text", "correctAnswer"]
                         }
@@ -372,9 +418,11 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
                     ans = 'False';
                 }
                 const sqText = sq.text || sq.content || sq.noi_dung || sq.question || '';
+                const sqLevel = normalizeLevel(sq.level || sq.muc_do || sq.do_kho);
                 return {
                     text: sqText.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
-                    correctAnswer: ans
+                    correctAnswer: ans,
+                    level: sqLevel
                 };
             });
         }
