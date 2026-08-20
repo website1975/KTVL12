@@ -59,7 +59,7 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
               <GraduationCap className="h-8 w-8 text-blue-600" />
-              <span className="font-bold text-xl text-gray-900">EduQuiz VN</span>
+              <span className="font-bold text-xl text-gray-900">EduQuiz NHC</span>
             </div>
             {user && (
               <div className="flex items-center gap-4">
@@ -93,7 +93,7 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       </main>
       <footer className="bg-white border-t mt-auto py-6">
          <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm flex flex-col items-center gap-3">
-            <span>© 2024 EduQuiz VN. LH Thạnh 0909091634</span>
+            <span>© 2026 EduQuiz VN. LH Thạnh 0909091634</span>
             <div className="flex flex-wrap justify-center gap-3">
                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                     <Database size={12}/> {isOnline ? 'Cloud: lchfhsio...' : 'DB Offline'}
