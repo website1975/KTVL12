@@ -282,6 +282,26 @@ export default function AdminDashboard() {
   const [selectedResultDetail, setSelectedResultDetail] = useState<{ result: Result, quiz: Quiz } | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isBankOpen, setIsBankOpen] = useState(false);
+  const [isBankLoading, setIsBankLoading] = useState(false);
+
+  const loadBankDataIfNeeded = useCallback(async () => {
+    if (!isDatabaseConnected()) return;
+    if (bankQuestions.length === 0) {
+      setIsBankLoading(true);
+      try {
+        const [b, c] = await Promise.all([
+          getBankQuestions(),
+          getChapters()
+        ]);
+        setBankQuestions(b);
+        if (c && c.length > 0) setChapters(c);
+      } catch (e) {
+        console.error("Lỗi tải ngân hàng câu hỏi:", e);
+      } finally {
+        setIsBankLoading(false);
+      }
+    }
+  }, [bankQuestions.length]);
 
   const allAvailableQuestions = useMemo(() => {
     return bankQuestions;
@@ -360,15 +380,30 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSyncBank = async () => {
-    if (!confirm("Hệ thống sẽ quét toàn bộ câu hỏi trong tất cả đề thi và đẩy vào kho tổng (Bank). Tiếp tục?")) return;
+  const handleSyncBank = async (forceAll: boolean = false) => {
+    const confirmMsg = forceAll 
+      ? "Hệ thống sẽ quét lại TOÀN BỘ đề thi (bất kể đã đồng bộ hay chưa) và đối chiếu khử trùng lặp vào Ngân hàng. Tiếp tục?" 
+      : "Hệ thống sẽ quét các đề thi MỚI CHƯA ĐỒNG BỘ, tự động khử trùng lặp và đẩy vào Ngân hàng câu hỏi. Tiếp tục?";
+    if (!confirm(confirmMsg)) return;
     setIsSyncing(true);
     try {
-      const stats = await syncQuizzesToBank();
-      alert(`Đã hoàn tất! Quét được ${stats.total} câu hỏi, đã đồng bộ thành công ${stats.added} câu vào Ngân hàng.`);
+      const stats = await syncQuizzesToBank(forceAll);
+      if (stats.syncedQuizzesCount === 0) {
+        showAlert(
+          "Dữ liệu đã cập nhật",
+          `Tất cả đề thi (${stats.totalQuizzes} đề) đều đã được đồng bộ vào Ngân hàng từ trước. Không có đề thi mới nào cần quét.`,
+          "info"
+        );
+      } else {
+        showAlert(
+          "Đồng bộ Ngân hàng thành công",
+          `Đã quét ${stats.syncedQuizzesCount} đề thi mới (${stats.total} câu hỏi):\n• Thêm mới vào Ngân hàng: ${stats.added} câu\n• Cập nhật thông tin: ${stats.updated} câu\n• Đã có sẵn (bỏ qua trùng lặp): ${stats.skipped} câu\n• Đã gắn cờ đồng bộ cho ${stats.syncedQuizzesCount} đề thi.`,
+          "success"
+        );
+      }
       loadTabData('bank');
     } catch (e) {
-      alert("Lỗi khi đồng bộ Ngân hàng.");
+      showAlert("Lỗi đồng bộ", "Có lỗi xảy ra khi đồng bộ ngân hàng câu hỏi.", "error");
     } finally {
       setIsSyncing(false);
     }
@@ -921,6 +956,7 @@ export default function AdminDashboard() {
                     onOpenBank={(type) => { 
                         setBTypeFilter(type); 
                         setBGradeFilter(quizGrade); 
+                        loadBankDataIfNeeded();
                         setIsBankOpen(true); 
                     }}
                     onPdfExtract={handlePdfExtract} onTextExtract={handleTextExtract} onUploadImage={handleUploadImage} uploadingId={uploadingId} isAiLoading={isAiLoading}
@@ -1059,7 +1095,7 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-center">
                    <h1 className="text-xl font-black text-slate-800 uppercase italic">NGÂN HÀNG CÂU HỎI</h1>
                    <button 
-                      onClick={handleSyncBank} 
+                      onClick={() => handleSyncBank(false)} 
                       disabled={isSyncing}
                       className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-200 text-blue-600 rounded-xl font-black uppercase text-[10px] shadow-sm hover:bg-blue-50 transition-all disabled:opacity-50"
                    >
@@ -1114,15 +1150,22 @@ export default function AdminDashboard() {
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
-                    <QuestionBank 
-                        questions={allAvailableQuestions} 
-                        chapters={chapters}
-                        bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                        bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
-                        bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
-                        bSearch={bSearch} setBSearch={setBSearch}
-                        onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
-                    />
+                    {isBankLoading ? (
+                        <div className="py-20 text-center">
+                            <Loader2 className="animate-spin mx-auto text-blue-500" size={40}/>
+                            <p className="mt-4 text-[10px] font-black uppercase text-slate-400">Đang tải Ngân hàng câu hỏi từ Cloud...</p>
+                        </div>
+                    ) : (
+                        <QuestionBank 
+                            questions={allAvailableQuestions} 
+                            chapters={chapters}
+                            bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
+                            bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
+                            bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
+                            bSearch={bSearch} setBSearch={setBSearch}
+                            onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
+                        />
+                    )}
                 </div>
              </div>
         </div>
