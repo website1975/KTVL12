@@ -486,7 +486,11 @@ export const getQuizById = async (id: string): Promise<Quiz | null> => {
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  const enrichedQuiz = { ...quiz, questionCount: quiz.questions.length };
+  const enrichedQuiz = { 
+    ...quiz, 
+    questionCount: quiz.questions.length,
+    isSyncedToBank: quiz.isSyncedToBank ?? false 
+  };
   const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
   handleSupabaseError(error, "Lưu đề thi mới");
 };
@@ -696,51 +700,184 @@ export const getBankQuestions = async (): Promise<Question[]> => {
     }
 };
 
-export const syncQuizzesToBank = async (): Promise<{ total: number, added: number }> => {
-    if (!supabase) return { total: 0, added: 0 };
-    try {
-        const { data: quizData } = await supabase.from('quizzes').select('data');
-        if (!quizData) return { total: 0, added: 0 };
+// Hàm tạo mã băm/fingerprint nội dung câu hỏi để nhận diện trùng lặp
+export const getQuestionFingerprint = (q: Question): string => {
+    const normalize = (str: string) => (str || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const type = (q.type || 'mcq').toLowerCase().replace('_', '-');
+    const text = normalize(q.text);
+    
+    // Đối với MCQ: so sánh thêm các options
+    let optionsKey = '';
+    if (type === 'mcq' && q.options) {
+        optionsKey = q.options.map(opt => normalize(opt)).sort().join('|');
+    }
+    
+    // Đối với Group-TF: so sánh các subQuestions
+    let subKey = '';
+    if (type === 'group-tf' && q.subQuestions) {
+        subKey = q.subQuestions.map(sq => `${normalize(sq.text)}:${sq.correctAnswer || ''}`).join('|');
+    }
 
-        const allQuestions: Question[] = [];
-        quizData.forEach((row: any) => {
-            const quiz = row.data as Quiz;
-            if (quiz.questions) {
-                quiz.questions.forEach(q => {
-                    allQuestions.push({
-                        ...q,
-                        quizTitle: quiz.title,
-                        quizGrade: quiz.grade,
-                        quizCategory: quiz.category
-                    });
-                });
-            }
+    return `${type}:::${text}:::${optionsKey}:::${subKey}`;
+};
+
+export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{ 
+    total: number, 
+    added: number, 
+    skipped: number, 
+    updated: number, 
+    syncedQuizzesCount: number,
+    totalQuizzes: number 
+}> => {
+    if (!supabase) return { total: 0, added: 0, skipped: 0, updated: 0, syncedQuizzesCount: 0, totalQuizzes: 0 };
+    try {
+        // 1. Lấy tất cả đề thi từ database
+        const { data: quizRows, error: quizError } = await supabase.from('quizzes').select('id, grade, data');
+        if (quizError || !quizRows) return { total: 0, added: 0, skipped: 0, updated: 0, syncedQuizzesCount: 0, totalQuizzes: 0 };
+
+        const totalQuizzes = quizRows.length;
+        
+        // Lọc ra các đề chưa được gắn cờ đồng bộ (nếu forceAll = true thì quét toàn bộ)
+        const pendingQuizRows = forceAll 
+            ? quizRows 
+            : quizRows.filter((r: any) => {
+                const qz = r.data as Quiz;
+                return !qz.isSyncedToBank;
+            });
+
+        if (pendingQuizRows.length === 0) {
+            return { total: 0, added: 0, skipped: 0, updated: 0, syncedQuizzesCount: 0, totalQuizzes };
+        }
+
+        // 2. Lấy tất cả câu hỏi hiện có trong kho ngân hàng để đối chiếu
+        const existingBankQuestions = await getBankQuestions();
+        const existingIdSet = new Set<string>();
+        const existingFingerprintMap = new Map<string, Question>();
+        
+        existingBankQuestions.forEach(bq => {
+            existingIdSet.add(bq.id);
+            if (bq.bankOriginId) existingIdSet.add(bq.bankOriginId);
+            const fp = getQuestionFingerprint(bq);
+            existingFingerprintMap.set(fp, bq);
         });
 
-        if (allQuestions.length === 0) return { total: 0, added: 0 };
-
-        const chunks = [];
-        const chunkSize = 50;
-        for (let i = 0; i < allQuestions.length; i += chunkSize) {
-            chunks.push(allQuestions.slice(i, i + chunkSize));
-        }
-
+        const questionsToSave: Question[] = [];
+        let totalScanned = 0;
+        let skippedCount = 0;
+        let updatedCount = 0;
         let addedCount = 0;
-        for (const chunk of chunks) {
-            const payload = chunk.map(q => ({ id: q.id, data: q }));
-            const { error } = await supabase.from('bank_questions').upsert(payload);
-            if (!error) addedCount += chunk.length;
+
+        const currentBatchFingerprints = new Set<string>();
+
+        for (const row of pendingQuizRows) {
+            const quiz = row.data as Quiz;
+            if (quiz.questions && Array.isArray(quiz.questions)) {
+                quiz.questions.forEach(q => {
+                    totalScanned++;
+
+                    // Ưu tiên 1: Kiểm tra vết ID gốc (bankOriginId) - Siêu nhanh O(1)
+                    if (q.bankOriginId && existingIdSet.has(q.bankOriginId)) {
+                        skippedCount++;
+                        return;
+                    }
+
+                    const fp = getQuestionFingerprint(q);
+                    
+                    // Nếu câu hỏi đã xuất hiện trong lượt quét của đợt này -> bỏ qua trùng lặp trong đề
+                    if (currentBatchFingerprints.has(fp)) {
+                        skippedCount++;
+                        return;
+                    }
+                    currentBatchFingerprints.add(fp);
+
+                    // Ưu tiên 2: Kiểm tra theo nội dung đối với các câu hỏi mới nạp từ PDF/JSON
+                    const existingQ = existingFingerprintMap.get(fp);
+                    if (existingQ) {
+                        // Nếu câu hỏi đã có, kiểm tra xem bản mới có thông tin phong phú hơn không (VD: có thêm level hoặc solution)
+                        const hasNewLevel = (!existingQ.level && q.level);
+                        const hasNewSolution = (!existingQ.solution && q.solution);
+                        
+                        if (hasNewLevel || hasNewSolution) {
+                            const enriched: Question = {
+                                ...existingQ,
+                                level: q.level || existingQ.level,
+                                solution: q.solution || existingQ.solution,
+                                quizTitle: quiz.title || existingQ.quizTitle,
+                                quizGrade: quiz.grade || existingQ.quizGrade,
+                                quizCategory: quiz.category || existingQ.quizCategory
+                            };
+                            questionsToSave.push(enriched);
+                            updatedCount++;
+                        } else {
+                            skippedCount++;
+                        }
+                    } else {
+                        // Câu hỏi hoàn toàn mới chưa có trong Ngân hàng -> Thêm mới
+                        const newQ: Question = {
+                            ...q,
+                            quizTitle: quiz.title,
+                            quizGrade: quiz.grade,
+                            quizCategory: quiz.category
+                        };
+                        questionsToSave.push(newQ);
+                        existingFingerprintMap.set(fp, newQ);
+                        if (newQ.id) existingIdSet.add(newQ.id);
+                        addedCount++;
+                    }
+                });
+            }
         }
 
-        return { total: allQuestions.length, added: addedCount };
+        // 3. Lưu câu hỏi mới/cập nhật vào bank_questions
+        if (questionsToSave.length > 0) {
+            const chunkSize = 50;
+            for (let i = 0; i < questionsToSave.length; i += chunkSize) {
+                const chunk = questionsToSave.slice(i, i + chunkSize);
+                const payload = chunk.map(q => ({ id: q.id, data: q }));
+                await supabase.from('bank_questions').upsert(payload);
+            }
+        }
+
+        // 4. Gắn cờ isSyncedToBank: true cho các đề thi vừa được quét xong
+        const nowIso = new Date().toISOString();
+        for (const row of pendingQuizRows) {
+            const quiz = row.data as Quiz;
+            const updatedQuiz: Quiz = {
+                ...quiz,
+                isSyncedToBank: true,
+                syncedToBankAt: nowIso
+            };
+            await supabase.from('quizzes').update({
+                data: updatedQuiz,
+                grade: row.grade || quiz.grade
+            }).eq('id', row.id);
+        }
+
+        return { 
+            total: totalScanned, 
+            added: addedCount, 
+            skipped: skippedCount, 
+            updated: updatedCount, 
+            syncedQuizzesCount: pendingQuizRows.length,
+            totalQuizzes 
+        };
     } catch (e) {
         console.error("Lỗi đồng bộ về Ngân hàng:", e);
-        return { total: 0, added: 0 };
+        return { total: 0, added: 0, skipped: 0, updated: 0, syncedQuizzesCount: 0, totalQuizzes: 0 };
     }
 };
 
 export const saveBankQuestion = async (q: Question): Promise<void> => {
-    if (supabase) await supabase.from('bank_questions').upsert({ id: q.id, data: q });
+    if (!supabase) return;
+    try {
+        const fp = getQuestionFingerprint(q);
+        const existing = await getBankQuestions();
+        const found = existing.find(item => getQuestionFingerprint(item) === fp);
+        const finalId = found ? found.id : q.id;
+        await supabase.from('bank_questions').upsert({ id: finalId, data: { ...q, id: finalId } });
+    } catch (e) {
+        console.warn("Lỗi lưu bank question:", e);
+    }
 };
 
 export const uploadQuizImage = async (file: File): Promise<string> => {
