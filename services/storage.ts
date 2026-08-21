@@ -502,6 +502,56 @@ export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   handleSupabaseError(error, "Cập nhật đề thi");
 };
 
+// Gán nhanh phòng / lớp cho một đề thi
+export const updateQuizTarget = async (
+  quizId: string, 
+  targetType: 'all' | 'classes', 
+  assignedClassIds: string[]
+): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
+  if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
+  const currentQuiz = data.data as Quiz;
+  const updatedQuiz: Quiz = {
+    ...currentQuiz,
+    targetType,
+    assignedClassIds
+  };
+  const { error: updateErr } = await supabase.from('quizzes').update({
+    data: updatedQuiz,
+    grade: data.grade
+  }).eq('id', quizId);
+  handleSupabaseError(updateErr, "Gán phòng/lớp cho đề thi");
+};
+
+// Gán nhanh phòng / lớp hàng loạt cho nhiều đề thi (ví dụ chuyển hàng loạt đề cũ vào phòng tạm)
+export const batchUpdateQuizTarget = async (
+  quizIds: string[],
+  targetType: 'all' | 'classes',
+  assignedClassIds: string[]
+): Promise<number> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  if (quizIds.length === 0) return 0;
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').in('id', quizIds);
+  if (error || !data) throw new Error("Lỗi khi tải danh sách đề thi");
+
+  let count = 0;
+  for (const row of data) {
+    const currentQuiz = row.data as Quiz;
+    const updatedQuiz: Quiz = {
+      ...currentQuiz,
+      targetType,
+      assignedClassIds
+    };
+    const { error: updateErr } = await supabase.from('quizzes').update({
+      data: updatedQuiz,
+      grade: row.grade
+    }).eq('id', row.id);
+    if (!updateErr) count++;
+  }
+  return count;
+};
+
 export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) {
       const { error } = await supabase.from('quizzes').delete().eq('id', id);
