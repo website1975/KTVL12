@@ -1,15 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom } from '../../types';
 import { 
   Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, 
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
-  EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users
+  EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
+  Link2, Layers, Image as ImageLucide
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 import { parseQuestionsFromJSON } from '../../services/gemini';
+import QuizImageGalleryModal from './QuizImageGalleryModal';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -70,12 +72,33 @@ interface QuestionSectionProps {
     onUploadImage: (qId: string, file: File) => void;
     uploadingId: string | null;
     onOpenBank: (type: QuestionType) => void;
+    onOpenGalleryForQuestion?: (qId: string) => void;
+    onOpenBatchForImage?: (imageUrl: string) => void;
+    uniqueImagesCount?: number;
 }
 
-const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, questions, setQuestions, onUploadImage, uploadingId, onOpenBank }) => {
+const QuestionSection: React.FC<QuestionSectionProps> = ({ 
+    sectionTitle, 
+    type, 
+    questions, 
+    setQuestions, 
+    onUploadImage, 
+    uploadingId, 
+    onOpenBank,
+    onOpenGalleryForQuestion,
+    onOpenBatchForImage,
+    uniqueImagesCount = 0
+}) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
+    const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
     const sectionQuestions = questions.filter(q => q.type === type);
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
+
+    const handleCopyImageUrl = (qId: string, url: string) => {
+        navigator.clipboard.writeText(url);
+        setCopiedUrlQId(qId);
+        setTimeout(() => setCopiedUrlQId(null), 2000);
+    };
 
     const handleSetAllPoints = () => {
         const val = quickPoints.replace(',', '.');
@@ -208,6 +231,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                         </div>
                     </div>
 
+                    {/* KHUNG ĐÍNH KÈM VÀ TÁI SỬ DỤNG HÌNH ẢNH */}
                     <div className="mb-8 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col md:flex-row items-center gap-8">
                         <div className="shrink-0 relative">
                             {q.imageUrl ? (
@@ -220,23 +244,83 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
                             )}
                         </div>
                         <div className="flex flex-col gap-3 flex-1">
-                            <h4 className="font-black text-slate-800 text-xs uppercase tracking-tight">Đính kèm hình ảnh minh họa</h4>
+                            <div className="flex items-center justify-between">
+                                <h4 className="font-black text-slate-800 text-xs uppercase tracking-tight">
+                                    Đính kèm hình ảnh minh họa
+                                </h4>
+                                {q.imageUrl && (
+                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                                        ✓ Đã gán ảnh
+                                    </span>
+                                )}
+                            </div>
+
                             <div className="flex flex-wrap gap-2">
                                 <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} />
-                                <label htmlFor={`img-${q.id}`} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase cursor-pointer flex items-center gap-2 transition-all ${uploadingId === q.id ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-black shadow-lg shadow-blue-200'}`}>
+                                
+                                {/* Nút tải ảnh từ máy tính */}
+                                <label htmlFor={`img-${q.id}`} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase cursor-pointer flex items-center gap-1.5 transition-all ${uploadingId === q.id ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-black shadow-md shadow-blue-100'}`}>
                                     {uploadingId === q.id ? <Loader2 className="animate-spin" size={14}/> : <ImageIcon size={14}/>} 
-                                    {uploadingId === q.id ? 'ĐANG XỬ LÝ...' : (q.imageUrl ? 'THAY ĐỔI ẢNH' : 'TẢI ẢNH LÊN')}
+                                    {uploadingId === q.id ? 'ĐANG XỬ LÝ...' : (q.imageUrl ? 'TẢI ẢNH MỚI' : 'TẢI ẢNH LÊN')}
                                 </label>
+
+                                {/* Nút chọn ảnh từ kho ảnh của đề hoặc dán link */}
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenGalleryForQuestion && onOpenGalleryForQuestion(q.id)}
+                                    className="px-4 py-2.5 bg-white border-2 border-slate-200 hover:border-blue-400 text-slate-700 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 shadow-sm"
+                                    title="Chọn ảnh đã có trong đề hoặc dán link URL"
+                                >
+                                    <Link2 size={14} className="text-blue-600" />
+                                    {uniqueImagesCount > 0 ? `CHỌN TỪ ĐỀ (${uniqueImagesCount}) / DÁN LINK` : 'DÁN LINK ẢNH'}
+                                </button>
+
+                                {/* Nếu câu đã có ảnh: Nút copy link ảnh */}
                                 {q.imageUrl && (
                                     <button 
+                                        type="button"
+                                        onClick={() => handleCopyImageUrl(q.id, q.imageUrl!)}
+                                        className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 border ${
+                                            copiedUrlQId === q.id 
+                                                ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' 
+                                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                        }`}
+                                        title="Sao chép link ảnh này để dùng cho câu khác"
+                                    >
+                                        {copiedUrlQId === q.id ? <Check size={14} /> : <Copy size={14} />}
+                                        {copiedUrlQId === q.id ? 'ĐÃ COPY LINK!' : 'COPY LINK ẢNH'}
+                                    </button>
+                                )}
+
+                                {/* Nút gán ảnh này cho các câu khác trong đề */}
+                                {q.imageUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenBatchForImage && onOpenBatchForImage(q.imageUrl!)}
+                                        className="px-4 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 shadow-sm"
+                                        title="Dùng chung ảnh này cho các câu hỏi khác trong đề thi"
+                                    >
+                                        <Layers size={14} /> DÙNG CHO CÂU KHÁC...
+                                    </button>
+                                )}
+
+                                {/* Nút gỡ ảnh */}
+                                {q.imageUrl && (
+                                    <button 
+                                        type="button"
                                         onClick={() => handleRemoveImage(q.id)}
-                                        className="px-6 py-3 bg-red-50 text-red-600 border-2 border-red-100 rounded-xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all flex items-center gap-2"
+                                        className="px-4 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all flex items-center gap-1.5"
                                     >
                                         <ImageMinus size={14}/> Gỡ ảnh
                                     </button>
                                 )}
                             </div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">Tự động tối ưu dung lượng khi tải lên Cloud.</p>
+                            
+                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">
+                                {q.imageUrl 
+                                    ? '💡 Mẹo: Bấm "Copy link ảnh" hoặc "Dùng cho câu khác" để tái sử dụng hình này cho các câu cùng bảng/đồ thị mà không cần tải lại.' 
+                                    : 'Tải ảnh từ máy tính hoặc bấm "Chọn từ đề / Dán link" để dùng chung ảnh với các câu khác.'}
+                            </p>
                         </div>
                     </div>
 
@@ -321,9 +405,50 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({ sectionTitle, type, q
 export default function QuizEditor(props: QuizEditorProps) {
     const [isTextInputOpen, setIsTextInputOpen] = useState(false);
     const [pastedText, setPastedText] = useState('');
+    const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+    const [galleryTargetQId, setGalleryTargetQId] = useState<string | null>(null);
 
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
     const relevantChapters = props.chapters.filter(c => String(c.grade) === String(props.grade));
+
+    // Đếm tổng số ảnh phân biệt trong đề
+    const uniqueImagesCount = useMemo(() => {
+        const set = new Set<string>();
+        props.questions.forEach(q => {
+            if (q.imageUrl && q.imageUrl.trim()) set.add(q.imageUrl.trim());
+        });
+        return set.size;
+    }, [props.questions]);
+
+    const handleSelectImageForQuestion = (qId: string, imageUrl: string) => {
+        const nl = [...props.questions];
+        const i = nl.findIndex(x => x.id === qId);
+        if (i !== -1) {
+            nl[i].imageUrl = imageUrl;
+            props.setQuestions(nl);
+        }
+    };
+
+    const handleBatchApplyImage = (sourceImageUrl: string, targetQuestionIds: string[]) => {
+        const targetSet = new Set(targetQuestionIds);
+        const nl = props.questions.map(q => {
+            if (targetSet.has(q.id)) {
+                return { ...q, imageUrl: sourceImageUrl };
+            }
+            return q;
+        });
+        props.setQuestions(nl);
+    };
+
+    const handleOpenGalleryForQuestion = (qId: string) => {
+        setGalleryTargetQId(qId);
+        setIsGalleryOpen(true);
+    };
+
+    const handleOpenBatchForImage = (imageUrl: string) => {
+        setGalleryTargetQId(null);
+        setIsGalleryOpen(true);
+    };
 
     const handleConfirmTextExtract = () => {
         if (!pastedText.trim()) return;
@@ -429,31 +554,54 @@ export default function QuizEditor(props: QuizEditorProps) {
                     Tổng điểm đề: {totalPoints.toFixed(2)}đ
                 </div>
                 
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b-2 border-slate-50 pb-8">
-                    <div className="flex-1 min-w-0 space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Tiêu đề đề thi</label>
-                        <input type="text" className="text-2xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-200 focus:text-blue-600 transition-colors" placeholder="VD: KIỂM TRA CHƯƠNG I ĐẠO HÀM..." value={props.title} onChange={e => props.setTitle(e.target.value)} />
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b-2 border-slate-50 pb-6">
+                    <div className="flex-1 min-w-0 space-y-1 pr-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest whitespace-nowrap block">
+                            Tiêu đề đề thi
+                        </label>
+                        <input 
+                            type="text" 
+                            className="text-lg md:text-xl lg:text-2xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-300 focus:text-blue-600 transition-colors" 
+                            placeholder="VD: KIỂM TRA CHƯƠNG I ĐẠO HÀM..." 
+                            value={props.title} 
+                            onChange={e => props.setTitle(e.target.value)} 
+                        />
                     </div>
-                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                        <label className="flex items-center gap-2 px-3.5 py-2.5 bg-amber-500 text-white rounded-xl text-[11px] font-black uppercase cursor-pointer hover:bg-amber-600 transition-all shadow-md active:scale-95" title="Nhập trực tiếp file .json (Không tốn lượt AI)">
-                            <FileCode size={15}/> NHẬP TỪ JSON (0% AI)
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {/* Nút mở Thư viện ảnh đề thi */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setGalleryTargetQId(null);
+                                setIsGalleryOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            title="Quản lý và tái sử dụng kho ảnh của đề thi"
+                        >
+                            <ImageLucide size={13}/> Kho ảnh ({uniqueImagesCount})
+                        </button>
+                        <label 
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-amber-600 transition-all shadow-xs active:scale-95 whitespace-nowrap" 
+                            title="Nhập trực tiếp file .json (Không tốn lượt AI)"
+                        >
+                            <FileCode size={13}/> Nhập JSON
                             <input type="file" accept=".json,application/json" className="hidden" onChange={handleJsonFileSelect}/>
                         </label>
                         <button 
                             onClick={props.onCleanLabels}
-                            className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl text-[11px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-95"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
                             title="Xóa bỏ các nhãn A., B., a), b) dư thừa trong nội dung câu hỏi"
                         >
-                            <Zap size={15}/> DỌN DẸP NHÃN
+                            <Zap size={13}/> Dọn nhãn
                         </button>
                         <button 
                             onClick={() => setIsTextInputOpen(true)}
-                            className={`flex items-center gap-2 px-3.5 py-2.5 bg-blue-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-black transition-all shadow-md active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <TypeIcon size={15}/> NHẬP TỪ VĂN BẢN (AI)
+                            <TypeIcon size={13}/> Nhập văn bản (AI)
                         </button>
-                        <label className={`flex items-center gap-2 px-3.5 py-2.5 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-md active:scale-95 ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                            <FileUp size={15}/> NHẬP TỪ PDF (AI)
+                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <FileUp size={13}/> Nhập PDF (AI)
                             <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
                         </label>
                     </div>
@@ -822,9 +970,55 @@ export default function QuizEditor(props: QuizEditorProps) {
                 <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-sm flex items-center justify-center gap-4 hover:bg-black transition-all shadow-2xl active:scale-[0.98] mt-6"><Save size={24}/> LƯU TOÀN BỘ ĐỀ THI VÀO DATABASE</button>
             </div>
 
-            <QuestionSection sectionTitle="PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN" type="mcq" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
-            <QuestionSection sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" type="group-tf" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
-            <QuestionSection sectionTitle="PHẦN III. TRẢ LỜI NGẮN" type="short" questions={props.questions} setQuestions={props.setQuestions} onUploadImage={props.onUploadImage} uploadingId={props.uploadingId} onOpenBank={props.onOpenBank} />
+            <QuestionSection 
+                sectionTitle="PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN" 
+                type="mcq" 
+                questions={props.questions} 
+                setQuestions={props.setQuestions} 
+                onUploadImage={props.onUploadImage} 
+                uploadingId={props.uploadingId} 
+                onOpenBank={props.onOpenBank}
+                onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenBatchForImage={handleOpenBatchForImage}
+                uniqueImagesCount={uniqueImagesCount}
+            />
+            <QuestionSection 
+                sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
+                type="group-tf" 
+                questions={props.questions} 
+                setQuestions={props.setQuestions} 
+                onUploadImage={props.onUploadImage} 
+                uploadingId={props.uploadingId} 
+                onOpenBank={props.onOpenBank}
+                onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenBatchForImage={handleOpenBatchForImage}
+                uniqueImagesCount={uniqueImagesCount}
+            />
+            <QuestionSection 
+                sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
+                type="short" 
+                questions={props.questions} 
+                setQuestions={props.setQuestions} 
+                onUploadImage={props.onUploadImage} 
+                uploadingId={props.uploadingId} 
+                onOpenBank={props.onOpenBank}
+                onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenBatchForImage={handleOpenBatchForImage}
+                uniqueImagesCount={uniqueImagesCount}
+            />
+
+            {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}
+            <QuizImageGalleryModal
+                isOpen={isGalleryOpen}
+                onClose={() => {
+                    setIsGalleryOpen(false);
+                    setGalleryTargetQId(null);
+                }}
+                questions={props.questions}
+                targetQuestionId={galleryTargetQId}
+                onSelectImageForQuestion={handleSelectImageForQuestion}
+                onBatchApplyImage={handleBatchApplyImage}
+            />
         </div>
     );
 }
