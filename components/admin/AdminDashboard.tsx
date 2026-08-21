@@ -17,7 +17,7 @@ import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText }
 import { normalizeFullText } from '../../services/vietnameseFixer';
 import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType, Role, ClassRoom } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
 import { 
   LayoutDashboard, Users, BarChart3, ShieldAlert, Sparkles, FolderTree, 
@@ -137,6 +137,64 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadTabData(activeTab);
   }, [activeTab]);
+
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  // Hỗ trợ cuộn phím Mũi tên lên/xuống, PageUp, PageDown, Space, Home, End khi click vào khoảng trống
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const isInput = active && (
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT' ||
+        (active as HTMLElement).isContentEditable
+      );
+
+      // Nếu người dùng đang gõ trong ô nhập liệu (input, textarea), để phím điều hướng con trỏ bình thường
+      if (isInput) return;
+
+      const scrollContainer = mainScrollRef.current;
+      if (!scrollContainer) return;
+
+      const SCROLL_STEP = 120; // Khoảng cách cuộn mượt mỗi lần bấm phím mũi tên
+      const PAGE_STEP = scrollContainer.clientHeight * 0.85;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        scrollContainer.scrollBy({ top: SCROLL_STEP, behavior: 'smooth' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        scrollContainer.scrollBy({ top: -SCROLL_STEP, behavior: 'smooth' });
+      } else if (e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) {
+        e.preventDefault();
+        scrollContainer.scrollBy({ top: PAGE_STEP, behavior: 'smooth' });
+      } else if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+        e.preventDefault();
+        scrollContainer.scrollBy({ top: -PAGE_STEP, behavior: 'smooth' });
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleMainClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]');
+    if (!isInteractive) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      mainScrollRef.current?.focus();
+    }
+  };
 
   // Quiz Editing
   const [isEditingQuiz, setIsEditingQuiz] = useState(false);
@@ -935,7 +993,12 @@ export default function AdminDashboard() {
         </nav>
       </aside>
 
-      <main className="flex-1 h-screen overflow-y-auto custom-scrollbar bg-slate-50">
+      <main 
+        ref={mainScrollRef}
+        tabIndex={-1}
+        onClick={handleMainClick}
+        className="flex-1 h-screen overflow-y-auto custom-scrollbar bg-slate-50 outline-none focus:outline-none"
+      >
         <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
           {!dbConnected && (
             <div className="mb-8 bg-red-50 border-2 border-red-100 p-8 rounded-[3rem] shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
