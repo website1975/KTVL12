@@ -1,7 +1,13 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Quiz, Result, Grade, Chapter, ClassRoom } from '../../types';
-import { Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, Link as LinkIcon, EyeOff, ShieldCheck, GraduationCap } from 'lucide-react';
+import { 
+  Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, 
+  Link as LinkIcon, EyeOff, ShieldCheck, GraduationCap, Building2, 
+  CheckSquare, Square, Zap, Globe, Clock, FileEdit, AlertTriangle, Check
+} from 'lucide-react';
+import QuickAssignModal from './QuickAssignModal';
+
+export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
 
 interface QuizListProps {
     quizzes: Quiz[];
@@ -11,6 +17,7 @@ interface QuizListProps {
     onEdit: (quiz: Quiz) => void;
     onDelete: (id: string) => void;
     onPreview: (quiz: Quiz) => void;
+    onQuickAssignTarget?: (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => Promise<void>;
     qSearch: string;
     setQSearch: (val: string) => void;
     qGradeFilter: Grade | 'all';
@@ -23,20 +30,117 @@ const PAGE_SIZE = 12;
 
 export default function QuizList({ 
     quizzes, results, chapters, classes = [], onEdit, onDelete, onPreview, 
+    onQuickAssignTarget,
     qSearch, setQSearch, qGradeFilter, setQGradeFilter,
     qChapterFilter, setQChapterFilter
 }: QuizListProps) {
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    const [qStatusFilter, setQStatusFilter] = useState<QuizStatusFilter>('all');
+    const [selectedQuizIds, setSelectedQuizIds] = useState<string[]>([]);
+    
+    // Quick assign modal state
+    const [assignModalQuizzes, setAssignModalQuizzes] = useState<Quiz[]>([]);
+    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
-    const filtered = quizzes.filter(q => 
-        (qGradeFilter === 'all' || q.grade === qGradeFilter) && 
-        (qChapterFilter === 'all' || q.category === qChapterFilter) &&
-        q.title.toLowerCase().includes(qSearch.toLowerCase())
-    ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Tính toán trạng thái của từng đề thi
+    const getQuizState = (q: Quiz) => {
+        const now = new Date();
+        const startX = q.startTime ? new Date(q.startTime) : null;
+        const endY = q.endTime ? new Date(q.endTime) : null;
+        const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+
+        let isStarted = true;
+        let isExpired = false;
+
+        if (q.type === 'test') {
+            if (startX) {
+                if (isFlexibleWindow && endY) {
+                    isStarted = now.getTime() >= startX.getTime();
+                    isExpired = now.getTime() > endY.getTime();
+                } else {
+                    const globalEnd = new Date(startX.getTime() + q.durationMinutes * 60000);
+                    isStarted = now.getTime() >= startX.getTime();
+                    isExpired = now.getTime() > globalEnd.getTime();
+                }
+            }
+        } else {
+            isStarted = true;
+            isExpired = Boolean(endY && now.getTime() > endY.getTime());
+        }
+
+        const isDraft = !q.isPublished;
+        const isActive = q.isPublished && isStarted && !isExpired;
+        const isClassesOnly = q.targetType === 'classes' && Boolean(q.assignedClassIds && q.assignedClassIds.length > 0);
+        const isAllGrade = !q.targetType || q.targetType === 'all' || !q.assignedClassIds || q.assignedClassIds.length === 0;
+
+        return {
+            isDraft,
+            isExpired,
+            isStarted,
+            isActive,
+            isClassesOnly,
+            isAllGrade
+        };
+    };
+
+    // Đếm số lượng theo từng trạng thái để làm badge/pill thống kê
+    const stats = useMemo(() => {
+        let total = quizzes.length;
+        let activeCount = 0;
+        let draftCount = 0;
+        let expiredCount = 0;
+        let classesCount = 0;
+        let allGradeCount = 0;
+
+        quizzes.forEach(q => {
+            const state = getQuizState(q);
+            if (state.isDraft) draftCount++;
+            else if (state.isExpired) expiredCount++;
+            else if (state.isActive) activeCount++;
+
+            if (state.isClassesOnly) classesCount++;
+            else allGradeCount++;
+        });
+
+        return {
+            total,
+            activeCount,
+            draftCount,
+            expiredCount,
+            classesCount,
+            allGradeCount
+        };
+    }, [quizzes]);
+
+    const filtered = useMemo(() => {
+        return quizzes.filter(q => {
+            const matchGrade = qGradeFilter === 'all' || q.grade === qGradeFilter;
+            const matchChapter = qChapterFilter === 'all' || q.category === qChapterFilter;
+            const matchSearch = q.title.toLowerCase().includes(qSearch.toLowerCase());
+
+            const state = getQuizState(q);
+            let matchStatus = true;
+            if (qStatusFilter === 'active') {
+                matchStatus = state.isActive;
+            } else if (qStatusFilter === 'draft') {
+                matchStatus = state.isDraft;
+            } else if (qStatusFilter === 'expired') {
+                matchStatus = q.isPublished && state.isExpired;
+            } else if (qStatusFilter === 'classes') {
+                matchStatus = state.isClassesOnly;
+            } else if (qStatusFilter === 'all_grade') {
+                matchStatus = state.isAllGrade;
+            } else if (qStatusFilter === 'unlisted') {
+                matchStatus = q.isPublished && Boolean(q.isUnlisted);
+            }
+
+            return matchGrade && matchChapter && matchSearch && matchStatus;
+        }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [quizzes, qGradeFilter, qChapterFilter, qSearch, qStatusFilter]);
 
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
-    }, [qSearch, qGradeFilter, qChapterFilter]);
+    }, [qSearch, qGradeFilter, qChapterFilter, qStatusFilter]);
 
     const visibleQuizzes = filtered.slice(0, visibleCount);
     const relevantChapters = chapters.filter(c => qGradeFilter === 'all' || String(c.grade) === String(qGradeFilter));
@@ -48,77 +152,190 @@ export default function QuizList({
         });
     };
 
+    // Toggle chọn 1 đề thi
+    const toggleSelectQuiz = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedQuizIds(prev => 
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    // Chọn tất cả đề thi đang hiển thị
+    const handleSelectAllVisible = () => {
+        const visibleIds = visibleQuizzes.map(q => q.id);
+        const allSelected = visibleIds.every(id => selectedQuizIds.includes(id));
+        if (allSelected) {
+            setSelectedQuizIds(prev => prev.filter(id => !visibleIds.includes(id)));
+        } else {
+            setSelectedQuizIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+        }
+    };
+
+    // Mở modal gán nhanh cho 1 đề
+    const openQuickAssignSingle = (quiz: Quiz, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setAssignModalQuizzes([quiz]);
+        setIsAssignModalOpen(true);
+    };
+
+    // Mở modal gán nhanh cho các đề đã chọn
+    const openQuickAssignBatch = () => {
+        const selected = quizzes.filter(q => selectedQuizIds.includes(q.id));
+        if (selected.length === 0) return;
+        setAssignModalQuizzes(selected);
+        setIsAssignModalOpen(true);
+    };
+
+    const handleSaveQuickAssign = async (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => {
+        if (onQuickAssignTarget) {
+            await onQuickAssignTarget(quizIds, targetType, assignedClassIds);
+            setSelectedQuizIds([]);
+        }
+    };
+
     return (
-        <div className="space-y-8 animate-fade-in">
-            <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-6 rounded-[2rem] border shadow-sm">
-                <div className="flex-1 w-full relative">
-                    <input 
-                        className="w-full p-4 bg-slate-50 border rounded-2xl outline-none text-xs font-bold pl-10" 
-                        placeholder="Tìm tên đề thi..." 
-                        value={qSearch} 
-                        onChange={e => setQSearch(e.target.value)} 
-                    />
-                    <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14}/>
+        <div className="space-y-6 animate-fade-in">
+            {/* Filter Bar */}
+            <div className="space-y-4 bg-white p-6 rounded-[2rem] border shadow-sm">
+                <div className="flex flex-col lg:flex-row gap-4 items-center">
+                    <div className="flex-1 w-full relative">
+                        <input 
+                            className="w-full p-4 bg-slate-50 border rounded-2xl outline-none text-xs font-bold pl-10" 
+                            placeholder="Tìm tên đề thi..." 
+                            value={qSearch} 
+                            onChange={e => setQSearch(e.target.value)} 
+                        />
+                        <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14}/>
+                    </div>
+                    <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full lg:w-auto">
+                        <select 
+                            className="flex-1 lg:w-36 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
+                            value={qGradeFilter} 
+                            onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}
+                        >
+                            <option value="all">TẤT CẢ KHỐI</option>
+                            <option value="12">KHỐI 12</option>
+                            <option value="11">KHỐI 11</option>
+                            <option value="10">KHỐI 10</option>
+                        </select>
+                        <select 
+                            className="flex-1 lg:w-48 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
+                            value={qChapterFilter} 
+                            onChange={e => setQChapterFilter(e.target.value)}
+                        >
+                            <option value="all">TẤT CẢ CHƯƠNG</option>
+                            {relevantChapters.map(c => (
+                                <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
+                            ))}
+                        </select>
+                        <select 
+                            className="flex-1 lg:w-48 px-4 py-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-[10px] font-black uppercase outline-none" 
+                            value={qStatusFilter} 
+                            onChange={e => setQStatusFilter(e.target.value as QuizStatusFilter)}
+                        >
+                            <option value="all">TẤT CẢ TRẠNG THÁI ({stats.total})</option>
+                            <option value="active">🟢 ĐANG HOẠT ĐỘNG ({stats.activeCount})</option>
+                            <option value="draft">⚪ BẢN NHÁP / ĐÓNG ({stats.draftCount})</option>
+                            <option value="expired">🟡 ĐÃ HẾT HẠN ({stats.expiredCount})</option>
+                            <option value="classes">🏫 GIAO THEO LỚP ({stats.classesCount})</option>
+                            <option value="all_grade">🌐 TOÀN KHỐI ({stats.allGradeCount})</option>
+                            <option value="unlisted">🔒 LINK RIÊNG TƯ</option>
+                        </select>
+                    </div>
                 </div>
-                <div className="flex gap-3 w-full lg:w-auto">
-                    <select 
-                        className="flex-1 lg:w-40 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
-                        value={qGradeFilter} 
-                        onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}
-                    >
-                        <option value="all">TẤT CẢ KHỐI</option>
-                        <option value="12">KHỐI 12</option>
-                        <option value="11">KHỐI 11</option>
-                        <option value="10">KHỐI 10</option>
-                    </select>
-                    <select 
-                        className="flex-1 lg:w-56 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
-                        value={qChapterFilter} 
-                        onChange={e => setQChapterFilter(e.target.value)}
-                    >
-                        <option value="all">TẤT CẢ CHƯƠNG</option>
-                        {relevantChapters.map(c => (
-                            <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
-                        ))}
-                    </select>
+
+                {/* Quick Status Chips */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar pt-2 border-t border-slate-100">
+                    <span className="text-[9px] font-black uppercase text-slate-400 shrink-0 mr-1">Lọc nhanh:</span>
+                    {[
+                        { id: 'all', label: `Tất cả (${stats.total})`, color: 'slate' },
+                        { id: 'active', label: `🟢 Đang mở (${stats.activeCount})`, color: 'emerald' },
+                        { id: 'draft', label: `⚪ Bản nháp (${stats.draftCount})`, color: 'slate' },
+                        { id: 'expired', label: `🟡 Hết hạn (${stats.expiredCount})`, color: 'amber' },
+                        { id: 'classes', label: `🏫 Theo lớp (${stats.classesCount})`, color: 'indigo' },
+                        { id: 'all_grade', label: `🌐 Toàn khối (${stats.allGradeCount})`, color: 'blue' },
+                    ].map(chip => (
+                        <button
+                            key={chip.id}
+                            onClick={() => setQStatusFilter(chip.id as QuizStatusFilter)}
+                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap shrink-0 border ${
+                                qStatusFilter === chip.id
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
+                            }`}
+                        >
+                            {chip.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
+            {/* Bulk Selection Action Bar */}
+            {selectedQuizIds.length > 0 && (
+                <div className="bg-indigo-900 text-white p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-4 animate-scale-up">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-700 flex items-center justify-center font-black text-xs">
+                            {selectedQuizIds.length}
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-black uppercase tracking-tight">
+                                Đã chọn {selectedQuizIds.length} đề thi
+                            </h4>
+                            <p className="text-[10px] text-indigo-300 font-bold">
+                                Chuyển nhanh vào phòng tạm hoặc gán lớp học chỉ định
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={openQuickAssignBatch}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-white text-indigo-900 hover:bg-indigo-50 rounded-xl font-black uppercase text-[10px] shadow-sm transition-all"
+                        >
+                            <Zap size={14} className="text-amber-500" />
+                            <span>Gán Phòng Cho {selectedQuizIds.length} Đề</span>
+                        </button>
+                        <button
+                            onClick={() => setSelectedQuizIds([])}
+                            className="px-3 py-2.5 bg-indigo-800/80 hover:bg-indigo-800 text-indigo-200 rounded-xl font-black uppercase text-[10px] transition-all"
+                        >
+                            Bỏ chọn
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Select All Bar */}
+            {filtered.length > 0 && (
+                <div className="flex justify-between items-center px-2">
+                    <button
+                        onClick={handleSelectAllVisible}
+                        className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 hover:text-slate-900 transition-colors"
+                    >
+                        {visibleQuizzes.every(q => selectedQuizIds.includes(q.id)) ? (
+                            <CheckSquare size={16} className="text-blue-600" />
+                        ) : (
+                            <Square size={16} className="text-slate-400" />
+                        )}
+                        <span>Chọn tất cả {visibleQuizzes.length} đề trên trang</span>
+                    </button>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        Hiển thị {visibleQuizzes.length} / {filtered.length} đề thi
+                    </span>
+                </div>
+            )}
+
+            {/* Quiz Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {visibleQuizzes.map(q => {
-                    const count = (q as any).questionCount || 0;
-                    const attempts = (q as any).attemptCount || 0;
-                    
-                    const now = new Date();
-                    const startX = q.startTime ? new Date(q.startTime) : null;
-                    const endY = q.endTime ? new Date(q.endTime) : null;
-                    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
-
-                    let isStarted = true;
-                    let isExpired = false;
-
-                    if (q.type === 'test') {
-                        if (startX) {
-                            if (isFlexibleWindow && endY) {
-                                isStarted = now.getTime() >= startX.getTime();
-                                isExpired = now.getTime() > endY.getTime();
-                            } else {
-                                const globalEnd = new Date(startX.getTime() + q.durationMinutes * 60000);
-                                isStarted = now.getTime() >= startX.getTime();
-                                isExpired = now.getTime() > globalEnd.getTime();
-                            }
-                        }
-                    } else {
-                        isStarted = true;
-                        isExpired = Boolean(endY && now.getTime() > endY.getTime());
-                    }
-                    const isActive = isStarted && !isExpired;
+                    const isSelected = selectedQuizIds.includes(q.id);
+                    const state = getQuizState(q);
                     
                     let cardStyle = "";
                     if (!q.isPublished) {
-                        cardStyle = "bg-slate-50 border-dashed border-slate-300 opacity-75";
-                    } else if (isExpired) {
-                        cardStyle = "bg-amber-50/50 border-b-amber-500 border-amber-200 shadow-sm";
+                        cardStyle = "bg-slate-50 border-dashed border-slate-300 opacity-80";
+                    } else if (state.isExpired) {
+                        cardStyle = "bg-amber-50/40 border-b-amber-500 border-amber-200 shadow-sm";
                     } else if (q.isUnlisted) {
                         cardStyle = "bg-indigo-50/30 border-b-indigo-500 border-indigo-100 shadow-sm";
                     } else {
@@ -128,61 +345,117 @@ export default function QuizList({
                     return (
                         <div 
                             key={q.id} 
-                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${cardStyle}`}
+                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${cardStyle} ${
+                                isSelected ? 'ring-2 ring-indigo-600 ring-offset-2' : ''
+                            }`}
                         >
+                            {/* Selection Checkbox (Top Left) */}
                             <div className="flex justify-between items-start mb-4">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight w-fit ${q.isPublished ? (isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600')) : 'bg-slate-200 text-slate-500'}`}>
-                                            KHỐI {q.grade}
-                                        </span>
-                                        {q.targetType === 'classes' && q.assignedClassIds && q.assignedClassIds.length > 0 && (
-                                            <span className="px-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                                <GraduationCap size={11}/>
-                                                {(() => {
-                                                    const assignedNames = q.assignedClassIds.map(id => {
-                                                        const found = classes?.find(c => c.id === id);
-                                                        return found ? `${found.name} (${found.academicYear})` : id;
-                                                    });
-                                                    if (assignedNames.length === 1) return `Lớp ${assignedNames[0]}`;
-                                                    return `Giao ${assignedNames.length} lớp`;
-                                                })()}
-                                            </span>
-                                        )}
-                                        {q.isPublished && (
-                                            isExpired ? (
-                                                <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                                    HẾT HẠN
-                                                </span>
-                                            ) : (
-                                                <span className={`px-2 py-1 bg-white border ${isActive ? 'border-emerald-200 text-emerald-600' : 'border-amber-200 text-amber-600'} rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm`}>
-                                                    {isActive ? 'ĐANG MỞ' : 'CHƯA ĐẾN GIỜ'}
-                                                </span>
-                                            )
-                                        )}
-                                        {q.isPublished && q.isUnlisted && (
-                                            <span className="px-2 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                                <EyeOff size={10}/> RIÊNG TƯ
-                                            </span>
-                                        )}
-                                        {q.isMonitored && (
-                                            <span className="p-1 bg-red-50 text-red-500 rounded-md" title="Có giám sát">
-                                                <ShieldCheck size={10}/>
-                                            </span>
-                                        )}
-                                    </div>
-                                    {q.category && <span className={`text-[8px] font-bold uppercase truncate max-w-[120px] ${q.isPublished ? 'text-slate-400' : 'text-slate-400'}`}>{q.category}</span>}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={(e) => toggleSelectQuiz(q.id, e)}
+                                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                            isSelected 
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
+                                                : 'border-slate-300 bg-white/80 hover:border-slate-400'
+                                        }`}
+                                        title="Chọn đề để gán phòng hàng loạt"
+                                    >
+                                        {isSelected && <Check size={14} strokeWidth={3} />}
+                                    </button>
+
+                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight ${
+                                        q.isPublished 
+                                            ? (state.isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600')) 
+                                            : 'bg-slate-200 text-slate-500'
+                                    }`}>
+                                        KHỐI {q.grade}
+                                    </span>
                                 </div>
+
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
                                     {q.isUnlisted && (
                                         <button onClick={() => copyQuizLink(q.id)} className="p-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg hover:bg-black shadow-lg transition-colors" title="Copy Link Riêng Tư">
                                             <LinkIcon size={14}/>
                                         </button>
                                     )}
+                                    <button 
+                                        onClick={(e) => openQuickAssignSingle(q, e)} 
+                                        className="p-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white shadow-sm transition-colors" 
+                                        title="Gán phòng / lớp nhanh"
+                                    >
+                                        <Building2 size={14}/>
+                                    </button>
                                     <button onClick={() => onEdit(q)} className="p-2 bg-white border rounded-lg hover:bg-slate-900 hover:text-white shadow-sm transition-colors" title="Sửa đề"><Edit size={14}/></button>
                                     <button onClick={() => onDelete(q.id)} className="p-2 bg-red-50 border border-red-100 rounded-lg hover:bg-red-500 hover:text-white shadow-sm transition-colors" title="Xóa đề"><Trash2 size={14}/></button>
                                 </div>
                             </div>
+
+                            {/* Status & Room Badges */}
+                            <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                                {/* Room / Target Badge (Clickable for quick assign) */}
+                                {q.targetType === 'classes' && q.assignedClassIds && q.assignedClassIds.length > 0 ? (
+                                    <button
+                                        onClick={(e) => openQuickAssignSingle(q, e)}
+                                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors"
+                                        title="Nhấp để đổi phòng/lớp"
+                                    >
+                                        <GraduationCap size={11} className="text-indigo-600"/>
+                                        {(() => {
+                                            const assignedNames = q.assignedClassIds.map(id => {
+                                                const found = classes?.find(c => c.id === id);
+                                                return found ? `${found.name}` : id;
+                                            });
+                                            if (assignedNames.length === 1) return `Lớp ${assignedNames[0]}`;
+                                            return `${assignedNames.length} Phòng`;
+                                        })()}
+                                        <Zap size={9} className="text-amber-500 ml-0.5" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={(e) => openQuickAssignSingle(q, e)}
+                                        className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 border border-slate-200 text-slate-600 hover:text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors"
+                                        title="Đang mở toàn khối. Nhấp để gán vào phòng/lớp riêng"
+                                    >
+                                        <Globe size={11}/> Toàn Khối
+                                    </button>
+                                )}
+
+                                {/* Published / Active Status Badge */}
+                                {q.isPublished ? (
+                                    state.isExpired ? (
+                                        <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                            HẾT HẠN
+                                        </span>
+                                    ) : (
+                                        <span className={`px-2 py-1 bg-white border ${state.isActive ? 'border-emerald-200 text-emerald-600' : 'border-amber-200 text-amber-600'} rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm`}>
+                                            {state.isActive ? 'ĐANG MỞ' : 'CHƯA ĐẾN GIỜ'}
+                                        </span>
+                                    )
+                                ) : (
+                                    <span className="px-2 py-1 bg-white border border-slate-300 text-slate-500 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                        BẢN NHÁP
+                                    </span>
+                                )}
+
+                                {q.isPublished && q.isUnlisted && (
+                                    <span className="px-2 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                        <EyeOff size={10}/> RIÊNG TƯ
+                                    </span>
+                                )}
+
+                                {q.isMonitored && (
+                                    <span className="p-1 bg-red-50 text-red-500 rounded-md" title="Có giám sát">
+                                        <ShieldCheck size={10}/>
+                                    </span>
+                                )}
+                            </div>
+
+                            {q.category && (
+                                <span className="text-[8px] font-bold uppercase truncate text-slate-400 mb-1">
+                                    {q.category}
+                                </span>
+                            )}
                             
                             <h3 className={`font-black text-sm mb-4 line-clamp-2 min-h-[40px] leading-tight uppercase transition-colors ${q.isPublished ? 'text-slate-800' : 'text-slate-500'}`}>
                                 {q.title}
@@ -201,14 +474,21 @@ export default function QuizList({
                                 </div>
                             </div>
 
-                            <div className="mt-auto">
+                            <div className="mt-auto flex gap-2">
                                 <button 
                                     onClick={() => onPreview(q)} 
-                                    className={`w-full py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${q.isPublished 
+                                    className={`flex-1 py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${q.isPublished 
                                         ? (q.isUnlisted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-blue-600 text-white hover:bg-blue-700') 
                                         : 'bg-slate-800 text-white hover:bg-black'}`}
                                 >
                                     <Eye size={14}/> Xem & Xuất Word
+                                </button>
+                                <button
+                                    onClick={(e) => openQuickAssignSingle(q, e)}
+                                    className="px-3 py-3 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 text-[9px] font-black uppercase flex items-center justify-center transition-all"
+                                    title="Gán phòng nhanh"
+                                >
+                                    <Building2 size={14} />
                                 </button>
                             </div>
                         </div>
@@ -228,7 +508,23 @@ export default function QuizList({
             )}
             
             {filtered.length === 0 && (
-                <div className="py-20 text-center text-slate-300 font-black uppercase text-[10px] italic tracking-widest">Không tìm thấy đề thi nào</div>
+                <div className="py-20 text-center text-slate-300 font-black uppercase text-[10px] italic tracking-widest">
+                    Không tìm thấy đề thi nào phù hợp với bộ lọc
+                </div>
+            )}
+
+            {/* Quick Assign Modal */}
+            {isAssignModalOpen && (
+                <QuickAssignModal
+                    isOpen={isAssignModalOpen}
+                    onClose={() => {
+                        setIsAssignModalOpen(false);
+                        setAssignModalQuizzes([]);
+                    }}
+                    targetQuizzes={assignModalQuizzes}
+                    classes={classes}
+                    onSave={handleSaveQuickAssign}
+                />
             )}
         </div>
     );
