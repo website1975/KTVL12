@@ -9,7 +9,9 @@ import {
   clearLocalCache,
   isDatabaseConnected,
   syncAllQuizzesMetadata,
-  syncQuizzesToBank
+  syncQuizzesToBank,
+  updateQuizTarget,
+  batchUpdateQuizTarget
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { normalizeFullText } from '../../services/vietnameseFixer';
@@ -492,6 +494,30 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleQuickAssignTarget = async (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => {
+    try {
+      if (quizIds.length === 1) {
+        await updateQuizTarget(quizIds[0], targetType, assignedClassIds);
+      } else {
+        await batchUpdateQuizTarget(quizIds, targetType, assignedClassIds);
+      }
+      // Cập nhật ngay trên state local để phản hồi tức thì
+      setQuizzes(prev => prev.map(q => {
+        if (quizIds.includes(q.id)) {
+          return {
+            ...q,
+            targetType,
+            assignedClassIds: targetType === 'classes' ? assignedClassIds : []
+          };
+        }
+        return q;
+      }));
+      alert(`Đã cập nhật phân quyền phòng/lớp cho ${quizIds.length} đề thi thành công!`);
+    } catch (error: any) {
+      alert("Lỗi khi cập nhật phân quyền: " + (error.message || "Không xác định"));
+    }
+  };
+
   const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -883,7 +909,7 @@ export default function AdminDashboard() {
       <aside className="w-16 lg:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all">
         <div className="p-4 lg:p-8 border-b border-white/10 text-center lg:text-left">
           <h2 className="text-xl font-black uppercase tracking-tighter italic">
-            <span className="hidden lg:inline">TNMenu <span className="text-blue-500">_U60</span></span>
+            <span className="hidden lg:inline">TNMenu<span className="text-blue-500">_U60</span></span>
             <span className="lg:hidden text-blue-500">EQ</span>
           </h2>
         </div>
@@ -986,6 +1012,7 @@ export default function AdminDashboard() {
                     <QuizList 
                         quizzes={quizzes} results={results} chapters={chapters} classes={classes}
                         onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
+                        onQuickAssignTarget={handleQuickAssignTarget}
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                         qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
                     />
