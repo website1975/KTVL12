@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock } from 'lucide-react';
+import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock, Bookmark } from 'lucide-react';
 import { Result, Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
 import { isAfter, addMinutes } from 'date-fns';
@@ -70,6 +70,19 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
                     <div className="absolute top-8 right-8 flex items-center gap-2">
                         {isPartial && <span className="bg-amber-100 text-amber-600 text-[8px] font-black px-2 py-1 rounded-md uppercase">Đúng một phần</span>}
                         {isCorrect ? <CheckCircle2 className="text-emerald-500" size={32}/> : (isPartial ? <HelpCircle className="text-amber-500" size={32}/> : <XCircle className="text-red-500" size={32}/>)}
+                    </div>
+                )}
+
+                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
+                {q.context && (
+                    <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
+                        <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
+                            <Bookmark size={16} className="text-amber-600" />
+                            <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                        </div>
+                        <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
+                            <LatexText text={q.context} />
+                        </div>
                     </div>
                 )}
 
