@@ -47,6 +47,7 @@ export interface Question {
   id: string;
   bankOriginId?: string; // ID gốc của câu hỏi trong Ngân hàng (nếu được lấy từ Ngân hàng)
   type: QuestionType;
+  context?: string; // Lời dẫn / Dữ liệu dùng chung cho chùm câu hỏi (VD: "Dữ liệu dùng chung cho câu 3 và câu 4...")
   text: string;
   points: number | string;
   level?: QuestionLevel;
