@@ -525,6 +525,27 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                     pageBreakInside: 'avoid' 
                                                 }}
                                             >
+                                                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
+                                                {q.context && (
+                                                    <div 
+                                                        className="q-context-block" 
+                                                        style={{ 
+                                                            backgroundColor: '#fefce8', 
+                                                            border: '1pt solid #fef08a', 
+                                                            borderLeft: '3pt solid #ca8a04', 
+                                                            padding: '4pt 8pt', 
+                                                            margin: '4pt 0 6pt 0', 
+                                                            fontStyle: 'italic', 
+                                                            fontSize: '11pt', 
+                                                            color: '#713f12', 
+                                                            lineHeight: '1.3' 
+                                                        }}
+                                                    >
+                                                        <b style={{ fontStyle: 'normal', color: '#854d0e', marginRight: '4px' }}>Lời dẫn / Dữ liệu dùng chung:</b>
+                                                        <LatexText text={q.context}/>
+                                                    </div>
+                                                )}
+
                                                 {/* Tiêu đề câu và nội dung trên cùng 1 đoạn văn (KHÔNG dùng flex/nested block) */}
                                                 <p 
                                                     className="question-title" 
