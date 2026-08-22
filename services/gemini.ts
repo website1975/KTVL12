@@ -125,6 +125,7 @@ const processAIQuestions = (rawData: any[]): Question[] => {
             ...item,
             type,
             id: uuidv4(),
+            context: item.context ? String(item.context).trim() : undefined,
             text: cleanedText,
             level: finalLevel,
             points: item.points || (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5),
@@ -483,23 +484,17 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
             }
         }
 
-        // Question text: hợp nhất context (ngữ cảnh/đoạn văn) + câu hỏi
-        let rawText = '';
-        const contextStr = q.context || q.doan_van || q.bai_doc || '';
+        // Question context & text:
+        const contextStr = q.context || q.loi_dan || q.dan_nhap || q.doan_van || q.bai_doc || '';
         const mainTextStr = q.text || q.question || q.content || q.cau_hoi || q.title || '';
-
-        if (contextStr && mainTextStr) {
-            rawText = `${contextStr}\n${mainTextStr}`;
-        } else {
-            rawText = mainTextStr || contextStr || '';
-        }
 
         const rawSolution = q.solution || q.explanation || q.loi_giai || q.huong_dan_giai || q.guide || '';
 
         return {
             ...q,
             type,
-            text: rawText.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
+            context: contextStr ? contextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$') : undefined,
+            text: mainTextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
             options: type === 'mcq' ? options : undefined,
             correctAnswer: typeof correctAnswer === 'string' ? correctAnswer.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$') : String(correctAnswer),
             solution: rawSolution.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
