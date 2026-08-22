@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 import { parseQuestionsFromJSON } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
+import LatexHelperModal from './LatexHelperModal';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -75,6 +76,7 @@ interface QuestionSectionProps {
     onOpenGalleryForQuestion?: (qId: string) => void;
     onOpenBatchForImage?: (imageUrl: string) => void;
     uniqueImagesCount?: number;
+    onOpenLatexHelper?: (qId: string, qLabel?: string) => void;
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -87,7 +89,8 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onOpenBank,
     onOpenGalleryForQuestion,
     onOpenBatchForImage,
-    uniqueImagesCount = 0
+    uniqueImagesCount = 0,
+    onOpenLatexHelper
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
@@ -222,7 +225,19 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nội dung đề (LaTeX: $...$)</label>
+                            <div className="flex items-center justify-between ml-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Nội dung đề (LaTeX: $...$)</label>
+                                {onOpenLatexHelper && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenLatexHelper(q.id, `Câu ${idx + 1}`)}
+                                        className="flex items-center gap-1 text-[10px] font-black text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 px-2 py-0.5 rounded-lg border border-blue-200 transition-all shadow-xs"
+                                        title="Mở bảng hỗ trợ chèn công thức Toán & ký hiệu LaTeX"
+                                    >
+                                        <Sparkles size={11} /> Hỗ trợ LaTeX
+                                    </button>
+                                )}
+                            </div>
                             <textarea className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-sm font-bold outline-none min-h-[120px] focus:border-blue-300 transition-colors" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="VD: Tìm $x$ biết $x^2 = 4$..." />
                         </div>
                         <div className="space-y-2">
@@ -407,6 +422,11 @@ export default function QuizEditor(props: QuizEditorProps) {
     const [pastedText, setPastedText] = useState('');
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [galleryTargetQId, setGalleryTargetQId] = useState<string | null>(null);
+    const [isLatexHelperOpen, setIsLatexHelperOpen] = useState(false);
+    const [latexTargetQId, setLatexTargetQId] = useState<string | null>(null);
+    const [latexTargetLabel, setLatexTargetLabel] = useState<string | null>(null);
+
+    const [latexInitialCode, setLatexInitialCode] = useState<string>('');
 
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
     const relevantChapters = props.chapters.filter(c => String(c.grade) === String(props.grade));
@@ -448,6 +468,28 @@ export default function QuizEditor(props: QuizEditorProps) {
     const handleOpenBatchForImage = (imageUrl: string) => {
         setGalleryTargetQId(null);
         setIsGalleryOpen(true);
+    };
+
+    const handleOpenLatexHelper = (qId?: string, qLabel?: string) => {
+        setLatexTargetQId(qId || null);
+        setLatexTargetLabel(qLabel || (qId ? 'Câu hỏi' : null));
+        if (qId) {
+            const foundQ = props.questions.find(q => q.id === qId);
+            setLatexInitialCode(foundQ?.text || '');
+        } else {
+            setLatexInitialCode('$\\dfrac{a}{b}$');
+        }
+        setIsLatexHelperOpen(true);
+    };
+
+    const handleInsertLatexSnippet = (code: string) => {
+        if (!latexTargetQId) return;
+        const nl = [...props.questions];
+        const i = nl.findIndex(x => x.id === latexTargetQId);
+        if (i !== -1) {
+            nl[i].text = code;
+            props.setQuestions(nl);
+        }
     };
 
     const handleConfirmTextExtract = () => {
@@ -579,6 +621,15 @@ export default function QuizEditor(props: QuizEditorProps) {
                             title="Quản lý và tái sử dụng kho ảnh của đề thi"
                         >
                             <ImageLucide size={13}/> Kho ảnh ({uniqueImagesCount})
+                        </button>
+                        {/* Nút mở Bảng hỗ trợ công thức Toán & LaTeX */}
+                        <button
+                            type="button"
+                            onClick={() => handleOpenLatexHelper()}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-lg text-[10px] font-black uppercase hover:bg-cyan-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            title="Tra cứu nhanh và chèn công thức Toán, tích phân, phân số, ký hiệu LaTeX"
+                        >
+                            <Sparkles size={13}/> Hỗ trợ LaTeX
                         </button>
                         <label 
                             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-amber-600 transition-all shadow-xs active:scale-95 whitespace-nowrap" 
@@ -981,6 +1032,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
+                onOpenLatexHelper={handleOpenLatexHelper}
             />
             <QuestionSection 
                 sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
@@ -993,6 +1045,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
+                onOpenLatexHelper={handleOpenLatexHelper}
             />
             <QuestionSection 
                 sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
@@ -1005,6 +1058,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
+                onOpenLatexHelper={handleOpenLatexHelper}
             />
 
             {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}
@@ -1018,6 +1072,20 @@ export default function QuizEditor(props: QuizEditorProps) {
                 targetQuestionId={galleryTargetQId}
                 onSelectImageForQuestion={handleSelectImageForQuestion}
                 onBatchApplyImage={handleBatchApplyImage}
+            />
+
+            {/* Modal Hỗ trợ công thức Toán & Ký hiệu LaTeX */}
+            <LatexHelperModal
+                isOpen={isLatexHelperOpen}
+                onClose={() => {
+                    setIsLatexHelperOpen(false);
+                    setLatexTargetQId(null);
+                    setLatexTargetLabel(null);
+                    setLatexInitialCode('');
+                }}
+                onInsertCode={latexTargetQId ? handleInsertLatexSnippet : undefined}
+                targetQuestionLabel={latexTargetLabel}
+                initialCode={latexInitialCode}
             />
         </div>
     );
