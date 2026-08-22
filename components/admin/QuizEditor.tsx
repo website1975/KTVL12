@@ -13,7 +13,7 @@ import LatexText from '../LatexText';
 import { parseQuestionsFromJSON } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
-import mammoth from 'mammoth';
+import { extractTextFromDocx } from '../../services/docxExtractor';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -606,8 +606,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 const arrayBuffer = event.target?.result as ArrayBuffer;
                 if (!arrayBuffer) return;
                 try {
-                    const result = await mammoth.extractRawText({ arrayBuffer });
-                    const extractedText = result.value;
+                    const extractedText = await extractTextFromDocx(arrayBuffer);
                     if (!extractedText || !extractedText.trim()) {
                         alert("Không thể đọc được văn bản trong file Word này. Vui lòng kiểm tra lại nội dung file.");
                         return;
