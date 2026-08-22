@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession, verifyResultExists } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck } from 'lucide-react';
+import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark } from 'lucide-react';
 import LatexText from './LatexText';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
@@ -374,6 +374,19 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             <div className="max-w-7xl w-full mx-auto space-y-12 pb-20 px-4">
                 {orderedQuestions.map((q, idx) => (
                     <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
+                        {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
+                        {q.context && (
+                            <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
+                                <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
+                                    <Bookmark size={16} className="text-amber-600" />
+                                    <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                                </div>
+                                <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
+                                    <LatexText text={q.context} />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="flex items-start gap-4 mb-6">
                             <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {idx + 1}.</span>
                             <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
