@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, Question, User, ExamSession } from '../types';
-import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, HelpCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, HelpCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen, Bookmark } from 'lucide-react';
 import LatexText from './LatexText';
 import { saveExamSession, deleteExamSession } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -168,7 +168,18 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
 
           <div className="flex-1 p-6 flex flex-col items-center justify-start text-center pt-10 overflow-y-auto custom-scrollbar">
             {showContent ? (
-              <div className="space-y-6 animate-fade-in w-full">
+              <div className="space-y-6 animate-fade-in w-full text-left">
+                {currentQuestion.context && (
+                  <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl">
+                    <div className="flex items-center gap-1.5 text-amber-800 font-black text-xs uppercase mb-1">
+                      <Bookmark size={14} className="text-amber-600"/>
+                      <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                    </div>
+                    <div className="text-slate-700 text-sm font-medium leading-relaxed">
+                      <LatexText text={currentQuestion.context}/>
+                    </div>
+                  </div>
+                )}
                 <div className="text-lg font-medium text-slate-700 leading-snug px-2">
                   <LatexText text={currentQuestion.text} />
                 </div>
