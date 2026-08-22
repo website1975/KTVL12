@@ -13,6 +13,7 @@ import LatexText from '../LatexText';
 import { parseQuestionsFromJSON } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
+import mammoth from 'mammoth';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -596,6 +597,34 @@ export default function QuizEditor(props: QuizEditorProps) {
         e.target.value = '';
     };
 
+    const handleDocxFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const arrayBuffer = event.target?.result as ArrayBuffer;
+                if (!arrayBuffer) return;
+                try {
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    const extractedText = result.value;
+                    if (!extractedText || !extractedText.trim()) {
+                        alert("Không thể đọc được văn bản trong file Word này. Vui lòng kiểm tra lại nội dung file.");
+                        return;
+                    }
+                    // Tự động chuyển văn bản vừa trích xuất từ DOCX cho AI bóc tách
+                    props.onTextExtract(extractedText);
+                } catch (err: any) {
+                    alert("Lỗi khi đọc file Word (.docx): " + (err.message || "Định dạng không được hỗ trợ"));
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } catch (err: any) {
+            alert("Lỗi tải file Word: " + err.message);
+        }
+        e.target.value = '';
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in relative">
             {props.isAiLoading && (
@@ -705,6 +734,10 @@ export default function QuizEditor(props: QuizEditorProps) {
                         >
                             <TypeIcon size={13}/> Nhập văn bản (AI)
                         </button>
+                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-blue-800 transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title="Nhập trực tiếp từ file Word (.docx)">
+                            <FileText size={13}/> Nhập DOCX (AI)
+                            <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" disabled={props.isAiLoading} onChange={handleDocxFileSelect}/>
+                        </label>
                         <label className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                             <FileUp size={13}/> Nhập PDF (AI)
                             <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
