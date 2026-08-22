@@ -6,7 +6,7 @@ import {
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
-  Link2, Layers, Image as ImageLucide
+  Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
@@ -220,6 +220,60 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                         <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-2xl border-2 border-blue-100 ml-auto">
                             <TargetIcon size={14} className="text-blue-500" />
                             <input type="text" className="bg-transparent text-sm font-black text-blue-700 outline-none w-14 text-center" value={q.points} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].points = e.target.value; setQuestions(nl); }} />
+                        </div>
+                    </div>
+
+                    {/* MỤC LỜI DẪN / DỮ LIỆU DÙNG CHUNG CHO CHÙM CÂU HỎI */}
+                    <div className="mb-6 bg-amber-50/60 border-2 border-amber-200/80 rounded-[2rem] p-5">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <Bookmark size={15} className="text-amber-600 shrink-0"/>
+                                <label className="text-[11px] font-black text-amber-900 uppercase tracking-tight">
+                                    Lời dẫn / Dữ liệu dùng chung (Tùy chọn)
+                                </label>
+                                <span className="text-[9px] text-amber-700/80 font-bold hidden sm:inline">
+                                    — Dùng khi có đoạn văn/bảng số liệu chung cho nhiều câu
+                                </span>
+                            </div>
+                            {q.context && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const nl = [...questions];
+                                        const i = nl.findIndex(x => x.id === q.id);
+                                        nl[i].context = undefined;
+                                        setQuestions(nl);
+                                    }}
+                                    className="text-[9px] font-black text-amber-700 hover:text-red-600 uppercase px-2 py-0.5 rounded-lg hover:bg-amber-100/50 transition-colors"
+                                >
+                                    Xóa lời dẫn
+                                </button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                                <textarea
+                                    className="w-full p-4 bg-white border border-amber-200 rounded-2xl text-xs font-semibold text-slate-800 outline-none min-h-[60px] focus:border-amber-400 transition-colors"
+                                    value={q.context || ''}
+                                    onChange={e => {
+                                        const nl = [...questions];
+                                        const i = nl.findIndex(x => x.id === q.id);
+                                        nl[i].context = e.target.value || undefined;
+                                        setQuestions(nl);
+                                    }}
+                                    placeholder="VD: Dữ liệu dùng chung cho câu 3 và 4: Cho hàm số f(x) liên tục trên đoạn [-2; 4] có đồ thị như sau..."
+                                />
+                            </div>
+                            <div className="p-4 bg-amber-100/40 border border-amber-200/60 rounded-2xl text-xs min-h-[60px] overflow-auto">
+                                {q.context ? (
+                                    <div className="text-amber-950 font-medium leading-relaxed">
+                                        <span className="font-bold text-amber-800 uppercase text-[10px] block mb-1">Xem trước lời dẫn:</span>
+                                        <LatexText text={q.context} />
+                                    </div>
+                                ) : (
+                                    <span className="text-[10px] font-bold text-amber-600/70 italic">Chưa nhập lời dẫn (câu hỏi này sẽ hiển thị độc lập bình thường)</span>
+                                )}
+                            </div>
                         </div>
                     </div>
 
