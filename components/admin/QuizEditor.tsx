@@ -673,25 +673,19 @@ export default function QuizEditor(props: QuizEditorProps) {
                 </div>
             )}
 
-            <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-50 shadow-sm space-y-10 relative overflow-hidden">
+            <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-50 shadow-sm space-y-8 relative overflow-hidden">
                 <div className={`absolute top-0 right-16 px-8 py-3 rounded-b-3xl font-black text-xs uppercase shadow-xl z-10 transition-colors ${totalPoints === 10 ? 'bg-emerald-600' : 'bg-orange-500'} text-white`}>
                     Tổng điểm đề: {totalPoints.toFixed(2)}đ
                 </div>
                 
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b-2 border-slate-50 pb-6">
-                    <div className="flex-1 min-w-0 space-y-1 pr-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest whitespace-nowrap block">
-                            Tiêu đề đề thi
-                        </label>
-                        <input 
-                            type="text" 
-                            className="text-lg md:text-xl lg:text-2xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-300 focus:text-blue-600 transition-colors" 
-                            placeholder="VD: KIỂM TRA CHƯƠNG I ĐẠO HÀM..." 
-                            value={props.title} 
-                            onChange={e => props.setTitle(e.target.value)} 
-                        />
+                {/* THANH CÔNG CỤ: KHO ẢNH, HỖ TRỢ LATEX & BÓC TÁCH NHẬP ĐỀ */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-5 pt-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            Công cụ nhập liệu & Hỗ trợ:
+                        </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
                         {/* Nút mở Thư viện ảnh đề thi */}
                         <button
                             type="button"
@@ -699,7 +693,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                                 setGalleryTargetQId(null);
                                 setIsGalleryOpen(true);
                             }}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
                             title="Quản lý và tái sử dụng kho ảnh của đề thi"
                         >
                             <ImageLucide size={13}/> Kho ảnh ({uniqueImagesCount})
@@ -708,13 +702,13 @@ export default function QuizEditor(props: QuizEditorProps) {
                         <button
                             type="button"
                             onClick={() => handleOpenLatexHelper()}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-lg text-[10px] font-black uppercase hover:bg-cyan-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl text-[10px] font-black uppercase hover:bg-cyan-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
                             title="Tra cứu nhanh và chèn công thức Toán, tích phân, phân số, ký hiệu LaTeX"
                         >
                             <Sparkles size={13}/> Hỗ trợ LaTeX
                         </button>
                         <label 
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-amber-600 transition-all shadow-xs active:scale-95 whitespace-nowrap" 
+                            className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-amber-600 transition-all shadow-xs active:scale-95 whitespace-nowrap" 
                             title="Nhập trực tiếp file .json (Không tốn lượt AI)"
                         >
                             <FileCode size={13}/> Nhập JSON
@@ -722,26 +716,46 @@ export default function QuizEditor(props: QuizEditorProps) {
                         </label>
                         <button 
                             onClick={props.onCleanLabels}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
                             title="Xóa bỏ các nhãn A., B., a), b) dư thừa trong nội dung câu hỏi"
                         >
                             <Zap size={13}/> Dọn nhãn
                         </button>
                         <button 
                             onClick={() => setIsTextInputOpen(true)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             <TypeIcon size={13}/> Nhập văn bản (AI)
                         </button>
-                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-blue-800 transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title="Nhập trực tiếp từ file Word (.docx)">
+                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-blue-800 transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title="Nhập trực tiếp từ file Word (.docx)">
                             <FileText size={13}/> Nhập DOCX (AI)
                             <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" disabled={props.isAiLoading} onChange={handleDocxFileSelect}/>
                         </label>
-                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                             <FileUp size={13}/> Nhập PDF (AI)
                             <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
                         </label>
                     </div>
+                </div>
+
+                {/* Ô NHẬP TIÊU ĐỀ ĐỀ THI (RIÊNG BIỆT, RỘNG RÃI & NỔI BẬT) */}
+                <div className="space-y-2 bg-slate-50 p-5 rounded-[2rem] border-2 border-slate-200/80 focus-within:border-blue-500 focus-within:bg-white focus-within:shadow-md transition-all">
+                    <div className="flex items-center justify-between px-1">
+                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                            Tiêu đề đề thi
+                        </label>
+                        <span className="text-[10px] font-bold text-slate-400">
+                            {props.title ? `${props.title.length} ký tự` : 'Chưa nhập tiêu đề'}
+                        </span>
+                    </div>
+                    <input 
+                        type="text" 
+                        className="text-lg md:text-xl font-black outline-none bg-transparent w-full uppercase placeholder:text-slate-300 text-slate-900 focus:text-blue-600 transition-colors px-1 py-1" 
+                        placeholder="VD: KIỂM TRA 1 TIẾT CHƯƠNG I ĐẠO HÀM..." 
+                        value={props.title} 
+                        onChange={e => props.setTitle(e.target.value)} 
+                    />
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
