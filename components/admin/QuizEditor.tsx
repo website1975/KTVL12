@@ -6,7 +6,7 @@ import {
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
-  Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote
+  Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
@@ -135,6 +135,73 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
         }
     };
 
+    // Xử lý Dán ảnh trực tiếp từ Clipboard khi bấm nút
+    const handlePasteClipboardImage = async (qId: string) => {
+        try {
+            if (!navigator.clipboard) {
+                alert("Trình duyệt không hỗ trợ đọc Clipboard tự động. Bạn chỉ cần click vào khung câu hỏi này và bấm tổ hợp phím Ctrl + V!");
+                return;
+            }
+
+            let foundFile: File | null = null;
+            if (navigator.clipboard.read) {
+                try {
+                    const clipboardItems = await navigator.clipboard.read();
+                    for (const item of clipboardItems) {
+                        const imageType = item.types.find(t => t.startsWith('image/'));
+                        if (imageType) {
+                            const blob = await item.getType(imageType);
+                            foundFile = new File([blob], `paste_${Date.now()}.${imageType.split('/')[1] || 'png'}`, { type: imageType });
+                            break;
+                        }
+                    }
+                } catch (permErr) {
+                    console.warn("Clipboard read permission issue:", permErr);
+                }
+            }
+
+            if (foundFile) {
+                onUploadImage(qId, foundFile);
+                return;
+            }
+
+            alert("⚠️ Không tìm thấy hình ảnh nào trong Clipboard!\n\nCách dùng siêu nhanh:\n1. Quét chụp vùng hình ảnh trên màn hình (Bấm Win + Shift + S trên Windows hoặc Cmd + Shift + 4 trên Mac).\n2. Quay lại đây và bấm nút \"DÁN ẢNH (CTRL + V)\" hoặc bấm phím Ctrl + V — Ảnh sẽ tự động được gán ngay lập tức mà không cần lưu file!");
+        } catch (err: any) {
+            console.warn("Lỗi đọc clipboard:", err);
+            alert("Để dán ảnh nhanh: Hãy click vào khung câu hỏi này và bấm Ctrl + V trên bàn phím nhé!");
+        }
+    };
+
+    // Bắt sự kiện Paste (Ctrl + V) trên toàn bộ khung câu hỏi
+    const handleQuestionPaste = (e: React.ClipboardEvent, qId: string) => {
+        const items = e.clipboardData?.items;
+        if (!items || items.length === 0) return;
+
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onUploadImage(qId, file);
+                    return;
+                }
+            }
+        }
+    };
+
+    // Bắt sự kiện kéo thả (Drag & Drop) ảnh vào khung
+    const handleImageDrop = (e: React.DragEvent, qId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file.type.startsWith('image/')) {
+                onUploadImage(qId, file);
+            }
+        }
+    };
+
     const stripLabel = (text: string): string => {
         if (!text) return "";
         let cleaned = text.trim();
@@ -182,7 +249,11 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
             </div>
 
             {sectionQuestions.map((q, idx) => (
-                <div key={q.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-50 shadow-sm relative group animate-fade-in-up">
+                <div 
+                    key={q.id} 
+                    onPaste={(e) => handleQuestionPaste(e, q.id)}
+                    className="bg-white p-8 rounded-[3rem] border-2 border-slate-50 shadow-sm relative group animate-fade-in-up focus-within:border-blue-200 transition-colors"
+                >
                     <button onClick={() => setQuestions(questions.filter(qu => qu.id !== q.id))} className="absolute top-8 right-8 text-slate-200 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl"><Trash2 size={24}/></button>
                     
                     <div className="flex flex-wrap items-center gap-4 mb-6">
@@ -302,14 +373,24 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                     </div>
 
                     {/* KHUNG ĐÍNH KÈM VÀ TÁI SỬ DỤNG HÌNH ẢNH */}
-                    <div className="mb-8 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col md:flex-row items-center gap-8">
+                    <div 
+                        onDrop={(e) => handleImageDrop(e, q.id)}
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        className="mb-8 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 hover:border-blue-300 transition-all flex flex-col md:flex-row items-center gap-8"
+                    >
                         <div className="shrink-0 relative">
                             {q.imageUrl ? (
                                 <img src={q.imageUrl} className="w-32 h-32 object-cover rounded-[1.5rem] border-4 border-white shadow-lg" alt="q" />
                             ) : (
-                                <div className="w-32 h-32 bg-white border-2 border-slate-100 rounded-[1.5rem] flex flex-col items-center justify-center text-slate-300">
-                                    {uploadingId === q.id ? <Loader2 className="animate-spin text-blue-500" size={32}/> : <ImageIcon size={32}/>}
-                                    <span className="text-[9px] font-black uppercase mt-2">{uploadingId === q.id ? 'Đang tải...' : 'Chưa có ảnh'}</span>
+                                <div 
+                                    onClick={() => handlePasteClipboardImage(q.id)}
+                                    className={`w-32 h-32 bg-white border-2 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-[1.5rem] flex flex-col items-center justify-center text-slate-400 hover:text-emerald-700 cursor-pointer group shadow-sm transition-all ${uploadingId === q.id ? 'opacity-50 pointer-events-none' : ''}`}
+                                    title="Click để dán ảnh từ Clipboard (Ctrl + V) hoặc kéo thả file ảnh vào đây"
+                                >
+                                    {uploadingId === q.id ? <Loader2 className="animate-spin text-blue-500" size={32}/> : <ClipboardPaste size={30} className="group-hover:scale-110 transition-transform text-emerald-600"/>}
+                                    <span className="text-[9px] font-black uppercase mt-1.5 text-center px-2">
+                                        {uploadingId === q.id ? 'Đang tải...' : 'Click dán ảnh (Ctrl+V)'}
+                                    </span>
                                 </div>
                             )}
                         </div>
@@ -328,6 +409,22 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                             <div className="flex flex-wrap gap-2">
                                 <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} />
                                 
+                                {/* NÚT DÁN ẢNH TỪ CLIPBOARD (Ctrl + V) */}
+                                <button
+                                    type="button"
+                                    onClick={() => handlePasteClipboardImage(q.id)}
+                                    disabled={uploadingId === q.id}
+                                    className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-md active:scale-95 ${
+                                        uploadingId === q.id 
+                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-100 ring-2 ring-emerald-400/30'
+                                    }`}
+                                    title="Chụp ảnh (Win + Shift + S) hoặc Copy ảnh rồi bấm vào đây để dán ngay lập tức!"
+                                >
+                                    {uploadingId === q.id ? <Loader2 className="animate-spin" size={14}/> : <ClipboardPaste size={14}/>}
+                                    {uploadingId === q.id ? 'ĐANG DÁN...' : 'DÁN ẢNH (CTRL + V)'}
+                                </button>
+
                                 {/* Nút tải ảnh từ máy tính */}
                                 <label htmlFor={`img-${q.id}`} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase cursor-pointer flex items-center gap-1.5 transition-all ${uploadingId === q.id ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-black shadow-md shadow-blue-100'}`}>
                                     {uploadingId === q.id ? <Loader2 className="animate-spin" size={14}/> : <ImageIcon size={14}/>} 
@@ -386,11 +483,12 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                 )}
                             </div>
                             
-                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">
-                                {q.imageUrl 
-                                    ? '💡 Mẹo: Bấm "Copy link ảnh" hoặc "Dùng cho câu khác" để tái sử dụng hình này cho các câu cùng bảng/đồ thị mà không cần tải lại.' 
-                                    : 'Tải ảnh từ máy tính hoặc bấm "Chọn từ đề / Dán link" để dùng chung ảnh với các câu khác.'}
-                            </p>
+                            <div className="flex items-center gap-1.5 text-[9.5px] font-bold text-slate-500 bg-white/70 px-3 py-1.5 rounded-lg border border-slate-200/60 w-fit">
+                                <Sparkles size={12} className="text-amber-500 shrink-0" />
+                                <span>
+                                    <strong className="text-emerald-700 font-black">Mẹo siêu tốc:</strong> Chụp vùng hình (<kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Win + Shift + S</kbd>) rồi bấm <strong className="text-emerald-700 font-black">"DÁN ẢNH (CTRL + V)"</strong> hoặc bấm phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Ctrl + V</kbd> — Không cần lưu file!
+                                </span>
+                            </div>
                         </div>
                     </div>
 
