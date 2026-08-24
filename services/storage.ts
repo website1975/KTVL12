@@ -931,15 +931,39 @@ export const saveBankQuestion = async (q: Question): Promise<void> => {
 };
 
 export const uploadQuizImage = async (file: File): Promise<string> => {
-    if (!supabase) return '';
+    // Helper convert sang Base64 Data URL
+    const toBase64 = (f: File): Promise<string> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(f);
+        });
+    };
+
+    if (!supabase) {
+        return await toBase64(file);
+    }
+
     try {
-      const fileExt = file.name.split('.').pop() || 'png';
-      const fileName = `${uuidv4()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file);
-      if (uploadError) return '';
-      const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
-      return data.publicUrl;
-    } catch (err) { return ''; }
+        const fileExt = (file.name || 'image.png').split('.').pop() || 'png';
+        const fileName = `${uuidv4()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file, {
+            contentType: file.type || 'image/png',
+            upsert: true
+        });
+
+        if (uploadError) {
+            console.warn("Lỗi upload Supabase storage, tự động chuyển sang lưu dạng DataURL:", uploadError);
+            return await toBase64(file);
+        }
+
+        const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
+        return data?.publicUrl || (await toBase64(file));
+    } catch (err) {
+        console.warn("Lỗi upload ảnh, chuyển fallback:", err);
+        return await toBase64(file);
+    }
 };
 
 export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
