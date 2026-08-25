@@ -14,6 +14,7 @@ import { parseQuestionsFromJSON } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
 import { extractTextFromDocx } from '../../services/docxExtractor';
+import { exportQuizToJson } from '../../services/quizExport';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -722,6 +723,33 @@ export default function QuizEditor(props: QuizEditorProps) {
         e.target.value = '';
     };
 
+    const handleExportCurrentQuizJson = () => {
+        if (!props.questions || props.questions.length === 0) {
+            alert("Đề thi chưa có câu hỏi nào để xuất!");
+            return;
+        }
+        const currentQuiz: Quiz = {
+            id: props.editingId || uuidv4(),
+            title: props.title || 'Đề thi mới',
+            grade: props.grade,
+            type: props.quizType,
+            isPublished: props.isPublished,
+            isMonitored: props.isMonitored,
+            isUnlisted: props.isUnlisted,
+            targetType: props.targetType || 'all',
+            assignedClassIds: props.assignedClassIds || [],
+            durationMinutes: props.duration,
+            orderIndex: props.orderIndex,
+            category: props.category,
+            startTime: props.startTime,
+            endTime: props.endTime,
+            questions: props.questions,
+            createdAt: new Date().toISOString(),
+            description: ''
+        };
+        exportQuizToJson(currentQuiz);
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fade-in relative">
             {props.isAiLoading && (
@@ -812,6 +840,14 @@ export default function QuizEditor(props: QuizEditorProps) {
                             <FileCode size={13}/> Nhập JSON
                             <input type="file" accept=".json,application/json" className="hidden" onChange={handleJsonFileSelect}/>
                         </label>
+                        <button
+                            type="button"
+                            onClick={handleExportCurrentQuizJson}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[10px] font-black uppercase hover:bg-amber-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            title="Tải về file JSON đề thi hiện tại"
+                        >
+                            <FileCode size={13}/> Xuất JSON
+                        </button>
                         <button 
                             onClick={props.onCleanLabels}
                             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
