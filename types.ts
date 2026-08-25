@@ -59,6 +59,8 @@ export interface Question {
   quizTitle?: string;
   quizGrade?: Grade;
   quizCategory?: string;
+  chapterId?: string;
+  chapterName?: string;
 }
 
 export interface Quiz {
