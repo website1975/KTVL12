@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Download, FileType, AlignLeft, Rows } from 'lucide-react';
+import { X, Download, FileType, AlignLeft, Rows, FileCode } from 'lucide-react';
 import { Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
 import { normalizeFullText, repairVietnameseText } from '../../services/vietnameseFixer';
+import { exportQuizToJson } from '../../services/quizExport';
 
 interface QuizPreviewModalProps {
     quiz: Quiz;
@@ -390,6 +391,11 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         URL.revokeObjectURL(url);
     };
 
+    const handleExportJson = () => {
+        if (!quiz) return;
+        exportQuizToJson(quiz);
+    };
+
     return (
         <div className="fixed inset-0 bg-slate-900/95 z-[2000] flex items-center justify-center p-0 md:p-4 backdrop-blur-xl animate-fade-in">
             <div className="bg-white rounded-[0] md:rounded-[3.5rem] w-full max-w-5xl h-full md:h-[95vh] flex flex-col overflow-hidden shadow-2xl">
@@ -435,13 +441,22 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                         </div>
 
                         {isAdmin && (
-                            <button 
-                                onClick={handleExportWord}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl active:scale-95"
-                                title="Xuất file Microsoft Word chuẩn định dạng (.doc)"
-                            >
-                                <Download size={15}/> Xuất Word (.doc)
-                            </button>
+                            <>
+                                <button 
+                                    onClick={handleExportJson}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-amber-700 transition-all shadow-xl active:scale-95"
+                                    title="Xuất file JSON chuẩn dữ liệu (.json)"
+                                >
+                                    <FileCode size={15}/> Xuất JSON (.json)
+                                </button>
+                                <button 
+                                    onClick={handleExportWord}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl active:scale-95"
+                                    title="Xuất file Microsoft Word chuẩn định dạng (.doc)"
+                                >
+                                    <Download size={15}/> Xuất Word (.doc)
+                                </button>
+                            </>
                         )}
                         <button 
                             onClick={onClose} 
