@@ -3,9 +3,12 @@ import { Quiz, Result, Grade, Chapter, ClassRoom } from '../../types';
 import { 
   Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, 
   Link as LinkIcon, EyeOff, ShieldCheck, GraduationCap, Building2, 
-  CheckSquare, Square, Zap, Globe, Clock, FileEdit, AlertTriangle, Check
+  CheckSquare, Square, Zap, Globe, Clock, FileEdit, AlertTriangle, Check,
+  FileCode, Loader2
 } from 'lucide-react';
 import QuickAssignModal from './QuickAssignModal';
+import { getQuizById } from '../../services/storage';
+import { exportQuizToJson, exportQuizzesBatchToJson } from '../../services/quizExport';
 
 export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
 
@@ -41,6 +44,49 @@ export default function QuizList({
     // Quick assign modal state
     const [assignModalQuizzes, setAssignModalQuizzes] = useState<Quiz[]>([]);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+
+    // Export JSON states
+    const [exportingQuizId, setExportingQuizId] = useState<string | null>(null);
+    const [isBatchExporting, setIsBatchExporting] = useState<boolean>(false);
+
+    const handleExportSingleQuiz = async (quiz: Quiz, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setExportingQuizId(quiz.id);
+        try {
+            let fullQuiz = quiz;
+            if (!fullQuiz.questions || fullQuiz.questions.length === 0) {
+                const fetched = await getQuizById(quiz.id);
+                if (fetched) fullQuiz = fetched;
+            }
+            exportQuizToJson(fullQuiz);
+        } catch (err: any) {
+            console.error("Lỗi xuất JSON:", err);
+            alert("Lỗi khi xuất đề thi dạng JSON: " + (err.message || "Không xác định"));
+        } finally {
+            setExportingQuizId(null);
+        }
+    };
+
+    const handleExportBatchQuizzes = async () => {
+        const selected = quizzes.filter(q => selectedQuizIds.includes(q.id));
+        if (selected.length === 0) return;
+        setIsBatchExporting(true);
+        try {
+            const fullQuizzes: Quiz[] = await Promise.all(
+                selected.map(async (q) => {
+                    if (q.questions && q.questions.length > 0) return q;
+                    const fetched = await getQuizById(q.id);
+                    return fetched || q;
+                })
+            );
+            exportQuizzesBatchToJson(fullQuizzes, `danh_sach_${fullQuizzes.length}_de_thi`);
+        } catch (err: any) {
+            console.error("Lỗi xuất hàng loạt JSON:", err);
+            alert("Lỗi khi xuất danh sách đề thi: " + (err.message || "Không xác định"));
+        } finally {
+            setIsBatchExporting(false);
+        }
+    };
 
     // Tính toán trạng thái của từng đề thi
     const getQuizState = (q: Quiz) => {
@@ -296,6 +342,15 @@ export default function QuizList({
                             <span>Gán Phòng Cho {selectedQuizIds.length} Đề</span>
                         </button>
                         <button
+                            onClick={handleExportBatchQuizzes}
+                            disabled={isBatchExporting}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black uppercase text-[10px] shadow-sm transition-all disabled:opacity-50"
+                            title="Tải về file JSON tổng hợp các đề đã chọn"
+                        >
+                            {isBatchExporting ? <Loader2 size={14} className="animate-spin" /> : <FileCode size={14} />}
+                            <span>Xuất JSON ({selectedQuizIds.length} Đề)</span>
+                        </button>
+                        <button
                             onClick={() => setSelectedQuizIds([])}
                             className="px-3 py-2.5 bg-indigo-800/80 hover:bg-indigo-800 text-indigo-200 rounded-xl font-black uppercase text-[10px] transition-all"
                         >
@@ -379,6 +434,14 @@ export default function QuizList({
                                             <LinkIcon size={14}/>
                                         </button>
                                     )}
+                                    <button 
+                                        onClick={(e) => handleExportSingleQuiz(q, e)} 
+                                        disabled={exportingQuizId === q.id}
+                                        className="p-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-600 hover:text-white shadow-sm transition-colors disabled:opacity-50" 
+                                        title="Xuất đề thi dạng JSON"
+                                    >
+                                        {exportingQuizId === q.id ? <Loader2 size={14} className="animate-spin" /> : <FileCode size={14}/>}
+                                    </button>
                                     <button 
                                         onClick={(e) => openQuickAssignSingle(q, e)} 
                                         className="p-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white shadow-sm transition-colors" 
@@ -474,18 +537,28 @@ export default function QuizList({
                                 </div>
                             </div>
 
-                            <div className="mt-auto flex gap-2">
+                            <div className="mt-auto flex gap-1.5">
                                 <button 
                                     onClick={() => onPreview(q)} 
-                                    className={`flex-1 py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${q.isPublished 
+                                    className={`flex-1 py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 ${q.isPublished 
                                         ? (q.isUnlisted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-blue-600 text-white hover:bg-blue-700') 
                                         : 'bg-slate-800 text-white hover:bg-black'}`}
+                                    title="Xem chi tiết & Xuất Word / JSON"
                                 >
-                                    <Eye size={14}/> Xem & Xuất Word
+                                    <Eye size={14}/> Xem & Xuất
+                                </button>
+                                <button
+                                    onClick={(e) => handleExportSingleQuiz(q, e)}
+                                    disabled={exportingQuizId === q.id}
+                                    className="px-2.5 py-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-black uppercase flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                                    title="Tải nhanh file JSON đề thi"
+                                >
+                                    {exportingQuizId === q.id ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}
+                                    <span>JSON</span>
                                 </button>
                                 <button
                                     onClick={(e) => openQuickAssignSingle(q, e)}
-                                    className="px-3 py-3 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 text-[9px] font-black uppercase flex items-center justify-center transition-all"
+                                    className="px-2.5 py-3 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 text-[9px] font-black uppercase flex items-center justify-center transition-all"
                                     title="Gán phòng nhanh"
                                 >
                                     <Building2 size={14} />
