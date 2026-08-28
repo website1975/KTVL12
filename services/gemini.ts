@@ -8,26 +8,109 @@ const cleanJsonString = (str: string): string => {
     return str.replace(/```json/gi, "").replace(/```/gi, "").trim();
 };
 
-const normalizeLevel = (val: any): QuestionLevel | undefined => {
-    if (!val) return undefined;
-    const str = String(val).trim().toUpperCase();
-    if (str === 'B' || str === 'NB' || str.includes('NHẬN BIẾT') || str.includes('BIẾT') || str === 'EASY' || str === 'KNOWLEDGE') return 'B';
-    if (str === 'H' || str === 'TH' || str.includes('THÔNG HIỂU') || str.includes('HIỂU') || str === 'MEDIUM' || str === 'UNDERSTANDING') return 'H';
-    if (str === 'VD' || str.includes('VẬN DỤNG CAO') || str === 'VDC' || str === 'VERY HARD' || str === 'VHARD') {
-        if (str === 'VDC' || str.includes('CAO') || str === 'VERY HARD' || str === 'VHARD') return 'VDC';
+const removeVietnameseAccents = (str: string): string => {
+    return str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D');
+};
+
+export const normalizeLevel = (val: any): QuestionLevel | undefined => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const raw = String(val).trim().toUpperCase();
+    const clean = removeVietnameseAccents(raw).replace(/[^A-Z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // 1. Mức 4: Vận dụng cao (VDC) - Kiểm tra trước để tránh nhầm với VD
+    if (
+        clean === 'VDC' || 
+        clean === '4' || 
+        clean === 'MUC 4' || 
+        clean === 'LEVEL 4' || 
+        clean === 'LV 4' || 
+        clean === 'LV4' ||
+        clean === 'L4' ||
+        clean.includes('VAN DUNG CAO') || 
+        clean.includes('VD CAO') ||
+        clean.includes('VDCAO') ||
+        clean.includes('VERY HARD') || 
+        clean.includes('VHARD') || 
+        clean.includes('HIGH APPLICATION') ||
+        clean.includes('HIGHER APPLICATION') ||
+        clean.includes('ADVANCED') ||
+        clean.includes('CREATIVE')
+    ) {
+        return 'VDC';
+    }
+
+    // 2. Mức 3: Vận dụng (VD)
+    if (
+        clean === 'VD' || 
+        clean === '3' || 
+        clean === 'MUC 3' || 
+        clean === 'LEVEL 3' || 
+        clean === 'LV 3' || 
+        clean === 'LV3' ||
+        clean === 'L3' ||
+        clean.includes('VAN DUNG') || 
+        clean === 'HARD' || 
+        clean === 'APPLICATION' || 
+        clean === 'APPLY' ||
+        clean === 'APPLYING'
+    ) {
         return 'VD';
     }
-    if (str === 'HARD' || str === 'APPLICATION') return 'VD';
+
+    // 3. Mức 2: Thông hiểu / Hiểu (H / TH)
+    if (
+        clean === 'H' || 
+        clean === 'TH' || 
+        clean === '2' || 
+        clean === 'MUC 2' || 
+        clean === 'LEVEL 2' || 
+        clean === 'LV 2' || 
+        clean === 'LV2' ||
+        clean === 'L2' ||
+        clean.includes('THONG HIEU') || 
+        clean.includes('HIEU') || 
+        clean === 'MEDIUM' || 
+        clean === 'UNDERSTANDING' || 
+        clean === 'COMPREHENSION'
+    ) {
+        return 'H';
+    }
+
+    // 4. Mức 1: Nhận biết / Biết (B / NB)
+    if (
+        clean === 'B' || 
+        clean === 'NB' || 
+        clean === '1' || 
+        clean === 'MUC 1' || 
+        clean === 'LEVEL 1' || 
+        clean === 'LV 1' || 
+        clean === 'LV1' ||
+        clean === 'L1' ||
+        clean.includes('NHAN BIET') || 
+        clean.includes('BIET') || 
+        clean === 'EASY' || 
+        clean === 'KNOWLEDGE' || 
+        clean === 'REMEMBER' ||
+        clean === 'RECOGNITION'
+    ) {
+        return 'B';
+    }
+
     return undefined;
 };
 
-const extractLevelFromText = (text: string): { cleanText: string; level?: QuestionLevel } => {
+export const extractLevelFromText = (text: string): { cleanText: string; level?: QuestionLevel } => {
     if (!text) return { cleanText: "" };
     let cleanText = text;
     let level: QuestionLevel | undefined = undefined;
 
-    // Pattern: [B], (B), <B>, [NB], [H], [TH], [VD], [VDC] at start or inside
-    const levelRegex = /(?:\[|\(|\<)\s*(B|NB|H|TH|VD|VDC|Nhận biết|Thông hiểu|Vận dụng cao|Vận dụng|Biết|Hiểu)\s*(?:\]|\)|\>)/i;
+    // Pattern: [B], (B), <B>, 【B】, [NB], [H], [TH], [VD], [VDC], [Nhận biết], [Thông hiểu], [Vận dụng], [Vận dụng cao], [Biết], [Hiểu], [Mức 1], [Mức 2], [Mức 3], [Mức 4]
+    const levelRegex = /(?:\[|\(|\<|【|\{)\s*(VDC|VD\s*CAO|VẬN\s*DỤNG\s*CAO|VAN\s*DUNG\s*CAO|VD|VẬN\s*DỤNG|VAN\s*DUNG|TH|THÔNG\s*HIỂU|THONG\s*HIEU|H|HIỂU|HIEU|NB|NHẬN\s*BIẾT|NHAN\s*BIET|B|BIẾT|BIET|MỨC\s*[1-4]|MUC\s*[1-4]|LEVEL\s*[1-4])\s*(?:\]|\)|\>|】|\})/i;
+    
     const match = cleanText.match(levelRegex);
     if (match) {
         level = normalizeLevel(match[1]);
@@ -49,31 +132,40 @@ const stripOptionLabel = (text: string): string => {
     return cleaned;
 };
 
-const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa).
-NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn.
+const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất và phân loại đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa, Sinh,...).
+NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn theo cấu trúc phân loại mức độ nhận thức.
 
-QUY TẮC TRÍCH XUẤT (CỰC KỲ QUAN TRỌNG):
-1. PHÂN TÍCH ĐÁP ÁN: Quét toàn bộ nội dung để tìm bảng đáp án (thường ở cuối).
-2. NHẬN DIỆN MỨC ĐỘ (level: "B" | "H" | "VD" | "VDC"):
-   - Tự động nhận diện nhãn mức độ: [B], (B) -> "B" (Nhận biết); [H], (H) -> "H" (Thông hiểu); [VD], (VD) -> "VD" (Vận dụng); [VDC], (VDC) -> "VDC" (Vận dụng cao).
-   - Áp dụng cho cả câu hỏi chính và từng ý con a, b, c, d của câu Đúng/Sai (Group-TF).
-3. MCQ (Trắc nghiệm 4 lựa chọn):
-   - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B...).
-   - LaTeX: Mọi phương án nếu chứa ký hiệu toán học BẮT BUỘC phải bọc trong $...$. (VD: "$x^2$").
-4. GROUP-TF (Đúng/Sai):
-   - 'subQuestions': Phải có đủ 4 ý (a, b, c, d). Mỗi ý có 'text', 'correctAnswer' ("True" hoặc "False") và 'level' ("B"|"H"|"VD"|"VDC" nếu có).
-   - 'solution': BẮT BUỘC giải thích chi tiết cho cả 4 ý theo mẫu: a) Đúng... b) Sai...
-5. SHORT (Trả lời ngắn):
-   - 'type': BẮT BUỘC là "short".
-   - 'correctAnswer': BẮT BUỘC là giá trị số (VD: "12", "0.5").
-   - 'options': Để null hoặc [].
-6. LaTeX: Mọi công thức toán học phải bọc trong $...$ (VD: $x^2 + y^2 = R^2$). Giữ nguyên dấu $ trong cả nội dung câu hỏi và các phương án.
-7. LÀM SẠCH: Xóa nhãn "A.", "B.", "a)", "b)", "[B]", "(H)"... ở đầu nội dung nhưng giữ lại dấu $ của LaTeX.
+QUY TẮC PHÂN LOẠI MỨC ĐỘ NHẬN THỨC (level: "B" | "H" | "VD" | "VDC") - BẮT BUỘC:
+Mỗi câu hỏi và mỗi ý con a, b, c, d của câu Đúng/Sai BẮT BUỘC phải có trường 'level' thuộc một trong 4 mức độ:
+1. "B" (Biết / Nhận biết): Nhận diện định nghĩa, khái niệm, công thức, định luật trực tiếp, áp dụng công thức 1 bước đơn giản.
+2. "H" (Hiểu / Thông hiểu): Hiểu bản chất vấn đề, giải thích hiện tượng, đọc đồ thị/bảng biến thiên/hình vẽ cơ bản, tính toán 1-2 bước.
+3. "VD" (Vận dụng): Tổng hợp kiến thức, liên hệ thực tiễn, tính toán nhiều bước, biến đổi toán học/vật lý phức tạp.
+4. "VDC" (Vận dụng cao): Bài toán cực trị, phân hóa điểm 9-10, tình huống thực nghiệm sáng tạo, tư duy liên chương/tổng hợp cao.
 
-VÍ DỤ CẤU TRÚC:
-- MCQ: {"type": "mcq", "level": "B", "text": "Cho hàm số...", "options": ["$1$", "$2$", "$3$", "$4$"], "correctAnswer": "$1$", "solution": "..."}
-- GROUP-TF: {"type": "group-tf", "level": "H", "text": "Cho hàm số...", "subQuestions": [{"text": "...", "correctAnswer": "True", "level": "B"}, {"text": "...", "correctAnswer": "False", "level": "H"}, ...], "solution": "a) Đúng... b) Sai..."}
-- SHORT: {"type": "short", "level": "VD", "text": "Tìm số nghiệm...", "correctAnswer": "12.5", "solution": "..."}
+QUY TẮC TRÍCH XUẤT ĐẶC BIỆT:
+- Nếu tài liệu gốc có sẵn nhãn mức độ như [B], [NB], [H], [TH], [VD], [VDC], (Biết), (Hiểu)... -> Trích xuất chính xác level và xóa nhãn đó khỏi nội dung 'text'.
+- Nếu tài liệu gốc KHÔNG CÓ nhãn mức độ -> AI BẮT BUỘC TỰ ĐÁNH GIÁ và GÁN 'level' chuẩn xác ("B", "H", "VD", "VDC") cho câu hỏi và từng ý con a, b, c, d.
+
+QUY TẮC CẤU TRÚC CHI TIẾT:
+1. MCQ (Trắc nghiệm 4 lựa chọn):
+   - 'type': "mcq"
+   - 'level': "B" | "H" | "VD" | "VDC"
+   - 'options': Mảng 4 phương án đã làm sạch (xóa "A.", "B.", "C.", "D.").
+   - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B, C, D).
+2. GROUP-TF (Trắc nghiệm Đúng/Sai):
+   - 'type': "group-tf"
+   - 'level': Mức độ chung của câu ("B" | "H" | "VD" | "VDC").
+   - 'subQuestions': Mảng 4 ý (a, b, c, d), mỗi ý có:
+     + 'text': Nội dung ý (đã xóa nhãn "a)", "b)").
+     + 'correctAnswer': "True" hoặc "False".
+     + 'level': Mức độ của riêng ý đó ("B" | "H" | "VD" | "VDC"). Thông thường ý a: "B", ý b: "H", ý c: "VD", ý d: "VDC" hoặc theo nội dung câu.
+   - 'solution': Lời giải chi tiết giải thích cho cả 4 ý: a) Đúng vì... b) Sai vì...
+3. SHORT (Trả lời ngắn):
+   - 'type': "short"
+   - 'level': "B" | "H" | "VD" | "VDC" (thường là "VD" hoặc "VDC")
+   - 'correctAnswer': Giá trị số hoặc biểu thức ngắn (VD: "12.5", "-4")
+   - 'options': null
+4. LaTeX & Công thức: Mọi ký hiệu, công thức toán/lý/hóa BẮT BUỘC bọc trong cặp dấu $...$ (VD: $x^2 + y^2 = 4$).
 `;
 
 const processAIQuestions = (rawData: any[]): Question[] => {
@@ -82,9 +174,10 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : (type === 'mcq' ? [] : undefined);
         let finalCorrectAnswer = item.correctAnswer;
 
-        // Xử lý trích xuất level từ text câu hỏi nếu chưa có
+        // Xử lý trích xuất level từ mọi trường hoặc từ text câu hỏi
+        const rawLevel = item.level ?? item.muc_do ?? item.mucdo ?? item.mucDo ?? item.do_kho ?? item.dokho ?? item.doKho ?? item.difficulty ?? item.bloom ?? item.bloomLevel ?? item.level_code ?? item.cognitiveLevel ?? item.cognitive_level ?? item.rank ?? item.phan_loai;
         let extractedMain = extractLevelFromText(item.text || "");
-        let finalLevel = normalizeLevel(item.level) || extractedMain.level;
+        let finalLevel = normalizeLevel(rawLevel) || extractedMain.level;
         let cleanedText = extractedMain.cleanText;
 
         if (type === 'mcq' && item.correctAnswer && item.options) {
@@ -132,12 +225,13 @@ const processAIQuestions = (rawData: any[]): Question[] => {
             options: strippedOptions,
             correctAnswer: finalCorrectAnswer,
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => {
+                const sqRawLevel = sq.level ?? sq.muc_do ?? sq.mucdo ?? sq.mucDo ?? sq.do_kho ?? sq.dokho ?? sq.doKho ?? sq.difficulty ?? sq.bloom ?? sq.bloomLevel ?? sq.level_code ?? sq.cognitiveLevel;
                 const sqExtract = extractLevelFromText(sq.text || "");
                 return { 
                     ...sq, 
                     id: uuidv4(),
                     text: stripOptionLabel(sqExtract.cleanText),
-                    level: normalizeLevel(sq.level) || sqExtract.level,
+                    level: normalizeLevel(sqRawLevel) || sqExtract.level,
                     correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true' || sq.correctAnswer === '1') ? 'True' : 'False'
                 };
             }) : undefined
@@ -489,10 +583,12 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
         const mainTextStr = q.text || q.question || q.content || q.cau_hoi || q.title || '';
 
         const rawSolution = q.solution || q.explanation || q.loi_giai || q.huong_dan_giai || q.guide || '';
+        const rawLevel = q.level ?? q.muc_do ?? q.mucdo ?? q.mucDo ?? q.do_kho ?? q.dokho ?? q.doKho ?? q.difficulty ?? q.bloom ?? q.bloomLevel ?? q.level_code ?? q.cognitiveLevel ?? q.cognitive_level ?? q.rank ?? q.phan_loai ?? q.phanLoai;
 
         return {
             ...q,
             type,
+            level: normalizeLevel(rawLevel),
             context: contextStr ? contextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$') : undefined,
             text: mainTextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
             options: type === 'mcq' ? options : undefined,
@@ -520,7 +616,7 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT:\n${rawText}`,
+            contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT VÀ PHÂN LOẠI MỨC ĐỘ:\n${rawText}`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -530,6 +626,7 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
                         properties: {
                             type: { type: Type.STRING },
                             text: { type: Type.STRING },
+                            level: { type: Type.STRING, nullable: true },
                             points: { type: Type.NUMBER },
                             options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             correctAnswer: { type: Type.STRING, nullable: true },
@@ -541,7 +638,8 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
                                     type: Type.OBJECT,
                                     properties: {
                                         text: { type: Type.STRING },
-                                        correctAnswer: { type: Type.STRING }
+                                        correctAnswer: { type: Type.STRING },
+                                        level: { type: Type.STRING, nullable: true }
                                     },
                                     required: ["text", "correctAnswer"]
                                 }
