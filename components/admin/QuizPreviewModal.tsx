@@ -582,6 +582,19 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                     >
                                                         Câu {idx + 1}:
                                                     </span>
+                                                    {q.level && (
+                                                        <span 
+                                                            className="q-level-tag" 
+                                                            style={{ 
+                                                                fontWeight: 'bold', 
+                                                                color: q.level === 'B' ? '#047857' : q.level === 'H' ? '#1d4ed8' : q.level === 'VD' ? '#b45309' : '#b91c1c', 
+                                                                marginRight: '6px',
+                                                                fontSize: '10.5pt'
+                                                            }}
+                                                        >
+                                                            [{q.level}]
+                                                        </span>
+                                                    )}
                                                     <LatexText text={q.text}/>
                                                 </p>
 
@@ -625,6 +638,11 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                                 }}
                                                             >
                                                                 <b style={{ marginRight: '6px' }}>{String.fromCharCode(97 + si)})</b>
+                                                                {sq.level && (
+                                                                    <span style={{ fontWeight: 'bold', fontSize: '9pt', color: sq.level === 'B' ? '#047857' : sq.level === 'H' ? '#1d4ed8' : sq.level === 'VD' ? '#b45309' : '#b91c1c', marginRight: '5px' }}>
+                                                                        [{sq.level}]
+                                                                    </span>
+                                                                )}
                                                                 <LatexText text={sq.text}/>
                                                             </p>
                                                         ))}
