@@ -1255,6 +1255,108 @@ export default function QuizEditor(props: QuizEditorProps) {
                 <button onClick={props.onSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase text-sm flex items-center justify-center gap-4 hover:bg-black transition-all shadow-2xl active:scale-[0.98] mt-6"><Save size={24}/> LƯU TOÀN BỘ ĐỀ THI VÀO DATABASE</button>
             </div>
 
+            {/* THỐNG KÊ MA TRẬN MỨC ĐỘ NHẬN THỨC CỦA ĐỀ THI */}
+            <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl shadow-md">
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                Ma trận phân bố mức độ nhận thức ({props.questions.length} câu)
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-bold">
+                                Phân loại chuẩn theo 4 mức độ: Biết [B], Hiểu [H], Vận dụng [VD], Vận dụng cao [VDC]
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {/* Mức 1: Biết */}
+                    {(() => {
+                        const countB = props.questions.filter(q => q.level === 'B').length;
+                        const pctB = props.questions.length > 0 ? Math.round((countB / props.questions.length) * 100) : 0;
+                        return (
+                            <div className="bg-emerald-50/70 border-2 border-emerald-200/80 p-4 rounded-2xl space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-emerald-800 uppercase">[B] Biết</span>
+                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">{pctB}%</span>
+                                </div>
+                                <div className="text-2xl font-black text-emerald-700">{countB} <span className="text-xs font-bold text-emerald-600">câu</span></div>
+                                <div className="text-[9px] text-emerald-600/80 font-bold truncate">Nhận diện / Định nghĩa</div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Mức 2: Hiểu */}
+                    {(() => {
+                        const countH = props.questions.filter(q => q.level === 'H').length;
+                        const pctH = props.questions.length > 0 ? Math.round((countH / props.questions.length) * 100) : 0;
+                        return (
+                            <div className="bg-blue-50/70 border-2 border-blue-200/80 p-4 rounded-2xl space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-blue-800 uppercase">[H] Hiểu</span>
+                                    <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{pctH}%</span>
+                                </div>
+                                <div className="text-2xl font-black text-blue-700">{countH} <span className="text-xs font-bold text-blue-600">câu</span></div>
+                                <div className="text-[9px] text-blue-600/80 font-bold truncate">Thông hiểu / Đọc đồ thị</div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Mức 3: Vận dụng */}
+                    {(() => {
+                        const countVD = props.questions.filter(q => q.level === 'VD').length;
+                        const pctVD = props.questions.length > 0 ? Math.round((countVD / props.questions.length) * 100) : 0;
+                        return (
+                            <div className="bg-amber-50/70 border-2 border-amber-200/80 p-4 rounded-2xl space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-amber-800 uppercase">[VD] Vận dụng</span>
+                                    <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">{pctVD}%</span>
+                                </div>
+                                <div className="text-2xl font-black text-amber-700">{countVD} <span className="text-xs font-bold text-amber-600">câu</span></div>
+                                <div className="text-[9px] text-amber-600/80 font-bold truncate">Biến đổi / Tính toán</div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Mức 4: Vận dụng cao */}
+                    {(() => {
+                        const countVDC = props.questions.filter(q => q.level === 'VDC').length;
+                        const pctVDC = props.questions.length > 0 ? Math.round((countVDC / props.questions.length) * 100) : 0;
+                        return (
+                            <div className="bg-red-50/70 border-2 border-red-200/80 p-4 rounded-2xl space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-red-800 uppercase">[VDC] V.Dụng cao</span>
+                                    <span className="text-[10px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full">{pctVDC}%</span>
+                                </div>
+                                <div className="text-2xl font-black text-red-700">{countVDC} <span className="text-xs font-bold text-red-600">câu</span></div>
+                                <div className="text-[9px] text-red-600/80 font-bold truncate">Cực trị / Phân hóa 9-10</div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Chưa phân loại nếu có */}
+                    {(() => {
+                        const countNone = props.questions.filter(q => !q.level).length;
+                        if (countNone === 0) return null;
+                        const pctNone = Math.round((countNone / props.questions.length) * 100);
+                        return (
+                            <div className="bg-slate-100 border-2 border-slate-200 p-4 rounded-2xl space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-slate-600 uppercase">Chưa gán</span>
+                                    <span className="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">{pctNone}%</span>
+                                </div>
+                                <div className="text-2xl font-black text-slate-700">{countNone} <span className="text-xs font-bold text-slate-500">câu</span></div>
+                                <div className="text-[9px] text-slate-500 font-bold truncate">Click chọn mức độ dưới</div>
+                            </div>
+                        );
+                    })()}
+                </div>
+            </div>
+
             <QuestionSection 
                 sectionTitle="PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN" 
                 type="mcq" 
