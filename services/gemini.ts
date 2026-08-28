@@ -20,82 +20,132 @@ export const normalizeLevel = (val: any): QuestionLevel | undefined => {
     if (val === undefined || val === null || val === '') return undefined;
     const raw = String(val).trim().toUpperCase();
     const clean = removeVietnameseAccents(raw).replace(/[^A-Z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    const compact = clean.replace(/\s+/g, '');
 
-    // 1. Mức 4: Vận dụng cao (VDC) - Kiểm tra trước để tránh nhầm với VD
+    // 1. Mức 4: Vận dụng cao (VDC / High Apply / Expert / Advance)
     if (
         clean === 'VDC' || 
+        compact === 'VDC' ||
         clean === '4' || 
         clean === 'MUC 4' || 
+        compact === 'MUC4' ||
         clean === 'LEVEL 4' || 
+        compact === 'LEVEL4' ||
         clean === 'LV 4' || 
         clean === 'LV4' ||
         clean === 'L4' ||
         clean.includes('VAN DUNG CAO') || 
-        clean.includes('VD CAO') ||
-        clean.includes('VDCAO') ||
-        clean.includes('VERY HARD') || 
-        clean.includes('VHARD') || 
+        compact.includes('VANDUNGCAO') ||
+        clean.includes('VD CAO') || 
+        compact.includes('VDCAO') ||
+        clean.includes('HIGH APPLY') ||
+        compact.includes('HIGHAPPLY') ||
+        clean.includes('HIGHER APPLY') ||
+        compact.includes('HIGHERAPPLY') ||
         clean.includes('HIGH APPLICATION') ||
+        compact.includes('HIGHAPPLICATION') ||
         clean.includes('HIGHER APPLICATION') ||
-        clean.includes('ADVANCED') ||
-        clean.includes('CREATIVE')
+        (clean.includes('HIGH') && (clean.includes('APPLY') || clean.includes('APP'))) ||
+        clean.includes('VERY HARD') || 
+        compact.includes('VERYHARD') ||
+        clean.includes('VHARD') ||
+        clean.includes('V HARD') ||
+        clean.includes('ADVANCED') || 
+        clean.includes('ADVANCE') || 
+        clean.includes('EXPERT') || 
+        clean.includes('CREATIVE') ||
+        clean.includes('CREATING') ||
+        clean.includes('EVALUATE') ||
+        clean.includes('EVALUATING')
     ) {
         return 'VDC';
     }
 
-    // 2. Mức 3: Vận dụng (VD)
+    // 2. Mức 3: Vận dụng (VD / Apply / Application / Hard)
     if (
         clean === 'VD' || 
+        compact === 'VD' ||
         clean === '3' || 
         clean === 'MUC 3' || 
+        compact === 'MUC3' ||
         clean === 'LEVEL 3' || 
+        compact === 'LEVEL3' ||
         clean === 'LV 3' || 
         clean === 'LV3' ||
         clean === 'L3' ||
         clean.includes('VAN DUNG') || 
-        clean === 'HARD' || 
-        clean === 'APPLICATION' || 
-        clean === 'APPLY' ||
-        clean === 'APPLYING'
+        compact.includes('VANDUNG') ||
+        clean.includes('APPLY') || 
+        compact.includes('APPLY') ||
+        clean.includes('APPLICATION') || 
+        compact.includes('APPLICATION') ||
+        clean.includes('APPLYING') ||
+        clean.includes('ANALYZE') ||
+        clean.includes('ANALYZING') ||
+        clean.includes('ANALYSIS') ||
+        clean.includes('HARD') || 
+        clean.includes('DIFFICULT')
     ) {
         return 'VD';
     }
 
-    // 3. Mức 2: Thông hiểu / Hiểu (H / TH)
+    // 3. Mức 2: Thông hiểu / Hiểu (H / TH / Understand / Understanding / Medium)
     if (
         clean === 'H' || 
         clean === 'TH' || 
+        compact === 'TH' ||
         clean === '2' || 
         clean === 'MUC 2' || 
+        compact === 'MUC2' ||
         clean === 'LEVEL 2' || 
+        compact === 'LEVEL2' ||
         clean === 'LV 2' || 
         clean === 'LV2' ||
         clean === 'L2' ||
         clean.includes('THONG HIEU') || 
+        compact.includes('THONGHIEU') ||
         clean.includes('HIEU') || 
-        clean === 'MEDIUM' || 
-        clean === 'UNDERSTANDING' || 
-        clean === 'COMPREHENSION'
+        clean.includes('UNDERSTAND') || 
+        compact.includes('UNDERSTAND') ||
+        clean.includes('COMPREHEND') || 
+        clean.includes('COMPREHENSION') || 
+        clean.includes('MEDIUM') || 
+        clean.includes('MED') ||
+        clean.includes('MODERATE') || 
+        clean.includes('INTERMEDIATE') ||
+        clean.includes('AVERAGE')
     ) {
         return 'H';
     }
 
-    // 4. Mức 1: Nhận biết / Biết (B / NB)
+    // 4. Mức 1: Nhận biết / Biết (B / NB / Know / Knowledge / Remember / Easy)
     if (
         clean === 'B' || 
         clean === 'NB' || 
+        compact === 'NB' ||
         clean === '1' || 
         clean === 'MUC 1' || 
+        compact === 'MUC1' ||
         clean === 'LEVEL 1' || 
+        compact === 'LEVEL1' ||
         clean === 'LV 1' || 
         clean === 'LV1' ||
         clean === 'L1' ||
         clean.includes('NHAN BIET') || 
+        compact.includes('NHANBIET') ||
         clean.includes('BIET') || 
-        clean === 'EASY' || 
-        clean === 'KNOWLEDGE' || 
-        clean === 'REMEMBER' ||
-        clean === 'RECOGNITION'
+        clean.includes('KNOW') || 
+        compact.includes('KNOW') ||
+        clean.includes('REMEMBER') || 
+        compact.includes('REMEMBER') ||
+        clean.includes('RECOGN') || 
+        clean.includes('RECALL') ||
+        clean.includes('EASY') || 
+        clean.includes('EZ') ||
+        clean.includes('BASIC') || 
+        clean.includes('ELEMENTARY') ||
+        clean.includes('BEGINNER') ||
+        clean.includes('SIMPLE')
     ) {
         return 'B';
     }
@@ -513,7 +563,8 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
                     ans = 'False';
                 }
                 const sqText = sq.text || sq.content || sq.noi_dung || sq.question || '';
-                const sqLevel = normalizeLevel(sq.level || sq.muc_do || sq.do_kho);
+                const sqRawLevel = sq.level ?? sq.muc_do ?? sq.mucdo ?? sq.mucDo ?? sq.do_kho ?? sq.dokho ?? sq.doKho ?? sq.difficulty ?? sq.bloom ?? sq.bloomLevel ?? sq.level_code ?? sq.cognitiveLevel ?? sq.cognitive_level ?? sq.rank ?? sq.phan_loai ?? sq.phanLoai ?? sq.tier ?? sq.grade_level;
+                const sqLevel = normalizeLevel(sqRawLevel);
                 return {
                     text: sqText.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
                     correctAnswer: ans,
@@ -583,7 +634,7 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
         const mainTextStr = q.text || q.question || q.content || q.cau_hoi || q.title || '';
 
         const rawSolution = q.solution || q.explanation || q.loi_giai || q.huong_dan_giai || q.guide || '';
-        const rawLevel = q.level ?? q.muc_do ?? q.mucdo ?? q.mucDo ?? q.do_kho ?? q.dokho ?? q.doKho ?? q.difficulty ?? q.bloom ?? q.bloomLevel ?? q.level_code ?? q.cognitiveLevel ?? q.cognitive_level ?? q.rank ?? q.phan_loai ?? q.phanLoai;
+        const rawLevel = q.level ?? q.muc_do ?? q.mucdo ?? q.mucDo ?? q.do_kho ?? q.dokho ?? q.doKho ?? q.difficulty ?? q.bloom ?? q.bloomLevel ?? q.level_code ?? q.cognitiveLevel ?? q.cognitive_level ?? q.rank ?? q.phan_loai ?? q.phanLoai ?? q.tier ?? q.grade_level;
 
         return {
             ...q,
