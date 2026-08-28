@@ -49,7 +49,12 @@ export const exportQuizToJson = (quiz: Quiz) => {
             text: q.text,
             options: q.type === 'mcq' ? (q.options || []) : undefined,
             correctAnswer: q.correctAnswer || undefined,
-            subQuestions: q.type === 'group-tf' ? (q.subQuestions || []) : undefined,
+            subQuestions: q.type === 'group-tf' ? (q.subQuestions || []).map((sq, sidx) => ({
+                id: sq.id,
+                text: sq.text,
+                level: sq.level || undefined,
+                correctAnswer: sq.correctAnswer
+            })) : undefined,
             solution: q.solution || undefined,
             points: q.points || (q.type === 'mcq' ? 0.25 : 1.0),
             imageUrl: q.imageUrl || undefined,
