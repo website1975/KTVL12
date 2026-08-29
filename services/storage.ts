@@ -396,8 +396,25 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
   }
 };
 
+// Cache in-memory ngắn hạn (30s) để giảm băng thông và số lượng request
+const memoryCache: { [key: string]: { data: any; expires: number } } = {};
+
+export const invalidateCache = (prefix?: string) => {
+  if (!prefix) {
+    Object.keys(memoryCache).forEach(k => delete memoryCache[k]);
+  } else {
+    Object.keys(memoryCache).filter(k => k.startsWith(prefix)).forEach(k => delete memoryCache[k]);
+  }
+};
+
 export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   if (!supabase) return [];
+  const cacheKey = `quizzes_meta_${grade || 'all'}`;
+  const now = Date.now();
+  if (memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
+
   try {
     let allQuizzes: any[] = [];
     let from = 0;
@@ -426,7 +443,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
         }
     }
     
-    return allQuizzes.map((row: any) => {
+    const mapped = allQuizzes.map((row: any) => {
         const quiz = row.data as Quiz;
         return {
             ...quiz,
@@ -436,6 +453,9 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
             questions: [] // Không tải câu hỏi để tiết kiệm băng thông
         };
     });
+
+    memoryCache[cacheKey] = { data: mapped, expires: now + 30000 }; // 30s cache
+    return mapped;
   } catch (e) {
     console.error("Lỗi getQuizzesMetadata:", e);
     return [];
@@ -477,27 +497,38 @@ export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
   }
 };
 
-export const getQuizById = async (id: string): Promise<Quiz | null> => {
+const quizDetailCache = new Map<string, Quiz>();
+
+export const getQuizById = async (id: string, forceRefresh: boolean = false): Promise<Quiz | null> => {
     if (!supabase) return null;
+    if (!forceRefresh && quizDetailCache.has(id)) {
+        return quizDetailCache.get(id)!;
+    }
     const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).single();
     if (error || !data) return null;
-    return data.data as Quiz;
+    const quiz = data.data as Quiz;
+    quizDetailCache.set(id, quiz);
+    return quiz;
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
+  invalidateCache('quizzes');
   const enrichedQuiz = { 
     ...quiz, 
     questionCount: quiz.questions.length,
     isSyncedToBank: quiz.isSyncedToBank ?? false 
   };
+  quizDetailCache.set(quiz.id, enrichedQuiz);
   const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
   handleSupabaseError(error, "Lưu đề thi mới");
 };
 
 export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
+  invalidateCache('quizzes');
   const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
+  quizDetailCache.set(quiz.id, quiz);
   const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
   handleSupabaseError(error, "Cập nhật đề thi");
 };
@@ -509,6 +540,7 @@ export const updateQuizTarget = async (
   assignedClassIds: string[]
 ): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
+  invalidateCache('quizzes');
   const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
   if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
   const currentQuiz = data.data as Quiz;
@@ -517,11 +549,34 @@ export const updateQuizTarget = async (
     targetType,
     assignedClassIds
   };
+  quizDetailCache.set(quizId, updatedQuiz);
   const { error: updateErr } = await supabase.from('quizzes').update({
     data: updatedQuiz,
     grade: data.grade
   }).eq('id', quizId);
   handleSupabaseError(updateErr, "Gán phòng/lớp cho đề thi");
+};
+
+// Cập nhật nhanh quyền xem đáp án chi tiết
+export const updateQuizAllowReview = async (
+  quizId: string, 
+  allowReview: boolean
+): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  invalidateCache('quizzes');
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
+  if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
+  const currentQuiz = data.data as Quiz;
+  const updatedQuiz: Quiz = {
+    ...currentQuiz,
+    allowReview
+  };
+  quizDetailCache.set(quizId, updatedQuiz);
+  const { error: updateErr } = await supabase.from('quizzes').update({
+    data: updatedQuiz,
+    grade: data.grade
+  }).eq('id', quizId);
+  handleSupabaseError(updateErr, "Cập nhật quyền xem đáp án chi tiết");
 };
 
 // Gán nhanh phòng / lớp hàng loạt cho nhiều đề thi (ví dụ chuyển hàng loạt đề cũ vào phòng tạm)
@@ -532,6 +587,7 @@ export const batchUpdateQuizTarget = async (
 ): Promise<number> => {
   if (!supabase) throw new Error("Mất kết nối Database");
   if (quizIds.length === 0) return 0;
+  invalidateCache('quizzes');
   const { data, error } = await supabase.from('quizzes').select('id, grade, data').in('id', quizIds);
   if (error || !data) throw new Error("Lỗi khi tải danh sách đề thi");
 
@@ -554,6 +610,8 @@ export const batchUpdateQuizTarget = async (
 
 export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) {
+      invalidateCache('quizzes');
+      quizDetailCache.delete(id);
       const { error } = await supabase.from('quizzes').delete().eq('id', id);
       handleSupabaseError(error, "Xóa đề thi");
   }
