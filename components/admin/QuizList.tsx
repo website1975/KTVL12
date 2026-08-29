@@ -21,6 +21,7 @@ interface QuizListProps {
     onDelete: (id: string) => void;
     onPreview: (quiz: Quiz) => void;
     onQuickAssignTarget?: (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => Promise<void>;
+    onToggleAllowReview?: (quizId: string, currentAllowReview: boolean) => Promise<void> | void;
     qSearch: string;
     setQSearch: (val: string) => void;
     qGradeFilter: Grade | 'all';
@@ -34,6 +35,7 @@ const PAGE_SIZE = 12;
 export default function QuizList({ 
     quizzes, results, chapters, classes = [], onEdit, onDelete, onPreview, 
     onQuickAssignTarget,
+    onToggleAllowReview,
     qSearch, setQSearch, qGradeFilter, setQGradeFilter,
     qChapterFilter, setQChapterFilter
 }: QuizListProps) {
@@ -485,6 +487,32 @@ export default function QuizList({
                                 )}
 
                                 {/* Published / Active Status Badge */}
+                                {q.type === 'practice' ? (
+                                    <span className="px-2 py-1 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                        <Zap size={9}/> Luyện tập
+                                    </span>
+                                ) : (
+                                    <span className="px-2 py-1 bg-blue-50 border border-blue-300 text-blue-800 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                        <FileText size={9}/> Làm bài ({q.maxAttempts ?? 2} lần)
+                                    </span>
+                                )}
+
+                                {/* Quick toggle Mở / Khóa đáp án cho đề thi */}
+                                {q.type === 'test' && onToggleAllowReview && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleAllowReview(q.id, q.allowReview ?? false);
+                                        }}
+                                        className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors ${q.allowReview ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300'}`}
+                                        title={q.allowReview ? "Học sinh ĐƯỢC XEM đáp án & lời giải chi tiết. Nhấp để KHÓA LẠI." : "Đang KHÓA ĐÁP ÁN: Học sinh chỉ thấy điểm tổng. Nhấp để MỞ ĐÁP ÁN."}
+                                    >
+                                        {q.allowReview ? <Eye size={10} className="text-amber-700"/> : <EyeOff size={10} className="text-slate-500"/>}
+                                        {q.allowReview ? 'Mở đáp án' : 'Khóa đáp án'}
+                                    </button>
+                                )}
+
                                 {q.isPublished ? (
                                     state.isExpired ? (
                                         <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
