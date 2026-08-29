@@ -11,20 +11,20 @@ interface ResultsBoardProps {
     users: UserType[]; 
     chapters: Chapter[];
     rGradeFilter: Grade | 'all';
-    setRGradeFilter: (val: Grade | 'all') => void;
+    setRGradeFilter: React.Dispatch<React.SetStateAction<Grade | 'all'>> | ((val: Grade | 'all') => void);
     rChapterFilter: string;
-    setRChapterFilter: (val: string) => void;
+    setRChapterFilter: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     rQuizFilter: string;
-    setRQuizFilter: (val: string) => void;
+    setRQuizFilter: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     rSearch: string;
-    setRSearch: (val: string) => void;
-    onClearCache: () => void;
-    onRefresh: () => void;
-    onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void;
-    onDeleteResult: (history: Result[]) => void;
-    onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    setRSearch: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
+    onClearCache: () => void | Promise<void>;
+    onRefresh: () => void | Promise<void>;
+    onViewHistory: (studentName: string, studentCode: string, quizTitle: string, history: Result[]) => void | Promise<void>;
+    onDeleteResult: (history: Result[]) => void | Promise<void>;
+    onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void | Promise<void>;
     totalCount: number;
-    onLoadMore: () => void;
+    onLoadMore: () => void | Promise<void>;
     isMoreLoading: boolean;
 }
 
