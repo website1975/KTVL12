@@ -87,6 +87,8 @@ export interface Quiz {
   targetType?: 'all' | 'classes'; // 'all' (tất cả hs cùng khối) | 'classes' (chỉ giao cho các lớp chỉ định)
   assignedClassIds?: string[]; // IDs của các lớp được giao đề
   assignedClasses?: { id: string; name: string; academicYear?: string }[]; // Thông tin chi tiết lớp để hiển thị nhanh
+  maxAttempts?: number; // Số lần làm bài tối đa (mặc định là 2 cho đề thi)
+  allowReview?: boolean; // Cho phép học sinh xem lại đáp án & lời giải chi tiết (Mặc định: BẬT cho Luyện tập, TẮT cho Đề thi nếu GV chưa mở)
 }
 
 export interface Result {
