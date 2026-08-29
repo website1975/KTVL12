@@ -19,38 +19,42 @@ import { exportQuizToJson } from '../../services/quizExport';
 interface QuizEditorProps {
     editingId: string | null;
     title: string;
-    setTitle: (val: string) => void;
+    setTitle: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     grade: Grade;
-    setGrade: (val: Grade) => void;
+    setGrade: React.Dispatch<React.SetStateAction<Grade>> | ((val: Grade) => void);
     quizType: QuizType;
-    setQuizType: (val: QuizType) => void;
+    setQuizType: React.Dispatch<React.SetStateAction<QuizType>> | ((val: QuizType) => void);
     isPublished: boolean;
-    setIsPublished: (val: boolean) => void;
+    setIsPublished: React.Dispatch<React.SetStateAction<boolean>> | ((val: boolean) => void);
     isMonitored?: boolean;
-    setIsMonitored: (val: boolean) => void;
+    setIsMonitored: React.Dispatch<React.SetStateAction<boolean>> | ((val: boolean) => void);
     isUnlisted?: boolean;
-    setIsUnlisted: (val: boolean) => void;
+    setIsUnlisted: React.Dispatch<React.SetStateAction<boolean>> | ((val: boolean) => void);
     duration: number;
-    setDuration: (val: number) => void;
+    setDuration: React.Dispatch<React.SetStateAction<number>> | ((val: number) => void);
     category: string;
-    setCategory: (val: string) => void;
+    setCategory: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     startTime: string;
-    setStartTime: (val: string) => void;
+    setStartTime: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     endTime: string;
-    setEndTime: (val: string) => void;
+    setEndTime: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     questions: Question[];
-    setQuestions: (val: Question[]) => void;
+    setQuestions: React.Dispatch<React.SetStateAction<Question[]>> | ((val: Question[]) => void);
     chapters: Chapter[];
     classes?: ClassRoom[];
     targetType?: 'all' | 'classes';
-    setTargetType?: (val: 'all' | 'classes') => void;
+    setTargetType?: React.Dispatch<React.SetStateAction<'all' | 'classes'>> | ((val: 'all' | 'classes') => void);
     assignedClassIds?: string[];
-    setAssignedClassIds?: (val: string[]) => void;
+    setAssignedClassIds?: React.Dispatch<React.SetStateAction<string[]>> | ((val: string[]) => void);
+    maxAttempts?: number;
+    setMaxAttempts?: React.Dispatch<React.SetStateAction<number>> | ((val: number) => void);
+    allowReview?: boolean;
+    setAllowReview?: React.Dispatch<React.SetStateAction<boolean>> | ((val: boolean) => void);
     onSave: () => void;
     onCleanLabels: () => void;
     onOpenBank: (type: QuestionType) => void;
     orderIndex: number;
-    setOrderIndex: (val: number) => void;
+    setOrderIndex: React.Dispatch<React.SetStateAction<number>> | ((val: number) => void);
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onTextExtract: (text: string) => void;
     onUploadImage: (qId: string, file: File) => void;
@@ -892,7 +896,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                     />
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Khối lớp</label>
                         <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.grade} onChange={e => { props.setGrade(e.target.value as Grade); props.setCategory(''); }}>
@@ -909,33 +913,139 @@ export default function QuizEditor(props: QuizEditorProps) {
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Hình thức</label>
-                        <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.quizType} onChange={e => {
-                            const val = e.target.value as any;
-                            props.setQuizType(val);
-                            if (val === 'practice') props.setIsMonitored(false);
-                        }}>
-                            <option value="practice">Luyện tập (Tự do)</option>
-                            <option value="test">Kiểm tra (Hẹn giờ)</option>
-                        </select>
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng làm bài (phút)</label>
+                        <input type="number" min="1" className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value) || 45)} />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thứ tự luyện (0: Tự do, 1-N: Trình tự)</label>
-                        <input 
-                            type="number" 
-                            min="0"
-                            className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" 
-                            value={props.orderIndex} 
-                            onChange={e => {
-                                const val = parseInt(e.target.value);
-                                props.setOrderIndex(isNaN(val) ? 0 : val);
-                            }} 
-                        />
+                </div>
+
+                {/* CẦN GẠT CHỦ ĐỘNG PHÂN LOẠI: LUYỆN TẬP HOẶC LÀM BÀI THI */}
+                <div className="bg-slate-50 p-6 rounded-[2.5rem] border-2 border-slate-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Zap size={18} className="text-blue-600" />
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                Phân loại đề: Luyện tập hay Làm bài thi (GV chủ động phân quyền)
+                            </h4>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${props.quizType === 'practice' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-blue-100 text-blue-800 border border-blue-300'}`}>
+                            {props.quizType === 'practice' ? '⚡ Chế độ Luyện tập' : '📝 Chế độ Làm bài thi'}
+                        </span>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng (phút)</label>
-                        <input type="number" className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value))} />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Option 1: Luyện tập */}
+                        <div 
+                            onClick={() => {
+                                props.setQuizType('practice');
+                                props.setIsMonitored(false);
+                            }}
+                            className={`cursor-pointer rounded-2xl p-5 border-2 transition-all flex flex-col justify-between ${props.quizType === 'practice' ? 'bg-amber-50/80 border-amber-500 shadow-md ring-2 ring-amber-400/30' : 'bg-white border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100'}`}
+                        >
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`p-2 rounded-xl ${props.quizType === 'practice' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                            <Zap size={16} />
+                                        </div>
+                                        <h5 className="font-black text-slate-900 text-sm uppercase">Đề Luyện tập</h5>
+                                    </div>
+                                    <input 
+                                        type="radio" 
+                                        name="quizTypeToggle"
+                                        checked={props.quizType === 'practice'} 
+                                        onChange={() => {}}
+                                        className="w-4 h-4 text-amber-600 focus:ring-amber-500"
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                    Học sinh ôn tập tự do từng câu, xem ngay đáp án đúng/sai & lời giải chi tiết.
+                                </p>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-amber-200/60 text-[10px] font-bold text-amber-800 flex items-center gap-1.5">
+                                <span>🔒 <b>Phía Học sinh:</b> Nút <b>Làm bài thi</b> sẽ tự động <b>MỜ / KHÓA</b>.</span>
+                            </div>
+                        </div>
+
+                        {/* Option 2: Làm bài thi */}
+                        <div 
+                            onClick={() => props.setQuizType('test')}
+                            className={`cursor-pointer rounded-2xl p-5 border-2 transition-all flex flex-col justify-between ${props.quizType === 'test' ? 'bg-blue-50/80 border-blue-600 shadow-md ring-2 ring-blue-500/30' : 'bg-white border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100'}`}
+                        >
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`p-2 rounded-xl ${props.quizType === 'test' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                            <FileText size={16} />
+                                        </div>
+                                        <h5 className="font-black text-slate-900 text-sm uppercase">Đề Làm bài thi</h5>
+                                    </div>
+                                    <input 
+                                        type="radio" 
+                                        name="quizTypeToggle"
+                                        checked={props.quizType === 'test'} 
+                                        onChange={() => {}}
+                                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                    Tính điểm chính thức & thời gian làm bài, lưu vào Bảng xếp hạng. Chống gian lận xem trước đáp án.
+                                </p>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-blue-200/60 text-[10px] font-bold text-blue-800 flex items-center gap-1.5">
+                                <span>🛡️ <b>Phía Học sinh:</b> Nút <b>Luyện tập</b> sẽ tự động <b>MỜ / KHÓA</b> (Tối đa 2 lần làm bài).</span>
+                            </div>
+                        </div>
                     </div>
+
+                    {/* Cài đặt chi tiết số lần làm bài nếu là Đề thi */}
+                    {props.quizType === 'test' && (
+                        <div className="bg-white p-4 rounded-2xl border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="text-xs">
+                                <p className="font-black text-slate-800 uppercase">Giới hạn số lần làm bài thi</p>
+                                <p className="text-[11px] text-slate-500">Mặc định 2 lần làm bài. Sau khi làm đủ số lần, nút làm bài sẽ đóng băng.</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {[1, 2, 3].map(cnt => (
+                                    <button
+                                        key={cnt}
+                                        type="button"
+                                        onClick={() => props.setMaxAttempts && props.setMaxAttempts(cnt)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${(props.maxAttempts ?? 2) === cnt ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                                    >
+                                        {cnt} lần
+                                    </button>
+                                ))}
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="10"
+                                    value={props.maxAttempts ?? 2}
+                                    onChange={e => props.setMaxAttempts && props.setMaxAttempts(Math.max(1, parseInt(e.target.value) || 2))}
+                                    className="w-16 border-2 border-slate-200 rounded-xl p-1.5 text-center text-xs font-black bg-slate-50 focus:border-blue-500 outline-none"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Thứ tự luyện tập nếu là Luyện tập */}
+                    {props.quizType === 'practice' && (
+                        <div className="bg-white p-4 rounded-2xl border border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="text-xs">
+                                <p className="font-black text-slate-800 uppercase">Thứ tự luyện tập</p>
+                                <p className="text-[11px] text-slate-500">0: Tự do chọn đề • 1, 2, 3...: Yêu cầu luyện tuần tự theo thứ tự</p>
+                            </div>
+                            <input 
+                                type="number" 
+                                min="0"
+                                className="w-24 border-2 border-slate-200 rounded-xl p-2 text-center text-xs font-black bg-slate-50 focus:border-amber-400 outline-none" 
+                                value={props.orderIndex} 
+                                onChange={e => {
+                                    const val = parseInt(e.target.value);
+                                    props.setOrderIndex(isNaN(val) ? 0 : val);
+                                }} 
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Khung thời gian và cài đặt kỳ thi */}
@@ -1223,22 +1333,36 @@ export default function QuizEditor(props: QuizEditorProps) {
                     )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-amber-600 uppercase ml-2 flex items-center gap-1"><Eye size={12}/> Xem đáp án & Lời giải</label>
+                        <button 
+                            type="button"
+                            onClick={() => props.setAllowReview && props.setAllowReview(!props.allowReview)} 
+                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-2 ${props.allowReview ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-md shadow-amber-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+                            title={props.allowReview ? "Học sinh được xem đáp án đúng và lời giải chi tiết" : "Đã khóa đáp án: Học sinh chỉ thấy điểm tổng kết, chống lộ đề"}
+                        >
+                            {props.allowReview ? <Eye size={16}/> : <EyeOff size={16}/>}
+                            {props.allowReview ? 'CHO XEM ĐÁP ÁN' : 'KHÓA ĐÁP ÁN (ẨN GIẢI)'}
+                        </button>
+                    </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-red-600 uppercase ml-2 flex items-center gap-1"><ShieldAlert size={12}/> Chế độ bảo mật</label>
                         <button 
+                            type="button"
                             onClick={() => props.setIsMonitored(!props.isMonitored)} 
-                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-3 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200 shadow-lg shadow-red-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-2 ${props.isMonitored ? 'bg-red-50 text-red-600 border-red-200 shadow-md shadow-red-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
                         >
                             {props.isMonitored ? <ShieldCheck size={16}/> : <ShieldAlert size={16}/>}
-                            {props.isMonitored ? 'ĐÃ BẬT CHỐNG GIAN LẬN' : 'KHÔNG GIÁM SÁT'}
+                            {props.isMonitored ? 'BẬT CHỐNG GIAN LẬN' : 'KHÔNG GIÁM SÁT'}
                         </button>
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-indigo-600 uppercase ml-2 flex items-center gap-1"><EyeOff size={12}/> Chế độ riêng tư</label>
                         <button 
+                            type="button"
                             onClick={() => props.setIsUnlisted(!props.isUnlisted)} 
-                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-3 ${props.isUnlisted ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-lg shadow-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all flex items-center justify-center gap-2 ${props.isUnlisted ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-md shadow-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
                         >
                             {props.isUnlisted ? <LinkIcon size={16}/> : <Eye size={16}/>}
                             {props.isUnlisted ? 'CHỈ LÀM QUA LINK' : 'HIỆN CÔNG KHAI'}
@@ -1246,7 +1370,11 @@ export default function QuizEditor(props: QuizEditorProps) {
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Trạng thái phát hành</label>
-                        <button onClick={() => props.setIsPublished(!props.isPublished)} className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all shadow-md ${props.isPublished ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-slate-200 text-slate-500 border-slate-300'}`}>
+                        <button 
+                            type="button"
+                            onClick={() => props.setIsPublished(!props.isPublished)} 
+                            className={`w-full p-4 rounded-[1.5rem] font-black text-[10px] border-2 transition-all shadow-md ${props.isPublished ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-slate-200 text-slate-500 border-slate-300'}`}
+                        >
                             {props.isPublished ? 'ĐÃ CÔNG KHAI' : 'BẢN NHÁP (ẨN)'}
                         </button>
                     </div>
