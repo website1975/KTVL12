@@ -72,8 +72,13 @@ export const getResultsMetadataPage = async (page: number, pageSize: number = 50
   }
 };
 
-export const getResultsMetadata = async (quizId?: string, maxRecords: number = 10000): Promise<Result[]> => {
+export const getResultsMetadata = async (quizId?: string, maxRecords: number = 10000, forceRefresh: boolean = false): Promise<Result[]> => {
   if (!supabase) return [];
+  const cacheKey = `results_meta_${quizId || 'all'}`;
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
   try {
       let allData: any[] = [];
       let from = 0;
@@ -102,7 +107,7 @@ export const getResultsMetadata = async (quizId?: string, maxRecords: number = 1
           }
       }
       
-      return allData.map((row: any) => {
+      const mapped = allData.map((row: any) => {
           const res = row.data as Result;
           return {
               ...res,
@@ -111,6 +116,8 @@ export const getResultsMetadata = async (quizId?: string, maxRecords: number = 1
               studentId: row.student_id
           };
       });
+      memoryCache[cacheKey] = { data: mapped, expires: now + CACHE_TTL };
+      return mapped;
   } catch (e) {
       console.error("Lỗi getResultsMetadata:", e);
       return [];
@@ -160,8 +167,13 @@ export const getResults = async (quizId?: string, maxRecords: number = 5000): Pr
   }
 };
 
-export const getResultsForStudent = async (studentId: string, studentCode?: string): Promise<Result[]> => {
+export const getResultsForStudent = async (studentId: string, studentCode?: string, forceRefresh: boolean = false): Promise<Result[]> => {
   if (!supabase) return [];
+  const cacheKey = `student_results_${studentId}_${studentCode || 'na'}`;
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
   let query = supabase.from('results')
     .select('data')
     .order('id', { ascending: false })
@@ -175,7 +187,9 @@ export const getResultsForStudent = async (studentId: string, studentCode?: stri
   }
   const { data, error } = await query;
   if (error) return [];
-  return data.map((row: any) => row.data as Result);
+  const result = data.map((row: any) => row.data as Result);
+  memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+  return result;
 };
 
 export const verifyResultExists = async (id: string): Promise<boolean> => {
@@ -193,6 +207,8 @@ export const getResultById = async (id: string): Promise<Result | null> => {
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
+  invalidateCache('student_results');
+  invalidateCache('published_results');
   const payload = { id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result };
   const { error } = await supabase.from('results').insert(payload);
   handleSupabaseError(error, "Lưu kết quả thi");
@@ -200,6 +216,8 @@ export const saveResult = async (result: Result): Promise<void> => {
 
 export const deleteResult = async (id: string): Promise<void> => {
     if (supabase) {
+        invalidateCache('student_results');
+        invalidateCache('published_results');
         const { error } = await supabase.from('results').delete().eq('id', id);
         handleSupabaseError(error, "Xóa kết quả");
     }
@@ -240,8 +258,13 @@ export const getUsersPage = async (page: number, pageSize: number = 50, search?:
   }
 };
 
-export const getUsers = async (): Promise<User[]> => {
+export const getUsers = async (forceRefresh: boolean = false): Promise<User[]> => {
   if (!supabase) return [];
+  const cacheKey = 'users_all';
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
   try {
     let allUsers: any[] = [];
     let from = 0;
@@ -262,7 +285,9 @@ export const getUsers = async (): Promise<User[]> => {
             hasMore = false;
         }
     }
-    return allUsers.map((row: any) => ({ ...row.data, id: row.id } as User));
+    const result = allUsers.map((row: any) => ({ ...row.data, id: row.id } as User));
+    memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+    return result;
   } catch (e) {
     console.error("Lỗi getUsers:", e);
     return [];
@@ -270,12 +295,14 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 export const saveUser = async (user: User): Promise<void> => {
+  invalidateCache('users_all');
   if (!supabase) throw new Error("Mất kết nối Database Cloud");
   const payload = { id: user.id, username: user.username.toLowerCase().trim(), data: user };
   await supabase.from('users').upsert(payload);
 };
 
 export const saveUsersBatch = async (users: User[]): Promise<void> => {
+  invalidateCache('users_all');
   if (!supabase) throw new Error("Mất kết nối Database Cloud");
   if (users.length === 0) return;
   const payloads = users.map(user => ({
@@ -396,8 +423,9 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
   }
 };
 
-// Cache in-memory ngắn hạn (30s) để giảm băng thông và số lượng request
+// Cache in-memory 10 phút để giảm triệt để băng thông và số lượng request
 const memoryCache: { [key: string]: { data: any; expires: number } } = {};
+const CACHE_TTL = 10 * 60 * 1000; // 10 phút (600.000 ms)
 
 export const invalidateCache = (prefix?: string) => {
   if (!prefix) {
@@ -407,11 +435,59 @@ export const invalidateCache = (prefix?: string) => {
   }
 };
 
-export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
+// Cập nhật trực tiếp 1 đề thi vào Cache Memory mà không làm mất bộ đệm 70 đề khác
+export const updateQuizInCache = (updatedQuiz: Quiz) => {
+  const metaItem: Quiz = {
+    ...updatedQuiz,
+    questionCount: updatedQuiz.questions ? updatedQuiz.questions.length : (updatedQuiz.questionCount || 0),
+    questions: []
+  };
+
+  quizDetailCache.set(updatedQuiz.id, updatedQuiz);
+
+  Object.keys(memoryCache).forEach(k => {
+    if (k.startsWith('quizzes_meta_')) {
+      const list = memoryCache[k].data as Quiz[];
+      if (Array.isArray(list)) {
+        const idx = list.findIndex(q => q.id === updatedQuiz.id);
+        if (idx >= 0) {
+          list[idx] = metaItem;
+        } else {
+          list.unshift(metaItem);
+        }
+      }
+    } else if (k.startsWith('quizzes_full_')) {
+      const list = memoryCache[k].data as Quiz[];
+      if (Array.isArray(list)) {
+        const idx = list.findIndex(q => q.id === updatedQuiz.id);
+        if (idx >= 0) {
+          list[idx] = updatedQuiz;
+        } else {
+          list.unshift(updatedQuiz);
+        }
+      }
+    }
+  });
+};
+
+// Xóa 1 đề thi khỏi Cache Memory trực tiếp
+export const removeQuizFromCache = (quizId: string) => {
+  quizDetailCache.delete(quizId);
+  Object.keys(memoryCache).forEach(k => {
+    if (k.startsWith('quizzes_meta_') || k.startsWith('quizzes_full_')) {
+      const list = memoryCache[k].data as Quiz[];
+      if (Array.isArray(list)) {
+        memoryCache[k].data = list.filter(q => q.id !== quizId);
+      }
+    }
+  });
+};
+
+export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = false): Promise<Quiz[]> => {
   if (!supabase) return [];
   const cacheKey = `quizzes_meta_${grade || 'all'}`;
   const now = Date.now();
-  if (memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
     return memoryCache[cacheKey].data;
   }
 
@@ -454,7 +530,7 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
         };
     });
 
-    memoryCache[cacheKey] = { data: mapped, expires: now + 30000 }; // 30s cache
+    memoryCache[cacheKey] = { data: mapped, expires: now + CACHE_TTL };
     return mapped;
   } catch (e) {
     console.error("Lỗi getQuizzesMetadata:", e);
@@ -462,8 +538,13 @@ export const getQuizzesMetadata = async (grade?: Grade): Promise<Quiz[]> => {
   }
 };
 
-export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
+export const getQuizzes = async (grade?: Grade, forceRefresh: boolean = false): Promise<Quiz[]> => {
   if (!supabase) return [];
+  const cacheKey = `quizzes_full_${grade || 'all'}`;
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
   try {
     let allQuizzes: any[] = [];
     let from = 0;
@@ -491,7 +572,13 @@ export const getQuizzes = async (grade?: Grade): Promise<Quiz[]> => {
             hasMore = false;
         }
     }
-    return allQuizzes.map((row: any) => row.data as Quiz);
+    const result = allQuizzes.map((row: any) => {
+      const q = row.data as Quiz;
+      quizDetailCache.set(q.id, q);
+      return q;
+    });
+    memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+    return result;
   } catch (e) {
     return [];
   }
@@ -513,22 +600,20 @@ export const getQuizById = async (id: string, forceRefresh: boolean = false): Pr
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  invalidateCache('quizzes');
   const enrichedQuiz = { 
     ...quiz, 
     questionCount: quiz.questions.length,
     isSyncedToBank: quiz.isSyncedToBank ?? false 
   };
-  quizDetailCache.set(quiz.id, enrichedQuiz);
+  updateQuizInCache(enrichedQuiz);
   const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
   handleSupabaseError(error, "Lưu đề thi mới");
 };
 
 export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  invalidateCache('quizzes');
   const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
-  quizDetailCache.set(quiz.id, quiz);
+  updateQuizInCache(quiz);
   const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
   handleSupabaseError(error, "Cập nhật đề thi");
 };
@@ -540,7 +625,6 @@ export const updateQuizTarget = async (
   assignedClassIds: string[]
 ): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  invalidateCache('quizzes');
   const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
   if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
   const currentQuiz = data.data as Quiz;
@@ -549,7 +633,7 @@ export const updateQuizTarget = async (
     targetType,
     assignedClassIds
   };
-  quizDetailCache.set(quizId, updatedQuiz);
+  updateQuizInCache(updatedQuiz);
   const { error: updateErr } = await supabase.from('quizzes').update({
     data: updatedQuiz,
     grade: data.grade
@@ -563,7 +647,6 @@ export const updateQuizAllowReview = async (
   allowReview: boolean
 ): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  invalidateCache('quizzes');
   const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
   if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
   const currentQuiz = data.data as Quiz;
@@ -571,7 +654,7 @@ export const updateQuizAllowReview = async (
     ...currentQuiz,
     allowReview
   };
-  quizDetailCache.set(quizId, updatedQuiz);
+  updateQuizInCache(updatedQuiz);
   const { error: updateErr } = await supabase.from('quizzes').update({
     data: updatedQuiz,
     grade: data.grade
@@ -587,7 +670,6 @@ export const batchUpdateQuizTarget = async (
 ): Promise<number> => {
   if (!supabase) throw new Error("Mất kết nối Database");
   if (quizIds.length === 0) return 0;
-  invalidateCache('quizzes');
   const { data, error } = await supabase.from('quizzes').select('id, grade, data').in('id', quizIds);
   if (error || !data) throw new Error("Lỗi khi tải danh sách đề thi");
 
@@ -599,6 +681,7 @@ export const batchUpdateQuizTarget = async (
       targetType,
       assignedClassIds
     };
+    updateQuizInCache(updatedQuiz);
     const { error: updateErr } = await supabase.from('quizzes').update({
       data: updatedQuiz,
       grade: row.grade
@@ -610,8 +693,7 @@ export const batchUpdateQuizTarget = async (
 
 export const deleteQuiz = async (id: string): Promise<void> => {
   if (supabase) {
-      invalidateCache('quizzes');
-      quizDetailCache.delete(id);
+      removeQuizFromCache(id);
       const { error } = await supabase.from('quizzes').delete().eq('id', id);
       handleSupabaseError(error, "Xóa đề thi");
   }
@@ -644,22 +726,37 @@ export const syncAllQuizzesMetadata = async (): Promise<number> => {
 };
 
 // --- Chapters ---
-export const getChapters = async (): Promise<Chapter[]> => {
+export const getChapters = async (forceRefresh: boolean = false): Promise<Chapter[]> => {
   if (!supabase) return [];
+  const cacheKey = 'chapters_all';
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
   const { data } = await supabase.from('chapters').select('data');
-  return data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
+  const result = data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
+  memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+  return result;
 };
 
 export const saveChapter = async (c: Chapter): Promise<void> => {
+  invalidateCache('chapters_all');
   if (supabase) await supabase.from('chapters').insert({ id: c.id, grade: c.grade, data: c });
 };
 
 export const deleteChapter = async (id: string): Promise<void> => {
+  invalidateCache('chapters_all');
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
 // --- Classroom & Academic Year Management ---
-export const getClasses = async (): Promise<ClassRoom[]> => {
+export const getClasses = async (forceRefresh: boolean = false): Promise<ClassRoom[]> => {
+  const cacheKey = 'classes_all';
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
+
   if (supabase) {
     try {
       const { data, error } = await supabase.from('classes').select('*');
@@ -673,7 +770,8 @@ export const getClasses = async (): Promise<ClassRoom[]> => {
           description: row.description || (row.data && row.data.description) || ''
         } as ClassRoom));
         
-        // Cache to localStorage for fast offline read
+        // Cache to memory and localStorage for fast read
+        memoryCache[cacheKey] = { data: classes, expires: now + CACHE_TTL };
         try {
           localStorage.setItem('eduquiz_classes_cache', JSON.stringify(classes));
         } catch (e) {}
@@ -687,12 +785,17 @@ export const getClasses = async (): Promise<ClassRoom[]> => {
   // Fallback to localStorage
   try {
     const local = localStorage.getItem('eduquiz_classes_cache');
-    if (local) return JSON.parse(local);
+    if (local) {
+      const parsed = JSON.parse(local);
+      memoryCache[cacheKey] = { data: parsed, expires: now + CACHE_TTL };
+      return parsed;
+    }
   } catch (e) {}
   return [];
 };
 
 export const saveClass = async (c: ClassRoom): Promise<void> => {
+  invalidateCache('classes_all');
   // Update local cache first
   try {
     const list = await getClasses();
@@ -718,6 +821,7 @@ export const saveClass = async (c: ClassRoom): Promise<void> => {
 };
 
 export const saveClassesBatch = async (classesList: ClassRoom[]): Promise<void> => {
+  invalidateCache('classes_all');
   if (classesList.length === 0) return;
   try {
     localStorage.setItem('eduquiz_classes_cache', JSON.stringify(classesList));
@@ -740,6 +844,7 @@ export const saveClassesBatch = async (classesList: ClassRoom[]): Promise<void> 
 };
 
 export const deleteClass = async (id: string): Promise<void> => {
+  invalidateCache('classes_all');
   try {
     const list = await getClasses();
     const updated = list.filter(item => item.id !== id);
@@ -779,8 +884,13 @@ export const assignStudentsToClass = async (studentIds: string[], classInfo: { c
 };
 
 // --- Question Bank ---
-export const getBankQuestions = async (): Promise<Question[]> => {
+export const getBankQuestions = async (forceRefresh: boolean = false): Promise<Question[]> => {
     if (!supabase) return [];
+    const cacheKey = 'bank_questions_all';
+    const now = Date.now();
+    if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+      return memoryCache[cacheKey].data;
+    }
     try {
         let allQuestions: any[] = [];
         let from = 0;
@@ -801,7 +911,9 @@ export const getBankQuestions = async (): Promise<Question[]> => {
                 hasMore = false;
             }
         }
-        return allQuestions.map((row: any) => row.data as Question);
+        const result = allQuestions.map((row: any) => row.data as Question);
+        memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+        return result;
     } catch (e) {
         console.error("Lỗi lấy ngân hàng câu hỏi:", e);
         return [];
@@ -1024,17 +1136,26 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
     }
 };
 
-export const getPublishedResults = async (limit: number = 20): Promise<PublishedResult[]> => {
+export const getPublishedResults = async (limit: number = 20, forceRefresh: boolean = false): Promise<PublishedResult[]> => {
     if (!supabase) return [];
+    const cacheKey = `published_results_${limit}`;
+    const now = Date.now();
+    if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+      return memoryCache[cacheKey].data;
+    }
     const { data } = await supabase.from('published_results').select('data').order('id', { ascending: false }).limit(limit);
-    return data ? data.map((row: any) => row.data as PublishedResult) : [];
+    const result = data ? data.map((row: any) => row.data as PublishedResult) : [];
+    memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
+    return result;
 };
 
 export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {
+    invalidateCache('published_results');
     if (supabase) await supabase.from('published_results').upsert({ id: pub.id, data: pub });
 };
 
 export const deletePublishedResult = async (id: string): Promise<void> => {
+    invalidateCache('published_results');
     if (supabase) await supabase.from('published_results').delete().eq('id', id);
 };
 
