@@ -61,17 +61,17 @@ export default function AdminDashboard() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
-  // Lazy loading data
-  const loadTabData = useCallback(async (tab: AdminTab) => {
+  // Lazy loading data with memory cache & forceRefresh
+  const loadTabData = useCallback(async (tab: AdminTab, forceRefresh: boolean = false) => {
     if (!isDatabaseConnected()) return;
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
         const [q, c, r, cls] = await Promise.all([
-          getQuizzesMetadata(), 
-          getChapters(),
-          getResultsMetadata(),
-          getClasses()
+          getQuizzesMetadata('all', forceRefresh), 
+          getChapters(forceRefresh),
+          getResultsMetadata('all', 10000, forceRefresh),
+          getClasses(forceRefresh)
         ]);
         setQuizzes(q);
         setChapters(c);
@@ -79,11 +79,11 @@ export default function AdminDashboard() {
         setClasses(cls);
       } else if (tab === 'classes') {
         const [cls, u, q, r, c] = await Promise.all([
-          getClasses(),
-          getUsers(),
-          getQuizzesMetadata(),
-          getResultsMetadata(),
-          getChapters()
+          getClasses(forceRefresh),
+          getUsers(forceRefresh),
+          getQuizzesMetadata('all', forceRefresh),
+          getResultsMetadata('all', 10000, forceRefresh),
+          getChapters(forceRefresh)
         ]);
         setClasses(cls);
         setStudents(u.filter(user => user.role === 'student'));
@@ -93,9 +93,9 @@ export default function AdminDashboard() {
       } else if (tab === 'students') {
         const [paged, r, q, cls] = await Promise.all([
           getUsersPage(1, 50),
-          getResultsMetadata(),
-          getQuizzesMetadata(),
-          getClasses()
+          getResultsMetadata('all', 10000, forceRefresh),
+          getQuizzesMetadata('all', forceRefresh),
+          getClasses(forceRefresh)
         ]);
         
         setStudents(paged.data.filter(user => user.role === 'student'));
@@ -107,9 +107,9 @@ export default function AdminDashboard() {
       } else if (tab === 'results') {
         const [paged, q, u, cls] = await Promise.all([
           getResultsMetadataPage(1, 50),
-          getQuizzesMetadata(),
-          getUsers(),
-          getClasses()
+          getQuizzesMetadata('all', forceRefresh),
+          getUsers(forceRefresh),
+          getClasses(forceRefresh)
         ]);
         setResults(paged.data);
         setResultsTotal(paged.total);
@@ -119,13 +119,13 @@ export default function AdminDashboard() {
         setClasses(cls);
       } else if (tab === 'bank') {
         const [b, c] = await Promise.all([
-          getBankQuestions(),
-          getChapters()
+          getBankQuestions(forceRefresh),
+          getChapters(forceRefresh)
         ]);
         setBankQuestions(b);
         setChapters(c);
       } else if (tab === 'chapters') {
-        const c = await getChapters();
+        const c = await getChapters(forceRefresh);
         setChapters(c);
       }
     } catch (e) {
@@ -524,17 +524,21 @@ export default function AdminDashboard() {
       isPublished, isMonitored, isUnlisted, durationMinutes: duration, orderIndex, category, startTime, endTime,
       targetType, assignedClassIds, maxAttempts: maxAttempts || 2,
       allowReview: quizType === 'practice' ? true : allowReview,
-      questions, createdAt: new Date().toISOString(), description: ''
+      questions, createdAt: new Date().toISOString(), description: '',
+      questionCount: questions.length
     };
     
     try {
       if (editingQuizId) {
           await updateQuiz(quiz);
+          // Cập nhật trực tiếp vào State React mà không cần re-fetch toàn bộ 70 đề
+          setQuizzes(prev => prev.map(q => q.id === quiz.id ? { ...quiz, questions: [] } : q));
       } else {
           await saveQuiz(quiz);
+          // Thêm trực tiếp đề mới vào đầu danh sách State React
+          setQuizzes(prev => [{ ...quiz, questions: [] }, ...prev]);
       }
       setIsEditingQuiz(false);
-      await loadTabData('quizzes');
       alert("Đã lưu đề thi thành công vào Database Cloud!");
     } catch (e: any) { 
       alert("Lỗi khi lưu đề thi: " + (e.message || "Không xác định"));
@@ -565,7 +569,8 @@ export default function AdminDashboard() {
         setIsDataLoading(true);
         try {
             await deleteQuiz(id); 
-            await loadTabData('quizzes');
+            // Xóa trực tiếp khỏi State React mà không cần re-fetch toàn bộ danh sách
+            setQuizzes(prev => prev.filter(q => q.id !== id));
             alert("Đã xóa đề thi thành công.");
         } catch (e: any) {
             alert("Lỗi khi xóa đề thi: " + (e.message || "Không xác định"));
@@ -1014,6 +1019,18 @@ export default function AdminDashboard() {
             </button>
           ))}
         </nav>
+        
+        <div className="p-2 lg:p-4 border-t border-white/10 mt-auto">
+          <button
+            onClick={() => loadTabData(activeTab, true)}
+            disabled={isDataLoading}
+            title="Tải lại toàn bộ dữ liệu mới nhất từ Cloud"
+            className="w-full flex items-center justify-center lg:justify-start gap-3 px-4 py-3 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <RefreshCw size={18} className={isDataLoading ? "animate-spin text-blue-400" : ""} />
+            <span className="hidden lg:inline">Làm mới Cloud</span>
+          </button>
+        </div>
       </aside>
 
       <main 
