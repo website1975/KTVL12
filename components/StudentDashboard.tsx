@@ -30,14 +30,14 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(false);
 
-  const refreshData = useCallback(async (isSilent = false) => {
+  const refreshData = useCallback(async (isSilent = false, forceRefresh = false) => {
     if (!isSilent) setIsLoading(true);
     try {
         const [allQuizzes, userResults, latestPubs, allChapters] = await Promise.all([
-            getQuizzesMetadata('all'), 
-            getResultsForStudent(user.id, user.studentCode), 
-            getPublishedResults(20),
-            getChapters()
+            getQuizzesMetadata('all', forceRefresh), 
+            getResultsForStudent(user.id, user.studentCode, forceRefresh), 
+            getPublishedResults(20, forceRefresh),
+            getChapters(forceRefresh)
         ]);
         
         setChapters(allChapters);
@@ -286,7 +286,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(() => refreshData(true), 60000); 
+    // 10 phút (600.000 ms) tự động kiểm tra làm mới nền một lần
+    const interval = setInterval(() => refreshData(true), 10 * 60 * 1000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -390,8 +391,13 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             </p>
         </div>
         <div className="flex items-center gap-4 relative z-10">
-            <button onClick={() => refreshData()} className={`p-3 rounded-2xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-all ${isLoading ? 'animate-spin' : ''}`}>
-                <RefreshCw size={20}/>
+            <button 
+                onClick={() => refreshData(false, true)} 
+                title="Làm mới dữ liệu & Đề thi mới nhất"
+                className={`p-3 rounded-2xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all border border-slate-100 shadow-sm flex items-center gap-2 text-xs font-bold ${isLoading ? 'opacity-70' : ''}`}
+            >
+                <RefreshCw size={18} className={isLoading ? 'animate-spin text-blue-600' : ''}/>
+                <span className="hidden sm:inline">Làm mới</span>
             </button>
             <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm group">
                 <div className="w-10 h-10 bg-yellow-400 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><Medal size={24}/></div>
