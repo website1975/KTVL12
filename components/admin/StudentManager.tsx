@@ -14,20 +14,20 @@ interface StudentManagerProps {
     quizzes: Quiz[];
     classes?: ClassRoom[];
     sSearch: string;
-    setSSearch: (val: string) => void;
+    setSSearch: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     sGradeFilter: Grade | 'all';
-    setSGradeFilter: (val: Grade | 'all') => void;
-    onAdd: () => void;
-    onRefresh: () => void;
-    onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onViewDetail: (user: User) => void;
-    onEdit: (user: User) => void;
-    onDelete: (id: string, name: string) => void;
-    onBulkDelete: (ids: string[]) => void;
-    onBulkAssignClass?: (studentIds: string[], classInfo: any) => Promise<void>;
-    onResetPassword: (user: User) => void;
+    setSGradeFilter: React.Dispatch<React.SetStateAction<Grade | 'all'>> | ((val: Grade | 'all') => void);
+    onAdd: () => void | Promise<void>;
+    onRefresh: () => void | Promise<void>;
+    onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void | Promise<void>;
+    onViewDetail: (user: User) => void | Promise<void>;
+    onEdit: (user: User) => void | Promise<void>;
+    onDelete: (id: string, name: string) => void | Promise<void>;
+    onBulkDelete: (ids: string[]) => void | Promise<void>;
+    onBulkAssignClass?: (studentIds: string[], classInfo: any) => Promise<void> | void;
+    onResetPassword: (user: User) => void | Promise<void>;
     totalCount: number;
-    onLoadMore: () => void;
+    onLoadMore: () => void | Promise<void>;
     isMoreLoading: boolean;
 }
 
