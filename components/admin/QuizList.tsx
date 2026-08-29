@@ -23,11 +23,11 @@ interface QuizListProps {
     onQuickAssignTarget?: (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => Promise<void>;
     onToggleAllowReview?: (quizId: string, currentAllowReview: boolean) => Promise<void> | void;
     qSearch: string;
-    setQSearch: (val: string) => void;
+    setQSearch: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     qGradeFilter: Grade | 'all';
-    setQGradeFilter: (val: Grade | 'all') => void;
+    setQGradeFilter: React.Dispatch<React.SetStateAction<Grade | 'all'>> | ((val: Grade | 'all') => void);
     qChapterFilter: string;
-    setQChapterFilter: (val: string) => void;
+    setQChapterFilter: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
 }
 
 const PAGE_SIZE = 12;
