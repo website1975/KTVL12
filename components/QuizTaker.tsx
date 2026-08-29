@@ -257,13 +257,21 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
         }
     };
 
-    const handleSubmit = async () => {
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+    const handleSubmit = () => {
         isInternalActionRef.current = true;
-        if (!confirm('Bạn có chắc chắn muốn nộp bài?')) {
-            isInternalActionRef.current = false;
-            return;
-        }
+        setShowConfirmModal(true);
+    };
+
+    const confirmAndFinalize = async () => {
+        setShowConfirmModal(false);
         await finalizeSubmit(false);
+    };
+
+    const cancelSubmit = () => {
+        setShowConfirmModal(false);
+        isInternalActionRef.current = false;
     };
 
     const formatTime = (seconds: number) => {
@@ -344,6 +352,36 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                 </div>
             )}
 
+            {showConfirmModal && (
+                <div className="fixed inset-0 z-[2500] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full text-center shadow-2xl space-y-6 border border-slate-100">
+                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                            <Send size={28} className="translate-x-0.5"/>
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-xl font-black uppercase text-slate-800 tracking-tight">Xác nhận nộp bài?</h3>
+                            <p className="text-xs font-bold text-slate-500">
+                                Bạn có chắc chắn muốn nộp bài thi ngay bây giờ? Sau khi nộp, hệ thống sẽ tiến hành chấm điểm và lưu kết quả.
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                            <button 
+                                onClick={cancelSubmit} 
+                                className="w-full py-4 rounded-xl border-2 border-slate-200 text-slate-600 font-black uppercase text-xs hover:bg-slate-50 transition-all"
+                            >
+                                Tiếp tục làm
+                            </button>
+                            <button 
+                                onClick={confirmAndFinalize} 
+                                className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30"
+                            >
+                                Nộp bài ngay
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <header className="max-w-7xl w-full mx-auto flex justify-between items-center bg-white/90 backdrop-blur-xl p-4 rounded-[2rem] border shadow-sm sticky top-4 z-50 mb-8 mt-4 px-8">
                 <div className="flex-1 overflow-hidden">
                     <h1 className="font-black text-slate-800 uppercase tracking-tight text-base truncate">{quiz.title}</h1>
@@ -370,6 +408,22 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                     </div>
                 </div>
             </header>
+
+            {/* Official Test Mode Rules Banner */}
+            <div className="max-w-7xl w-full mx-auto px-4 mb-6">
+                <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-blue-900 shadow-sm">
+                    <div className="flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shrink-0">📝</span>
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-tight">Chế độ làm bài thi chính thức</p>
+                            <p className="text-[11px] text-blue-700 font-medium">Điểm số và thời gian làm bài sẽ được ghi nhận vào hệ thống. Bạn có tối đa <strong>{quiz.maxAttempts ?? 2} lần làm bài</strong>.</p>
+                        </div>
+                    </div>
+                    <span className="px-3 py-1 bg-white border border-blue-200 rounded-xl text-[10px] font-black text-blue-700 uppercase shrink-0 shadow-sm">
+                        Tối đa {quiz.maxAttempts ?? 2} lượt thi
+                    </span>
+                </div>
+            </div>
 
             <div className="max-w-7xl w-full mx-auto space-y-12 pb-20 px-4">
                 {orderedQuestions.map((q, idx) => (
