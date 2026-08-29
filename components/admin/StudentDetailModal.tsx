@@ -1,75 +1,251 @@
-import React from 'react';
-import { X, UserCog, BookOpen, Trophy, Clock, Eye } from 'lucide-react';
-import { User, Result, Quiz } from '../../types';
-// Fix: Removed parseISO from imports
-import { format, isAfter } from 'date-fns';
 
-interface StudentDetailModalProps {
-    student: User | null;
-    results: Result[];
-    quizzes: Quiz[];
+import React, { useMemo } from 'react';
+import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock, Bookmark } from 'lucide-react';
+import { Result, Quiz, Question } from '../../types';
+import LatexText from '../LatexText';
+import { isAfter, addMinutes } from 'date-fns';
+
+interface ResultDetailModalProps {
+    isOpen: boolean;
+    result: Result | null;
+    quiz: Quiz | null;
     onClose: () => void;
-    onViewResult: (res: Result) => void;
 }
 
-export default function StudentDetailModal({ student, results, quizzes, onClose, onViewResult }: StudentDetailModalProps) {
-    if (!student) return null;
+export default function ResultDetailModal({ isOpen, result, quiz, onClose }: ResultDetailModalProps) {
+    if (!isOpen || !result || !quiz) return null;
 
-    // Fix: Replaced parseISO with standard new Date() for sorting
-    const studentResults = results.filter(r => r.studentCode === student.studentCode).sort((a,b)=>isAfter(new Date(b.submittedAt), new Date(a.submittedAt))?1:-1);
-    const totalQuizzes = studentResults.length;
-    const avgScore = totalQuizzes > 0 ? (studentResults.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
+    const userAnswers = result.userAnswers || {};
     
-    const formatTime = (seconds: number) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    // Kiểm tra hết giờ thi cho bài kiểm tra
+    const now = new Date();
+    const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+    const endTime = quiz.endTime ? new Date(quiz.endTime) : (startTime ? addMinutes(startTime, quiz.durationMinutes) : null);
+    const isEnded = endTime ? isAfter(now, endTime) : false;
+
+    // Cho phép xem đáp án nếu là bài Luyện tập HOẶC bài Kiểm tra được giáo viên bật quyền xem
+    const showDetailAnswers = quiz.type === 'practice' || (quiz.allowReview !== undefined ? quiz.allowReview : isEnded);
+
+    // Sắp xếp câu hỏi theo thứ tự Phần I, II, III giống lúc làm bài
+    const orderedQuestions = useMemo(() => {
+        const parts = {
+            mcq: quiz.questions.filter(q => q.type === 'mcq'),
+            'group-tf': quiz.questions.filter(q => q.type === 'group-tf'),
+            short: quiz.questions.filter(q => q.type === 'short')
+        };
+        return [...parts.mcq, ...parts['group-tf'], ...parts.short];
+    }, [quiz.questions]);
+
+    const renderQuestionDetail = (q: Question, idx: number) => {
+        const ans = userAnswers[q.id];
+        let isCorrect = false;
+
+        if (q.type === 'mcq') isCorrect = ans === q.correctAnswer;
+        else if (q.type === 'short') {
+            const normalize = (val: any) => String(val || '').trim().toLowerCase().replace(/\s/g, '').replace(/,/g, '.');
+            const nAns = normalize(ans);
+            const nCorrect = normalize(q.correctAnswer);
+            if (nAns === nCorrect) isCorrect = true;
+            else {
+                const numAns = parseFloat(nAns);
+                const numCorrect = parseFloat(nCorrect);
+                if (nAns !== '' && nCorrect !== '' && !isNaN(numAns) && !isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.0001) {
+                    isCorrect = true;
+                }
+            }
+        }
+        else if (q.type === 'group-tf' && q.subQuestions) {
+            const subResults = q.subQuestions.map((sq, i) => ans?.[i] === sq.correctAnswer);
+            const subCorrectCount = subResults.filter(r => r === true).length;
+            isCorrect = subCorrectCount === q.subQuestions.length;
+            (q as any)._isPartial = !isCorrect && subCorrectCount > 0;
+            (q as any)._subCorrectCount = subCorrectCount;
+        }
+
+        const isPartial = (q as any)._isPartial;
+
+        return (
+            <div key={q.id} className={`bg-white p-10 rounded-[2.5rem] border-2 shadow-sm relative transition-all ${showDetailAnswers ? (isCorrect ? 'border-emerald-100' : (isPartial ? 'border-amber-100' : 'border-red-100')) : 'border-slate-100'}`}>
+                {showDetailAnswers && (
+                    <div className="absolute top-8 right-8 flex items-center gap-2">
+                        {isPartial && <span className="bg-amber-100 text-amber-600 text-[8px] font-black px-2 py-1 rounded-md uppercase">Đúng một phần</span>}
+                        {isCorrect ? <CheckCircle2 className="text-emerald-500" size={32}/> : (isPartial ? <HelpCircle className="text-amber-500" size={32}/> : <XCircle className="text-red-500" size={32}/>)}
+                    </div>
+                )}
+
+                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
+                {q.context && (
+                    <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
+                        <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
+                            <Bookmark size={16} className="text-amber-600" />
+                            <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                        </div>
+                        <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
+                            <LatexText text={q.context} />
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex items-start gap-4 mb-8">
+                    <span className={`text-xs font-black px-4 py-1.5 rounded-xl uppercase shrink-0 ${showDetailAnswers ? (isCorrect ? 'bg-emerald-50 text-emerald-600' : (isPartial ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600')) : 'bg-slate-100 text-slate-500'}`}>Câu {idx + 1}</span>
+                    <div className="text-slate-800 text-lg font-bold leading-relaxed pt-1 pr-12"><LatexText text={q.text}/></div>
+                </div>
+
+                {q.imageUrl && <div className="mb-8 flex justify-center"><img src={q.imageUrl} className="max-h-64 rounded-2xl border" alt="visual" /></div>}
+
+                {q.type === 'mcq' && q.options && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-10">
+                        {q.options.map((opt, oi) => {
+                            const label = String.fromCharCode(65 + oi);
+                            const isUserChoice = ans === opt;
+                            const isRightAns = q.correctAnswer === opt;
+                            
+                            let stateClasses = "bg-slate-50 border-slate-100 text-slate-500";
+                            
+                            if (showDetailAnswers) {
+                                if (isRightAns) stateClasses = "bg-emerald-50 border-emerald-500 text-emerald-700 ring-2 ring-emerald-500/20";
+                                else if (isUserChoice && !isRightAns) stateClasses = "bg-red-50 border-red-500 text-red-700 ring-2 ring-red-500/20";
+                            } else {
+                                if (isUserChoice) stateClasses = "bg-blue-600 border-blue-600 text-white shadow-lg";
+                            }
+
+                            return (
+                                <div key={oi} className={`p-4 rounded-2xl border-2 flex items-center gap-4 transition-all ${stateClasses}`}>
+                                    <span className={`font-black text-xs ${isUserChoice && !showDetailAnswers ? 'text-white' : 'opacity-50'}`}>{label}.</span>
+                                    <div className="font-bold text-sm"><LatexText text={opt}/></div>
+                                    {isUserChoice && <span className={`ml-auto text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${!showDetailAnswers ? 'bg-white/20' : 'bg-white/50'}`}>Bạn chọn</span>}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {q.type === 'group-tf' && q.subQuestions && (
+                    <div className="space-y-4 pl-10">
+                        {q.subQuestions.map((sq, si) => {
+                            const userVal = ans?.[si];
+                            const isSubCorrect = userVal === sq.correctAnswer;
+                            return (
+                                <div key={si} className={`flex flex-col md:flex-row md:items-center gap-4 p-5 rounded-2xl border-2 transition-all ${showDetailAnswers ? (isSubCorrect ? 'bg-emerald-50/30 border-emerald-100' : 'bg-red-50/30 border-red-100') : 'bg-slate-50 border-slate-100'}`}>
+                                    <span className="text-xs font-black text-slate-400 w-6">{String.fromCharCode(97+si)})</span>
+                                    <div className="flex-1 text-sm font-bold"><LatexText text={sq.text}/></div>
+                                    <div className="flex gap-2 text-[9px] font-black">
+                                        {['True', 'False'].map(v => {
+                                            let vClasses = "bg-white text-slate-300 border-slate-100 opacity-40";
+                                            if (showDetailAnswers) {
+                                                if (userVal === v) vClasses = v === sq.correctAnswer ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-red-500 text-white border-red-600';
+                                                else if (sq.correctAnswer === v) vClasses = 'bg-white text-emerald-600 border-emerald-100 shadow-sm';
+                                            } else {
+                                                if (userVal === v) vClasses = 'bg-blue-600 text-white border-blue-700 shadow-md';
+                                            }
+                                            return (
+                                                <div key={v} className={`px-4 py-2 rounded-xl border-2 transition-all ${vClasses}`}>
+                                                    {v === 'True' ? 'ĐÚNG' : 'SAI'}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {q.type === 'short' && (
+                    <div className="pl-10 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Học sinh trả lời:</span>
+                            <span className={`px-6 py-3 rounded-xl border-2 font-black ${showDetailAnswers ? (isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700') : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                                {ans || '(Trống)'}
+                            </span>
+                        </div>
+                        {showDetailAnswers && !isCorrect && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-black text-emerald-600 uppercase">Đáp án đúng:</span>
+                                <span className="px-6 py-3 rounded-xl bg-emerald-600 text-white font-black shadow-lg">
+                                    {q.correctAnswer}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {showDetailAnswers && q.solution && (
+                    <div className="mt-10 pt-8 border-t border-dashed border-slate-100 bg-blue-50/30 -mx-10 -mb-10 p-10 rounded-b-[2.5rem]">
+                        <div className="flex items-center gap-2 mb-4 text-blue-600">
+                            <Info size={18}/>
+                            <h5 className="text-[10px] font-black uppercase tracking-widest">Lời giải chi tiết</h5>
+                        </div>
+                        <div className="text-slate-600 text-sm italic leading-relaxed"><LatexText text={q.solution}/></div>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-            <div className="bg-white rounded-[3.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
-                <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 bg-slate-900/95 z-[1200] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+            <div className="bg-white rounded-[3.5rem] w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden border-8 border-white shadow-2xl">
+                <div className={`p-8 ${showDetailAnswers ? 'bg-emerald-600' : 'bg-slate-800'} text-white flex justify-between items-center shrink-0 transition-colors`}>
                     <div className="flex items-center gap-5">
-                        <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-xl"><UserCog size={32}/></div>
+                        <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center shadow-inner">
+                            {showDetailAnswers ? <CheckCircle2 size={28}/> : <Info size={28}/>}
+                        </div>
                         <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight">{student.fullName}</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">MAHS: {student.studentCode}</p>
+                            <h3 className="text-lg font-black uppercase tracking-tight">Chi tiết bài làm: {result.studentName}</h3>
+                            <div className="flex items-center gap-3 mt-1">
+                                <p className="text-[10px] font-bold text-white/70 uppercase">
+                                    Đề thi: {quiz.title} • Điểm đạt được: <span className="text-white underline">{result.score.toFixed(2)}</span>
+                                </p>
+                                {result.violationCount && result.violationCount > 0 && (
+                                    <span className="bg-red-500/50 text-white px-2 py-0.5 rounded text-[8px] font-black">
+                                        VI PHẠM: {result.violationCount} LẦN
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
+                    <button onClick={onClose} className="p-4 bg-black/20 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-10 bg-slate-50 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><BookOpen size={24}/></div>
-                            <div><p className="text-slate-400 text-[9px] font-black uppercase">Bài làm</p><h4 className="text-xl font-black">{totalQuizzes}</h4></div>
-                        </div>
-                        <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><Trophy size={24}/></div>
-                            <div><p className="text-slate-400 text-[9px] font-black uppercase">ĐTB</p><h4 className="text-xl font-black text-emerald-600">{avgScore.toFixed(2)}</h4></div>
-                        </div>
-                        <div className="bg-white rounded-[2rem] p-6 border shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center"><Clock size={24}/></div>
-                            <div><p className="text-slate-400 text-[9px] font-black uppercase">Khối</p><h4 className="text-xl font-black text-orange-600">{student.grade}</h4></div>
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                        <table className="w-full text-left text-sm">
-                            <thead><tr className="bg-white border-b text-[8px] font-black uppercase text-slate-300 tracking-[0.2em]"><th className="p-6">Đề thi</th><th className="p-6 text-center">Điểm</th><th className="p-6 text-center">Ngày</th><th className="p-6 text-center">Xem</th></tr></thead>
-                            <tbody className="divide-y">
-                                {studentResults.map(r => (
-                                    <tr key={r.id} className="hover:bg-slate-50">
-                                        <td className="p-6 font-bold uppercase">{quizzes.find(q=>q.id===r.quizId)?.title || 'Đề đã xóa'}</td>
-                                        <td className="p-6 text-center font-black text-blue-600">{r.score.toFixed(2)}</td>
-                                        <td className="p-6 text-center text-slate-400 text-[10px]">{format(new Date(r.submittedAt), 'dd/MM/yy')}</td>
-                                        <td className="p-6 text-center">
-                                            <button onClick={() => onViewResult(r)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Eye size={14}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+
+                <div className="flex-1 overflow-y-auto p-12 bg-slate-50 custom-scrollbar">
+                    <div className="max-w-3xl mx-auto space-y-10 pb-10">
+                        
+                        {!showDetailAnswers && (
+                            <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[2rem] flex items-center gap-4 text-amber-800 mb-6 shadow-sm">
+                                <div className="p-3 bg-amber-600 text-white rounded-2xl shrink-0 shadow-sm">
+                                    <Lock size={22} />
+                                </div>
+                                <div>
+                                    <p className="font-black uppercase text-xs text-amber-900">Giáo viên đang khóa đáp án & Lời giải chi tiết</p>
+                                    <p className="text-[11px] font-medium leading-relaxed text-amber-800/90 mt-0.5">
+                                        Đề thi đang được bảo mật để đảm bảo công bằng cho các ca thi khác. Hệ thống chỉ ghi nhận điểm và câu trả lời của bạn. Khi giáo viên cho phép công bố, đáp án và lời giải chi tiết sẽ hiển thị tại đây.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Render theo Phần */}
+                        {orderedQuestions.some(q => q.type === 'mcq') && (
+                            <div className="space-y-6">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN</h4>
+                                {orderedQuestions.filter(q => q.type === 'mcq').map((q) => renderQuestionDetail(q, orderedQuestions.indexOf(q)))}
+                            </div>
+                        )}
+
+                        {orderedQuestions.some(q => q.type === 'group-tf') && (
+                            <div className="space-y-6 pt-10">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">PHẦN II. TRẮC NGHIỆM ĐÚNG/SAI</h4>
+                                {orderedQuestions.filter(q => q.type === 'group-tf').map((q) => renderQuestionDetail(q, orderedQuestions.indexOf(q)))}
+                            </div>
+                        )}
+
+                        {orderedQuestions.some(q => q.type === 'short') && (
+                            <div className="space-y-6 pt-10">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-2">PHẦN III. TRẢ LỜI NGẮN</h4>
+                                {orderedQuestions.filter(q => q.type === 'short').map((q) => renderQuestionDetail(q, orderedQuestions.indexOf(q)))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
