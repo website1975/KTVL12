@@ -11,7 +11,8 @@ import {
   syncAllQuizzesMetadata,
   syncQuizzesToBank,
   updateQuizTarget,
-  batchUpdateQuizTarget
+  batchUpdateQuizTarget,
+  updateQuizAllowReview
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { normalizeFullText } from '../../services/vietnameseFixer';
@@ -207,6 +208,8 @@ export default function AdminDashboard() {
   const [isUnlisted, setIsUnlisted] = useState(false);
   const [targetType, setTargetType] = useState<'all' | 'classes'>('all');
   const [assignedClassIds, setAssignedClassIds] = useState<string[]>([]);
+  const [maxAttempts, setMaxAttempts] = useState<number>(2);
+  const [allowReview, setAllowReview] = useState<boolean>(false);
   const [duration, setDuration] = useState(45);
   const [orderIndex, setOrderIndex] = useState(1);
   const [category, setCategory] = useState('');
@@ -371,7 +374,7 @@ export default function AdminDashboard() {
   const handleCreateQuiz = () => {
     setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
     setIsPublished(false); setIsMonitored(false); setIsUnlisted(false);
-    setTargetType('all'); setAssignedClassIds([]);
+    setTargetType('all'); setAssignedClassIds([]); setMaxAttempts(2); setAllowReview(false);
     setDuration(45); setOrderIndex(1); setCategory('');
     setStartTime(''); setEndTime(''); setQuestions([]); setIsEditingQuiz(true);
     setActiveTab('quizzes');
@@ -387,6 +390,8 @@ export default function AdminDashboard() {
             setIsUnlisted(fullQuiz.isUnlisted || false);
             setTargetType(fullQuiz.targetType || 'all');
             setAssignedClassIds(fullQuiz.assignedClassIds || []);
+            setMaxAttempts(fullQuiz.maxAttempts ?? 2);
+            setAllowReview(fullQuiz.allowReview ?? (fullQuiz.type === 'practice'));
             setDuration(fullQuiz.durationMinutes); setOrderIndex(fullQuiz.orderIndex || 1); setCategory(fullQuiz.category || ''); setStartTime(fullQuiz.startTime || '');
             setEndTime(fullQuiz.endTime || ''); setQuestions(fullQuiz.questions); setIsEditingQuiz(true);
             setActiveTab('quizzes');
@@ -517,7 +522,8 @@ export default function AdminDashboard() {
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
       isPublished, isMonitored, isUnlisted, durationMinutes: duration, orderIndex, category, startTime, endTime,
-      targetType, assignedClassIds,
+      targetType, assignedClassIds, maxAttempts: maxAttempts || 2,
+      allowReview: quizType === 'practice' ? true : allowReview,
       questions, createdAt: new Date().toISOString(), description: ''
     };
     
@@ -534,6 +540,23 @@ export default function AdminDashboard() {
       alert("Lỗi khi lưu đề thi: " + (e.message || "Không xác định"));
     } finally {
       setIsSavingInProgress(false);
+    }
+  };
+
+  const handleToggleAllowReview = async (quizId: string, currentAllowReview: boolean) => {
+    const newStatus = !currentAllowReview;
+    try {
+      await updateQuizAllowReview(quizId, newStatus);
+      setQuizzes(prev => prev.map(q => q.id === quizId ? { ...q, allowReview: newStatus } : q));
+      showAlert(
+        newStatus ? "Đã mở đáp án" : "Đã khóa đáp án",
+        newStatus 
+          ? "Học sinh hiện đã có thể xem lại chi tiết đáp án & lời giải của đề thi này." 
+          : "Đã ẩn toàn bộ đáp án và lời giải chi tiết. Học sinh chỉ thấy điểm tổng kết (chống lộ đề).",
+        "success"
+      );
+    } catch (e: any) {
+      showAlert("Lỗi", "Không thể cập nhật quyền xem đáp án: " + (e.message || "Không xác định"), "error");
     }
   };
 
@@ -1037,6 +1060,8 @@ export default function AdminDashboard() {
                     targetType={targetType} setTargetType={setTargetType}
                     assignedClassIds={assignedClassIds} setAssignedClassIds={setAssignedClassIds}
                     classes={classes}
+                    maxAttempts={maxAttempts} setMaxAttempts={setMaxAttempts}
+                    allowReview={allowReview} setAllowReview={setAllowReview}
                     duration={duration} setDuration={setDuration} category={category} setCategory={setCategory}
                     orderIndex={orderIndex} setOrderIndex={setOrderIndex}
                     startTime={startTime} setStartTime={setStartTime} endTime={endTime} setEndTime={setEndTime}
@@ -1076,6 +1101,7 @@ export default function AdminDashboard() {
                         quizzes={quizzes} results={results} chapters={chapters} classes={classes}
                         onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
                         onQuickAssignTarget={handleQuickAssignTarget}
+                        onToggleAllowReview={handleToggleAllowReview}
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                         qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
                     />
