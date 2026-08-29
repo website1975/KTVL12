@@ -11,8 +11,8 @@ interface ResultHistoryModalProps {
     quizTitle: string;
     history: Result[];
     onClose: () => void;
-    onViewDetail: (res: Result) => void;
-    onDeleteOne: (res: Result) => void;
+    onViewDetail: (res: Result) => void | Promise<void>;
+    onDeleteOne: (res: Result) => void | Promise<void>;
 }
 
 export default function ResultHistoryModal({ 
