@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ExamSession, Quiz, Result, PublishedResult, Grade, QuizType } from '../../types';
-import { getExamSessions, getResults, getQuizzes, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult, clearAllSessions, isDatabaseConnected } from '../../services/storage';
+import { getExamSessions, getResultsMetadata, getQuizzesMetadata, savePublishedResult, deleteExamSession, getPublishedResults, deletePublishedResult, clearAllSessions, isDatabaseConnected } from '../../services/storage';
 import { ShieldAlert, RefreshCw, Filter, CheckSquare, Square, XCircle, WifiOff, Wifi, Eraser, FileText, Medal, History, Trophy, Search, Trash2, Database, UserCheck, UserX } from 'lucide-react';
 import { format, differenceInSeconds } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,22 +21,14 @@ export default function ExamMonitor() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const dbStatus = isDatabaseConnected();
 
-    useEffect(() => {
-        refreshData();
-        const interval = setInterval(() => {
-            refreshData(true);
-            setNow(new Date());
-        }, 15000); 
-        return () => clearInterval(interval);
-    }, [selectedQuizId]);
-
-    const refreshData = async (silent = false) => {
-        if (!silent) setIsRefreshing(true);
+    // Tải toàn bộ dữ liệu ban đầu hoặc khi đổi đề thi
+    const fetchFullData = async () => {
+        setIsRefreshing(true);
         try {
             const [s, r, q, p] = await Promise.all([
                 getExamSessions(selectedQuizId), 
-                getResults(selectedQuizId), 
-                getQuizzes(),
+                selectedQuizId !== 'all' ? getResultsMetadata(selectedQuizId) : Promise.resolve([]), 
+                getQuizzesMetadata(),
                 getPublishedResults()
             ]);
             setSessions(s);
@@ -46,7 +38,34 @@ export default function ExamMonitor() {
         } catch (error) {
             console.error("Lỗi giám sát:", error);
         } finally {
-            if (!silent) setIsRefreshing(false);
+            setIsRefreshing(false);
+        }
+    };
+
+    // Chỉ thăm dò phiên thi đang chạy (siêu nhẹ ~10KB) định kỳ mỗi 15 giây
+    const pollActiveSessions = async () => {
+        try {
+            const s = await getExamSessions(selectedQuizId);
+            setSessions(s);
+            setNow(new Date());
+        } catch (error) {
+            console.error("Lỗi cập nhật phiên thi:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchFullData();
+        const interval = setInterval(() => {
+            pollActiveSessions();
+        }, 15000); 
+        return () => clearInterval(interval);
+    }, [selectedQuizId]);
+
+    const refreshData = async (silent = false) => {
+        if (silent) {
+            await pollActiveSessions();
+        } else {
+            await fetchFullData();
         }
     };
 
