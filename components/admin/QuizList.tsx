@@ -4,10 +4,10 @@ import {
   Edit, Trash2, Eye, Users, Filter, FileText, ChevronDown, 
   Link as LinkIcon, EyeOff, ShieldCheck, GraduationCap, Building2, 
   CheckSquare, Square, Zap, Globe, Clock, FileEdit, AlertTriangle, Check,
-  FileCode, Loader2
+  FileCode, Loader2, Calendar
 } from 'lucide-react';
 import QuickAssignModal from './QuickAssignModal';
-import { getQuizById } from '../../services/storage';
+import { getQuizById, getCurrentAcademicYear } from '../../services/storage';
 import { exportQuizToJson, exportQuizzesBatchToJson } from '../../services/quizExport';
 
 export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
@@ -22,8 +22,11 @@ interface QuizListProps {
     onPreview: (quiz: Quiz) => void;
     onQuickAssignTarget?: (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => Promise<void>;
     onToggleAllowReview?: (quizId: string, currentAllowReview: boolean) => Promise<void> | void;
+    onQuickUpdateAcademicYear?: (quizIds: string[], newYear: string) => Promise<void>;
     qSearch: string;
     setQSearch: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
+    qAcademicYearFilter?: string;
+    setQAcademicYearFilter?: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     qGradeFilter: Grade | 'all';
     setQGradeFilter: React.Dispatch<React.SetStateAction<Grade | 'all'>> | ((val: Grade | 'all') => void);
     qChapterFilter: string;
@@ -36,8 +39,11 @@ export default function QuizList({
     quizzes, results, chapters, classes = [], onEdit, onDelete, onPreview, 
     onQuickAssignTarget,
     onToggleAllowReview,
+    onQuickUpdateAcademicYear,
     qSearch, setQSearch, qGradeFilter, setQGradeFilter,
-    qChapterFilter, setQChapterFilter
+    qChapterFilter, setQChapterFilter,
+    qAcademicYearFilter = 'all',
+    setQAcademicYearFilter
 }: QuizListProps) {
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
     const [qStatusFilter, setQStatusFilter] = useState<QuizStatusFilter>('all');
@@ -50,6 +56,10 @@ export default function QuizList({
     // Export JSON states
     const [exportingQuizId, setExportingQuizId] = useState<string | null>(null);
     const [isBatchExporting, setIsBatchExporting] = useState<boolean>(false);
+    const [isUpdatingYear, setIsUpdatingYear] = useState<string | null>(null); // quizId or 'batch'
+
+    // Niên khóa hiện hành theo lịch Việt Nam
+    const currentAcademicYear = useMemo(() => getCurrentAcademicYear(), []);
 
     const handleExportSingleQuiz = async (quiz: Quiz, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
@@ -132,15 +142,32 @@ export default function QuizList({
     };
 
     // Đếm số lượng theo từng trạng thái để làm badge/pill thống kê
+    // Loại bỏ hoàn toàn các đề thi có id trùng lặp nếu có sự chênh lệch giữa các lần cập nhật cache
+    const uniqueQuizzes = useMemo(() => {
+        const seen = new Set<string>();
+        return quizzes.filter(q => {
+            if (!q || !q.id || seen.has(q.id)) return false;
+            seen.add(q.id);
+            return true;
+        });
+    }, [quizzes]);
+
+    const availableYears = useMemo(() => {
+        const years = new Set<string>();
+        uniqueQuizzes.forEach(q => { if (q.academicYear) years.add(q.academicYear); });
+        classes.forEach(c => { if (c.academicYear) years.add(c.academicYear); });
+        return Array.from(years).sort((a, b) => b.localeCompare(a));
+    }, [uniqueQuizzes, classes]);
+
     const stats = useMemo(() => {
-        let total = quizzes.length;
+        let total = uniqueQuizzes.length;
         let activeCount = 0;
         let draftCount = 0;
         let expiredCount = 0;
         let classesCount = 0;
         let allGradeCount = 0;
 
-        quizzes.forEach(q => {
+        uniqueQuizzes.forEach(q => {
             const state = getQuizState(q);
             if (state.isDraft) draftCount++;
             else if (state.isExpired) expiredCount++;
@@ -158,11 +185,13 @@ export default function QuizList({
             classesCount,
             allGradeCount
         };
-    }, [quizzes]);
+    }, [uniqueQuizzes]);
 
     const filtered = useMemo(() => {
-        return quizzes.filter(q => {
+        return uniqueQuizzes.filter(q => {
             const matchGrade = qGradeFilter === 'all' || q.grade === qGradeFilter;
+            const matchYear = !qAcademicYearFilter || qAcademicYearFilter === 'all' || 
+              (qAcademicYearFilter === 'none' ? !q.academicYear : q.academicYear === qAcademicYearFilter);
             const matchChapter = qChapterFilter === 'all' || q.category === qChapterFilter;
             const matchSearch = q.title.toLowerCase().includes(qSearch.toLowerCase());
 
@@ -182,9 +211,9 @@ export default function QuizList({
                 matchStatus = q.isPublished && Boolean(q.isUnlisted);
             }
 
-            return matchGrade && matchChapter && matchSearch && matchStatus;
+            return matchGrade && matchYear && matchChapter && matchSearch && matchStatus;
         }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [quizzes, qGradeFilter, qChapterFilter, qSearch, qStatusFilter]);
+    }, [uniqueQuizzes, qGradeFilter, qAcademicYearFilter, qChapterFilter, qSearch, qStatusFilter]);
 
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
@@ -241,6 +270,29 @@ export default function QuizList({
         }
     };
 
+    // Helper chuyển đổi năm học
+    const handleUpdateYearForQuiz = async (quizId: string, newYear: string, e?: React.ChangeEvent<HTMLSelectElement>) => {
+        if (e) e.stopPropagation();
+        if (!onQuickUpdateAcademicYear) return;
+        setIsUpdatingYear(quizId);
+        try {
+            await onQuickUpdateAcademicYear([quizId], newYear);
+        } finally {
+            setIsUpdatingYear(null);
+        }
+    };
+
+    const handleBatchUpdateYear = async (newYear: string) => {
+        if (!onQuickUpdateAcademicYear || selectedQuizIds.length === 0 || !newYear) return;
+        setIsUpdatingYear('batch');
+        try {
+            await onQuickUpdateAcademicYear(selectedQuizIds, newYear);
+            alert(`Đã đổi niên khóa ${newYear} cho ${selectedQuizIds.length} đề thi thành công!`);
+        } finally {
+            setIsUpdatingYear(null);
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Filter Bar */}
@@ -257,7 +309,23 @@ export default function QuizList({
                     </div>
                     <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full lg:w-auto">
                         <select 
-                            className="flex-1 lg:w-36 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
+                            className="flex-1 lg:w-48 px-4 py-3 bg-amber-50 border-2 border-amber-300 text-amber-950 font-black rounded-xl text-[10px] uppercase outline-none shadow-sm focus:border-blue-500" 
+                            value={qAcademicYearFilter || currentAcademicYear} 
+                            onChange={e => setQAcademicYearFilter && setQAcademicYearFilter(e.target.value)}
+                        >
+                            <option value={currentAcademicYear}>⭐ NIÊN KHÓA {currentAcademicYear} (HIỆN HÀNH)</option>
+                            <option value="2026-2027">📅 NĂM HỌC 2026-2027</option>
+                            <option value="2025-2026">📅 NĂM HỌC 2025-2026</option>
+                            <option value="2024-2025">📅 NĂM HỌC 2024-2025</option>
+                            <option value="2027-2028">📅 NĂM HỌC 2027-2028</option>
+                            {availableYears.filter(y => ![currentAcademicYear, '2025-2026', '2024-2025', '2026-2027', '2027-2028'].includes(y)).map(yr => (
+                                <option key={yr} value={yr}>📅 NĂM HỌC {yr}</option>
+                            ))}
+                            <option value="all">🗄️ TẤT CẢ CÁC NĂM (KHO LƯU TRỮ)</option>
+                            <option value="none">⚠️ CHƯA GẮN NĂM</option>
+                        </select>
+                        <select 
+                            className="flex-1 lg:w-32 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
                             value={qGradeFilter} 
                             onChange={e => { setQGradeFilter(e.target.value as any); setQChapterFilter('all'); }}
                         >
@@ -335,10 +403,34 @@ export default function QuizList({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Gán nhanh năm học hàng loạt */}
+                        <div className="flex items-center bg-indigo-800/90 rounded-xl px-2 py-1 border border-indigo-700">
+                            <Calendar size={13} className="text-amber-300 mr-1.5 shrink-0" />
+                            <select
+                                className="bg-transparent text-white text-[10px] font-black uppercase outline-none cursor-pointer py-1"
+                                defaultValue=""
+                                disabled={isUpdatingYear === 'batch'}
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        handleBatchUpdateYear(e.target.value);
+                                        e.target.value = "";
+                                    }
+                                }}
+                            >
+                                <option value="" className="text-slate-800">⚡ ĐỔI NĂM HỌC ({selectedQuizIds.length} ĐỀ)...</option>
+                                <option value="2026-2027" className="text-slate-800">2026-2027</option>
+                                <option value="2025-2026" className="text-slate-800">2025-2026</option>
+                                <option value="2024-2025" className="text-slate-800">2024-2025</option>
+                                <option value="2027-2028" className="text-slate-800">2027-2028</option>
+                                <option value="2028-2029" className="text-slate-800">2028-2029</option>
+                            </select>
+                            {isUpdatingYear === 'batch' && <Loader2 size={12} className="animate-spin text-amber-300 ml-1" />}
+                        </div>
+
                         <button
                             onClick={openQuickAssignBatch}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-white text-indigo-900 hover:bg-indigo-50 rounded-xl font-black uppercase text-[10px] shadow-sm transition-all"
+                            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-900 hover:bg-indigo-50 rounded-xl font-black uppercase text-[10px] shadow-sm transition-all"
                         >
                             <Zap size={14} className="text-amber-500" />
                             <span>Gán Phòng Cho {selectedQuizIds.length} Đề</span>
@@ -346,7 +438,7 @@ export default function QuizList({
                         <button
                             onClick={handleExportBatchQuizzes}
                             disabled={isBatchExporting}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black uppercase text-[10px] shadow-sm transition-all disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black uppercase text-[10px] shadow-sm transition-all disabled:opacity-50"
                             title="Tải về file JSON tổng hợp các đề đã chọn"
                         >
                             {isBatchExporting ? <Loader2 size={14} className="animate-spin" /> : <FileCode size={14} />}
@@ -354,7 +446,7 @@ export default function QuizList({
                         </button>
                         <button
                             onClick={() => setSelectedQuizIds([])}
-                            className="px-3 py-2.5 bg-indigo-800/80 hover:bg-indigo-800 text-indigo-200 rounded-xl font-black uppercase text-[10px] transition-all"
+                            className="px-3 py-2 bg-indigo-800/80 hover:bg-indigo-800 text-indigo-200 rounded-xl font-black uppercase text-[10px] transition-all"
                         >
                             Bỏ chọn
                         </button>
@@ -428,6 +520,35 @@ export default function QuizList({
                                     }`}>
                                         KHỐI {q.grade}
                                     </span>
+
+                                    {/* BỘ CHỌN & SỬA NIÊN KHÓA TRỰC TIẾP TRÊN CARD ĐỀ THI */}
+                                    <div className="relative inline-flex items-center">
+                                        <select
+                                            value={q.academicYear || currentAcademicYear}
+                                            disabled={isUpdatingYear === q.id}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={(e) => handleUpdateYearForQuiz(q.id, e.target.value, e)}
+                                            className={`px-2 py-1 pr-4 rounded-lg text-[8px] font-black uppercase cursor-pointer border tracking-tight outline-none transition-all appearance-none ${
+                                                q.academicYear === currentAcademicYear
+                                                    ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200 font-black'
+                                                    : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                            }`}
+                                            title="Nhấp để đổi nhanh niên khóa cho đề thi này (Lưu Cloud tức thì)"
+                                        >
+                                            <option value="2026-2027">2026-2027</option>
+                                            <option value="2025-2026">2025-2026</option>
+                                            <option value="2024-2025">2024-2025</option>
+                                            <option value="2027-2028">2027-2028</option>
+                                            <option value="2028-2029">2028-2029</option>
+                                            {availableYears.filter(y => !['2026-2027', '2025-2026', '2024-2025', '2027-2028', '2028-2029'].includes(y)).map(yr => (
+                                                <option key={yr} value={yr}>{yr}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={8} className="absolute right-1 text-slate-500 pointer-events-none" />
+                                        {isUpdatingYear === q.id && (
+                                            <Loader2 size={10} className="animate-spin text-amber-600 absolute -right-3.5" />
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
