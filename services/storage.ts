@@ -449,22 +449,14 @@ export const updateQuizInCache = (updatedQuiz: Quiz) => {
     if (k.startsWith('quizzes_meta_')) {
       const list = memoryCache[k].data as Quiz[];
       if (Array.isArray(list)) {
-        const idx = list.findIndex(q => q.id === updatedQuiz.id);
-        if (idx >= 0) {
-          list[idx] = metaItem;
-        } else {
-          list.unshift(metaItem);
-        }
+        // Lọc bỏ đề cũ nếu có, sau đó thêm đề mới lên đầu (tạo mảng mới tránh mutation lỗi)
+        memoryCache[k].data = [metaItem, ...list.filter(q => q.id !== updatedQuiz.id)];
       }
     } else if (k.startsWith('quizzes_full_')) {
       const list = memoryCache[k].data as Quiz[];
       if (Array.isArray(list)) {
-        const idx = list.findIndex(q => q.id === updatedQuiz.id);
-        if (idx >= 0) {
-          list[idx] = updatedQuiz;
-        } else {
-          list.unshift(updatedQuiz);
-        }
+        // Lọc bỏ đề cũ nếu có, sau đó thêm đề mới lên đầu
+        memoryCache[k].data = [updatedQuiz, ...list.filter(q => q.id !== updatedQuiz.id)];
       }
     }
   });
@@ -616,6 +608,67 @@ export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   updateQuizInCache(quiz);
   const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
   handleSupabaseError(error, "Cập nhật đề thi");
+};
+
+// Helper tính toán Niên khóa / Năm học hiện hành theo lịch Việt Nam (tháng 9 bắt đầu năm học mới)
+// Ví dụ: Từ 01/09/2026 đến 31/08/2027 => Niên khóa 2026-2027
+// Trước 01/09/2026 (ví dụ tháng 5/2026) => Niên khóa 2025-2026
+export const getCurrentAcademicYear = (date: Date = new Date()): string => {
+  const currentYear = date.getFullYear();
+  const currentMonth = date.getMonth() + 1; // 1-12
+  if (currentMonth >= 9) {
+    return `${currentYear}-${currentYear + 1}`;
+  } else {
+    return `${currentYear - 1}-${currentYear}`;
+  }
+};
+
+// Cập nhật nhanh Niên khóa / Năm học cho 1 đề thi
+export const updateQuizAcademicYear = async (
+  quizId: string,
+  academicYear: string
+): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
+  if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
+  const currentQuiz = data.data as Quiz;
+  const updatedQuiz: Quiz = {
+    ...currentQuiz,
+    academicYear
+  };
+  updateQuizInCache(updatedQuiz);
+  const { error: updateErr } = await supabase.from('quizzes').update({
+    data: updatedQuiz,
+    grade: data.grade
+  }).eq('id', quizId);
+  handleSupabaseError(updateErr, "Cập nhật năm học cho đề thi");
+};
+
+// Cập nhật hàng loạt Niên khóa cho nhiều đề thi
+export const batchUpdateQuizAcademicYear = async (
+  quizIds: string[],
+  academicYear: string
+): Promise<number> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  if (quizIds.length === 0) return 0;
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').in('id', quizIds);
+  if (error || !data) throw new Error("Lỗi khi tải danh sách đề thi");
+
+  let count = 0;
+  for (const row of data) {
+    const currentQuiz = row.data as Quiz;
+    const updatedQuiz: Quiz = {
+      ...currentQuiz,
+      academicYear
+    };
+    updateQuizInCache(updatedQuiz);
+    const { error: updateErr } = await supabase.from('quizzes').update({
+      data: updatedQuiz,
+      grade: row.grade
+    }).eq('id', row.id);
+    if (!updateErr) count++;
+  }
+  return count;
 };
 
 // Gán nhanh phòng / lớp cho một đề thi
