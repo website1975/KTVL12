@@ -12,7 +12,10 @@ import {
   syncQuizzesToBank,
   updateQuizTarget,
   batchUpdateQuizTarget,
-  updateQuizAllowReview
+  updateQuizAllowReview,
+  getCurrentAcademicYear,
+  updateQuizAcademicYear,
+  batchUpdateQuizAcademicYear
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { normalizeFullText } from '../../services/vietnameseFixer';
@@ -201,6 +204,7 @@ export default function AdminDashboard() {
   const [isEditingQuiz, setIsEditingQuiz] = useState(false);
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [quizTitle, setQuizTitle] = useState('');
+  const [quizAcademicYear, setQuizAcademicYear] = useState(() => getCurrentAcademicYear());
   const [quizGrade, setQuizGrade] = useState<Grade>('12');
   const [quizType, setQuizType] = useState<QuizType>('test');
   const [isPublished, setIsPublished] = useState(false);
@@ -221,6 +225,7 @@ export default function AdminDashboard() {
 
   // Filters
   const [qSearch, setQSearch] = useState('');
+  const [qAcademicYearFilter, setQAcademicYearFilter] = useState(() => getCurrentAcademicYear());
   const [qGradeFilter, setQGradeFilter] = useState<Grade | 'all'>('all');
   const [qChapterFilter, setQChapterFilter] = useState('all');
   const [sSearch, setSSearch] = useState('');
@@ -372,7 +377,8 @@ export default function AdminDashboard() {
 
   // Quiz Handlers
   const handleCreateQuiz = () => {
-    setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test');
+    const currentYear = getCurrentAcademicYear();
+    setEditingQuizId(null); setQuizTitle(''); setQuizGrade('12'); setQuizType('test'); setQuizAcademicYear(currentYear);
     setIsPublished(false); setIsMonitored(false); setIsUnlisted(false);
     setTargetType('all'); setAssignedClassIds([]); setMaxAttempts(2); setAllowReview(false);
     setDuration(45); setOrderIndex(1); setCategory('');
@@ -386,6 +392,7 @@ export default function AdminDashboard() {
         const fullQuiz = await getQuizById(quiz.id);
         if (fullQuiz) {
             setEditingQuizId(fullQuiz.id); setQuizTitle(fullQuiz.title); setQuizGrade(fullQuiz.grade);
+            setQuizAcademicYear(fullQuiz.academicYear || getCurrentAcademicYear());
             setQuizType(fullQuiz.type); setIsPublished(fullQuiz.isPublished); setIsMonitored(fullQuiz.isMonitored || false);
             setIsUnlisted(fullQuiz.isUnlisted || false);
             setTargetType(fullQuiz.targetType || 'all');
@@ -521,6 +528,7 @@ export default function AdminDashboard() {
     setIsSavingInProgress(true);
     const quiz: Quiz = {
       id: editingQuizId || uuidv4(), title: quizTitle, grade: quizGrade, type: quizType,
+      academicYear: quizAcademicYear || '2025-2026',
       isPublished, isMonitored, isUnlisted, durationMinutes: duration, orderIndex, category, startTime, endTime,
       targetType, assignedClassIds, maxAttempts: maxAttempts || 2,
       allowReview: quizType === 'practice' ? true : allowReview,
@@ -529,14 +537,21 @@ export default function AdminDashboard() {
     };
     
     try {
+      const metaQuiz: Quiz = { ...quiz, questions: [] };
       if (editingQuizId) {
           await updateQuiz(quiz);
-          // Cập nhật trực tiếp vào State React mà không cần re-fetch toàn bộ 70 đề
-          setQuizzes(prev => prev.map(q => q.id === quiz.id ? { ...quiz, questions: [] } : q));
+          // Cập nhật trực tiếp vào State React đảm bảo không trùng lặp ID
+          setQuizzes(prev => {
+            const exists = prev.some(q => q.id === quiz.id);
+            if (exists) {
+              return prev.map(q => q.id === quiz.id ? metaQuiz : q);
+            }
+            return [metaQuiz, ...prev];
+          });
       } else {
           await saveQuiz(quiz);
-          // Thêm trực tiếp đề mới vào đầu danh sách State React
-          setQuizzes(prev => [{ ...quiz, questions: [] }, ...prev]);
+          // Thêm trực tiếp đề mới vào State React (lọc bỏ nếu trùng id do cache/sync)
+          setQuizzes(prev => [metaQuiz, ...prev.filter(q => q.id !== quiz.id)]);
       }
       setIsEditingQuiz(false);
       alert("Đã lưu đề thi thành công vào Database Cloud!");
@@ -601,6 +616,28 @@ export default function AdminDashboard() {
       alert(`Đã cập nhật phân quyền phòng/lớp cho ${quizIds.length} đề thi thành công!`);
     } catch (error: any) {
       alert("Lỗi khi cập nhật phân quyền: " + (error.message || "Không xác định"));
+    }
+  };
+
+  const handleQuickUpdateAcademicYear = async (quizIds: string[], newYear: string) => {
+    try {
+      if (quizIds.length === 1) {
+        await updateQuizAcademicYear(quizIds[0], newYear);
+      } else {
+        await batchUpdateQuizAcademicYear(quizIds, newYear);
+      }
+      setQuizzes(prev => prev.map(q => {
+        if (quizIds.includes(q.id)) {
+          return {
+            ...q,
+            academicYear: newYear
+          };
+        }
+        return q;
+      }));
+    } catch (error: any) {
+      alert("Lỗi khi cập nhật năm học: " + (error.message || "Không xác định"));
+      throw error;
     }
   };
 
@@ -1072,6 +1109,7 @@ export default function AdminDashboard() {
                 <QuizEditor
                     editingId={editingQuizId} title={quizTitle} setTitle={setQuizTitle}
                     grade={quizGrade} setGrade={setQuizGrade} quizType={quizType} setQuizType={setQuizType}
+                    academicYear={quizAcademicYear} setAcademicYear={setQuizAcademicYear}
                     isPublished={isPublished} setIsPublished={setIsPublished} isMonitored={isMonitored} setIsMonitored={setIsMonitored}
                     isUnlisted={isUnlisted} setIsUnlisted={setIsUnlisted}
                     targetType={targetType} setTargetType={setTargetType}
@@ -1119,6 +1157,8 @@ export default function AdminDashboard() {
                         onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
                         onQuickAssignTarget={handleQuickAssignTarget}
                         onToggleAllowReview={handleToggleAllowReview}
+                        onQuickUpdateAcademicYear={handleQuickUpdateAcademicYear}
+                        qAcademicYearFilter={qAcademicYearFilter} setQAcademicYearFilter={setQAcademicYearFilter}
                         qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                         qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
                     />
