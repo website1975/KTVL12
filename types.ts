@@ -69,6 +69,7 @@ export interface Quiz {
   description: string;
   type: QuizType;
   grade: Grade;
+  academicYear?: string; // Niên khóa / Năm học (ví dụ: "2025-2026")
   category?: string; 
   startTime?: string;
   endTime?: string; 
@@ -97,6 +98,7 @@ export interface Result {
   studentId: string;
   studentName: string;
   studentCode?: string; 
+  academicYear?: string;
   score: number;
   totalQuestions: number;
   submittedAt: string;
