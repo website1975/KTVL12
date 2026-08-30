@@ -22,6 +22,8 @@ interface QuizEditorProps {
     setTitle: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     grade: Grade;
     setGrade: React.Dispatch<React.SetStateAction<Grade>> | ((val: Grade) => void);
+    academicYear?: string;
+    setAcademicYear?: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     quizType: QuizType;
     setQuizType: React.Dispatch<React.SetStateAction<QuizType>> | ((val: QuizType) => void);
     isPublished: boolean;
@@ -896,13 +898,27 @@ export default function QuizEditor(props: QuizEditorProps) {
                     />
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Khối lớp</label>
                         <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.grade} onChange={e => { props.setGrade(e.target.value as Grade); props.setCategory(''); }}>
                             <option value="12">Khối 12</option>
                             <option value="11">Khối 11</option>
                             <option value="10">Khối 10</option>
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Niên khóa / Năm học</label>
+                        <select 
+                            className="w-full border-2 border-amber-200 rounded-[1.5rem] p-4 text-xs font-black bg-amber-50/50 text-amber-900 focus:border-amber-400 outline-none" 
+                            value={props.academicYear || '2025-2026'} 
+                            onChange={e => props.setAcademicYear && props.setAcademicYear(e.target.value)}
+                        >
+                            <option value="2025-2026">2025-2026 (Hiện tại)</option>
+                            <option value="2024-2025">2024-2025</option>
+                            <option value="2026-2027">2026-2027</option>
+                            <option value="2027-2028">2027-2028</option>
+                            <option value="2028-2029">2028-2029</option>
                         </select>
                     </div>
                     <div className="space-y-2">
