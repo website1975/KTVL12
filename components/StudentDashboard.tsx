@@ -44,10 +44,29 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         // CHỈ HIỆN ĐỀ CÔNG KHAI (KHÔNG PHẢI UNLISTED) TRÊN DASHBOARD
         setQuizzes(allQuizzes.filter(q => q.isPublished && !q.isUnlisted));
 
-        const sortedResults = (userResults as Result[]).sort((a: Result, b: Result) => 
+        // Lọc khử trùng lặp dữ liệu nộp bài (do retry mạng, double submit hoặc trùng ID)
+        const seenIds = new Set<string>();
+        const uniqueResults: Result[] = [];
+        const sortedRaw = (userResults as Result[]).sort((a: Result, b: Result) => 
             new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
         );
-        setResults(sortedResults);
+
+        for (const r of sortedRaw) {
+            if (!r || !r.id || seenIds.has(r.id)) continue;
+            seenIds.add(r.id);
+
+            // Kiểm tra nếu có bản ghi cùng đề thi, cùng điểm và nộp sát nhau trong vòng 15 giây -> coi là bị lưu đúp
+            const isDuplicate = uniqueResults.some(prev => 
+                prev.quizId === r.quizId && 
+                Math.abs(new Date(prev.submittedAt).getTime() - new Date(r.submittedAt).getTime()) < 15000 &&
+                Math.abs(prev.score - r.score) < 0.001
+            );
+
+            if (!isDuplicate) {
+                uniqueResults.push(r);
+            }
+        }
+        setResults(uniqueResults);
 
         const userPubs = latestPubs.filter((p: PublishedResult) => 
             user.studentCode && p.studentCodes.map((c: string) => c.toUpperCase()).includes(user.studentCode.toUpperCase())
@@ -719,9 +738,23 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   <tbody className="divide-y">
                       {results.slice(0, 10).map((r, idx) => {
                           const quiz = quizzes.find(q => q.id === r.quizId);
+                          const sameQuizAttempts = results.filter(item => item.quizId === r.quizId).sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+                          const attemptIndex = sameQuizAttempts.findIndex(item => item.id === r.id);
+                          const attemptNumber = attemptIndex >= 0 ? attemptIndex + 1 : null;
+                          const hasMultipleAttempts = sameQuizAttempts.length > 1;
+
                           return (
                               <tr key={r.id} className="hover:bg-slate-50 transition-colors group">
-                                  <td className="p-6"><span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span></td>
+                                  <td className="p-6">
+                                      <div className="flex items-center gap-2">
+                                          <span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span>
+                                          {hasMultipleAttempts && attemptNumber && (
+                                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[8px] font-black uppercase shrink-0">
+                                                  Lần {attemptNumber}
+                                              </span>
+                                          )}
+                                      </div>
+                                  </td>
                                   <td className="p-6 text-center text-xs font-bold text-slate-500">{format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}</td>
                                   <td className="p-6 text-center"><span className={`text-sm font-black ${r.score >= 8 ? 'text-emerald-600' : r.score >= 5 ? 'text-blue-600' : 'text-orange-600'}`}>{r.score.toFixed(2)}</span></td>
                                   <td className="p-6 text-center"><button onClick={() => handleViewResult(r)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm">Xem lại <ChevronRight size={14}/></button></td>
