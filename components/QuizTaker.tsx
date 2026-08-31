@@ -83,6 +83,7 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     const [violations, setViolations] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const isSubmittingRef = useRef(false);
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'verifying' | 'done' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [finalResult, setFinalResult] = useState<Result | null>(null);
@@ -171,7 +172,8 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     };
 
     const finalizeSubmit = async (isAuto = false) => {
-        if (isSubmitting || submitStatus === 'done') return;
+        if (isSubmittingRef.current || isSubmitting || submitStatus === 'done') return;
+        isSubmittingRef.current = true;
         setIsSubmitting(true);
         setSubmitStatus('saving');
         setErrorMessage('');
