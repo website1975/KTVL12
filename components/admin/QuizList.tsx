@@ -475,243 +475,253 @@ export default function QuizList({
             )}
 
             {/* Quiz Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {visibleQuizzes.map(q => {
                     const isSelected = selectedQuizIds.includes(q.id);
                     const state = getQuizState(q);
                     
                     let cardStyle = "";
                     if (!q.isPublished) {
-                        cardStyle = "bg-slate-50 border-dashed border-slate-300 opacity-80";
+                        cardStyle = "bg-slate-50 border-dashed border-slate-300 opacity-85";
                     } else if (state.isExpired) {
-                        cardStyle = "bg-amber-50/40 border-b-amber-500 border-amber-200 shadow-sm";
+                        cardStyle = "bg-amber-50/30 border-b-amber-500 border-amber-200 shadow-sm";
                     } else if (q.isUnlisted) {
                         cardStyle = "bg-indigo-50/30 border-b-indigo-500 border-indigo-100 shadow-sm";
                     } else {
-                        cardStyle = "bg-white shadow-sm border-b-blue-600 border-slate-100";
+                        cardStyle = "bg-white shadow-sm border-b-blue-600 border-slate-200/80";
                     }
+
+                    const qResults = results.filter(r => r.quizId === q.id);
 
                     return (
                         <div 
                             key={q.id} 
-                            className={`rounded-[2.5rem] p-6 border transition-all flex flex-col group relative overflow-hidden border-b-8 ${cardStyle} ${
-                                isSelected ? 'ring-2 ring-indigo-600 ring-offset-2' : ''
+                            className={`rounded-[1.75rem] p-4 sm:p-5 border transition-all flex flex-col justify-between group relative overflow-hidden border-b-4 hover:shadow-lg hover:-translate-y-0.5 ${cardStyle} ${
+                                isSelected ? 'ring-2 ring-indigo-600 ring-offset-1 bg-indigo-50/20' : ''
                             }`}
                         >
-                            {/* Selection Checkbox (Top Left) */}
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={(e) => toggleSelectQuiz(q.id, e)}
-                                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                                            isSelected 
-                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
-                                                : 'border-slate-300 bg-white/80 hover:border-slate-400'
-                                        }`}
-                                        title="Chọn đề để gán phòng hàng loạt"
-                                    >
-                                        {isSelected && <Check size={14} strokeWidth={3} />}
-                                    </button>
-
-                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-tight ${
-                                        q.isPublished 
-                                            ? (state.isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-600')) 
-                                            : 'bg-slate-200 text-slate-500'
-                                    }`}>
-                                        KHỐI {q.grade}
-                                    </span>
-
-                                    {/* BỘ CHỌN & SỬA NIÊN KHÓA TRỰC TIẾP TRÊN CARD ĐỀ THI */}
-                                    <div className="relative inline-flex items-center">
-                                        <select
-                                            value={q.academicYear || currentAcademicYear}
-                                            disabled={isUpdatingYear === q.id}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onChange={(e) => handleUpdateYearForQuiz(q.id, e.target.value, e)}
-                                            className={`px-2 py-1 pr-4 rounded-lg text-[8px] font-black uppercase cursor-pointer border tracking-tight outline-none transition-all appearance-none ${
-                                                q.academicYear === currentAcademicYear
-                                                    ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200 font-black'
-                                                    : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                            <div className="space-y-2.5">
+                                {/* Top bar: Checkbox, Grade, Year, and Edit button (Clean, compact) */}
+                                <div className="flex justify-between items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            onClick={(e) => toggleSelectQuiz(q.id, e)}
+                                            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                                                isSelected 
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
+                                                    : 'border-slate-300 bg-white hover:border-slate-400'
                                             }`}
-                                            title="Nhấp để đổi nhanh niên khóa cho đề thi này (Lưu Cloud tức thì)"
+                                            title="Chọn đề để gán phòng hàng loạt"
                                         >
-                                            <option value="2026-2027">2026-2027</option>
-                                            <option value="2025-2026">2025-2026</option>
-                                            <option value="2024-2025">2024-2025</option>
-                                            <option value="2027-2028">2027-2028</option>
-                                            <option value="2028-2029">2028-2029</option>
-                                            {availableYears.filter(y => !['2026-2027', '2025-2026', '2024-2025', '2027-2028', '2028-2029'].includes(y)).map(yr => (
-                                                <option key={yr} value={yr}>{yr}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronDown size={8} className="absolute right-1 text-slate-500 pointer-events-none" />
-                                        {isUpdatingYear === q.id && (
-                                            <Loader2 size={10} className="animate-spin text-amber-600 absolute -right-3.5" />
+                                            {isSelected && <Check size={12} strokeWidth={3} />}
+                                        </button>
+
+                                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-tight ${
+                                            q.isPublished 
+                                                ? (state.isExpired ? 'bg-amber-600 text-white' : (q.isUnlisted ? 'bg-indigo-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-100')) 
+                                                : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                            KHỐI {q.grade}
+                                        </span>
+
+                                        {/* BỘ CHỌN & SỬA NIÊN KHÓA TRỰC TIẾP TRÊN CARD ĐỀ THI */}
+                                        <div className="relative inline-flex items-center">
+                                            <select
+                                                value={q.academicYear || currentAcademicYear}
+                                                disabled={isUpdatingYear === q.id}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onChange={(e) => handleUpdateYearForQuiz(q.id, e.target.value, e)}
+                                                className={`px-2 py-0.5 pr-3.5 rounded-lg text-[8px] font-black uppercase cursor-pointer border tracking-tight outline-none transition-all appearance-none ${
+                                                    q.academicYear === currentAcademicYear
+                                                        ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200 font-black'
+                                                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                }`}
+                                                title="Nhấp để đổi nhanh niên khóa cho đề thi này (Lưu Cloud tức thì)"
+                                            >
+                                                <option value="2026-2027">2026-2027</option>
+                                                <option value="2025-2026">2025-2026</option>
+                                                <option value="2024-2025">2024-2025</option>
+                                                <option value="2027-2028">2027-2028</option>
+                                                <option value="2028-2029">2028-2029</option>
+                                                {availableYears.filter(y => !['2026-2027', '2025-2026', '2024-2025', '2027-2028', '2028-2029'].includes(y)).map(yr => (
+                                                    <option key={yr} value={yr}>{yr}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={7} className="absolute right-1 text-slate-500 pointer-events-none" />
+                                            {isUpdatingYear === q.id && (
+                                                <Loader2 size={9} className="animate-spin text-amber-600 absolute -right-3" />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Nút sửa đề góc trên phải */}
+                                    <div className="flex items-center gap-1">
+                                        {q.isUnlisted && (
+                                            <button onClick={() => copyQuizLink(q.id)} className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors" title="Copy Link Riêng Tư">
+                                                <LinkIcon size={12}/>
+                                            </button>
                                         )}
+                                        <button 
+                                            onClick={() => onEdit(q)} 
+                                            className="p-1.5 bg-slate-50 text-slate-600 hover:bg-blue-600 hover:text-white rounded-lg border border-slate-200 shadow-xs transition-colors" 
+                                            title="Sửa đề thi"
+                                        >
+                                            <Edit size={12.5}/>
+                                        </button>
+                                        <button 
+                                            onClick={() => onDelete(q.id)} 
+                                            className="p-1.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-lg border border-red-100 shadow-xs transition-colors" 
+                                            title="Xóa đề thi"
+                                        >
+                                            <Trash2 size={12.5}/>
+                                        </button>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
-                                    {q.isUnlisted && (
-                                        <button onClick={() => copyQuizLink(q.id)} className="p-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg hover:bg-black shadow-lg transition-colors" title="Copy Link Riêng Tư">
-                                            <LinkIcon size={14}/>
+                                {/* Status & Room Badges */}
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    {/* Room / Target Badge */}
+                                    {q.targetType === 'classes' && q.assignedClassIds && q.assignedClassIds.length > 0 ? (
+                                        <button
+                                            onClick={(e) => openQuickAssignSingle(q, e)}
+                                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-md text-[7.5px] font-black uppercase flex items-center gap-1 shadow-xs transition-colors"
+                                            title="Nhấp để đổi phòng/lớp"
+                                        >
+                                            <GraduationCap size={10} className="text-indigo-600"/>
+                                            {(() => {
+                                                const assignedNames = q.assignedClassIds.map(id => {
+                                                    const found = classes?.find(c => c.id === id);
+                                                    return found ? `${found.name}` : id;
+                                                });
+                                                if (assignedNames.length === 1) return `Lớp ${assignedNames[0]}`;
+                                                return `${assignedNames.length} Phòng`;
+                                            })()}
+                                            <Zap size={8} className="text-amber-500 ml-0.5" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={(e) => openQuickAssignSingle(q, e)}
+                                            className="px-2 py-0.5 bg-slate-100 hover:bg-indigo-50 border border-slate-200 text-slate-600 hover:text-indigo-600 rounded-md text-[7.5px] font-black uppercase flex items-center gap-1 shadow-xs transition-colors"
+                                            title="Đang mở toàn khối. Nhấp để gán vào phòng/lớp riêng"
+                                        >
+                                            <Globe size={10}/> Toàn Khối
                                         </button>
                                     )}
-                                    <button 
-                                        onClick={(e) => handleExportSingleQuiz(q, e)} 
-                                        disabled={exportingQuizId === q.id}
-                                        className="p-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-600 hover:text-white shadow-sm transition-colors disabled:opacity-50" 
-                                        title="Xuất đề thi dạng JSON"
-                                    >
-                                        {exportingQuizId === q.id ? <Loader2 size={14} className="animate-spin" /> : <FileCode size={14}/>}
-                                    </button>
-                                    <button 
-                                        onClick={(e) => openQuickAssignSingle(q, e)} 
-                                        className="p-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white shadow-sm transition-colors" 
-                                        title="Gán phòng / lớp nhanh"
-                                    >
-                                        <Building2 size={14}/>
-                                    </button>
-                                    <button onClick={() => onEdit(q)} className="p-2 bg-white border rounded-lg hover:bg-slate-900 hover:text-white shadow-sm transition-colors" title="Sửa đề"><Edit size={14}/></button>
-                                    <button onClick={() => onDelete(q.id)} className="p-2 bg-red-50 border border-red-100 rounded-lg hover:bg-red-500 hover:text-white shadow-sm transition-colors" title="Xóa đề"><Trash2 size={14}/></button>
-                                </div>
-                            </div>
 
-                            {/* Status & Room Badges */}
-                            <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                                {/* Room / Target Badge (Clickable for quick assign) */}
-                                {q.targetType === 'classes' && q.assignedClassIds && q.assignedClassIds.length > 0 ? (
-                                    <button
-                                        onClick={(e) => openQuickAssignSingle(q, e)}
-                                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors"
-                                        title="Nhấp để đổi phòng/lớp"
-                                    >
-                                        <GraduationCap size={11} className="text-indigo-600"/>
-                                        {(() => {
-                                            const assignedNames = q.assignedClassIds.map(id => {
-                                                const found = classes?.find(c => c.id === id);
-                                                return found ? `${found.name}` : id;
-                                            });
-                                            if (assignedNames.length === 1) return `Lớp ${assignedNames[0]}`;
-                                            return `${assignedNames.length} Phòng`;
-                                        })()}
-                                        <Zap size={9} className="text-amber-500 ml-0.5" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={(e) => openQuickAssignSingle(q, e)}
-                                        className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 border border-slate-200 text-slate-600 hover:text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors"
-                                        title="Đang mở toàn khối. Nhấp để gán vào phòng/lớp riêng"
-                                    >
-                                        <Globe size={11}/> Toàn Khối
-                                    </button>
-                                )}
-
-                                {/* Published / Active Status Badge */}
-                                {q.type === 'practice' ? (
-                                    <span className="px-2 py-1 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                        <Zap size={9}/> Luyện tập
-                                    </span>
-                                ) : (
-                                    <span className="px-2 py-1 bg-blue-50 border border-blue-300 text-blue-800 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                        <FileText size={9}/> Làm bài ({q.maxAttempts ?? 2} lần)
-                                    </span>
-                                )}
-
-                                {/* Quick toggle Mở / Khóa đáp án cho đề thi */}
-                                {q.type === 'test' && onToggleAllowReview && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onToggleAllowReview(q.id, q.allowReview ?? false);
-                                        }}
-                                        className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm transition-colors ${q.allowReview ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300'}`}
-                                        title={q.allowReview ? "Học sinh ĐƯỢC XEM đáp án & lời giải chi tiết. Nhấp để KHÓA LẠI." : "Đang KHÓA ĐÁP ÁN: Học sinh chỉ thấy điểm tổng. Nhấp để MỞ ĐÁP ÁN."}
-                                    >
-                                        {q.allowReview ? <Eye size={10} className="text-amber-700"/> : <EyeOff size={10} className="text-slate-500"/>}
-                                        {q.allowReview ? 'Mở đáp án' : 'Khóa đáp án'}
-                                    </button>
-                                )}
-
-                                {q.isPublished ? (
-                                    state.isExpired ? (
-                                        <span className="px-2 py-1 bg-white border border-amber-200 text-amber-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                            HẾT HẠN
+                                    {/* Published / Active Status Badge */}
+                                    {q.type === 'practice' ? (
+                                        <span className="px-2 py-0.5 bg-amber-50 border border-amber-300 text-amber-800 rounded-md text-[7.5px] font-black uppercase flex items-center gap-1 shadow-xs">
+                                            <Zap size={8}/> Luyện tập
                                         </span>
                                     ) : (
-                                        <span className={`px-2 py-1 bg-white border ${state.isActive ? 'border-emerald-200 text-emerald-600' : 'border-amber-200 text-amber-600'} rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm`}>
-                                            {state.isActive ? 'ĐANG MỞ' : 'CHƯA ĐẾN GIỜ'}
+                                        <span className="px-2 py-0.5 bg-blue-50 border border-blue-300 text-blue-800 rounded-md text-[7.5px] font-black uppercase flex items-center gap-1 shadow-xs">
+                                            <FileText size={8}/> Làm bài ({q.maxAttempts ?? 2} lần)
                                         </span>
-                                    )
-                                ) : (
-                                    <span className="px-2 py-1 bg-white border border-slate-300 text-slate-500 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                        BẢN NHÁP
-                                    </span>
-                                )}
+                                    )}
 
-                                {q.isPublished && q.isUnlisted && (
-                                    <span className="px-2 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
-                                        <EyeOff size={10}/> RIÊNG TƯ
-                                    </span>
-                                )}
+                                    {/* Quick toggle Mở / Khóa đáp án cho đề thi */}
+                                    {q.type === 'test' && onToggleAllowReview && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onToggleAllowReview(q.id, q.allowReview ?? false);
+                                            }}
+                                            className={`px-2 py-0.5 rounded-md text-[7.5px] font-black uppercase flex items-center gap-1 shadow-xs transition-colors ${q.allowReview ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300'}`}
+                                            title={q.allowReview ? "Học sinh ĐƯỢC XEM đáp án & lời giải chi tiết. Nhấp để KHÓA LẠI." : "Đang KHÓA ĐÁP ÁN: Học sinh chỉ thấy điểm tổng. Nhấp để MỞ ĐÁP ÁN."}
+                                        >
+                                            {q.allowReview ? <Eye size={9} className="text-amber-700"/> : <EyeOff size={9} className="text-slate-500"/>}
+                                            {q.allowReview ? 'Mở đáp án' : 'Khóa đáp án'}
+                                        </button>
+                                    )}
 
-                                {q.isMonitored && (
-                                    <span className="p-1 bg-red-50 text-red-500 rounded-md" title="Có giám sát">
-                                        <ShieldCheck size={10}/>
-                                    </span>
-                                )}
+                                    {q.isPublished ? (
+                                        state.isExpired ? (
+                                            <span className="px-1.5 py-0.5 bg-white border border-amber-200 text-amber-600 rounded-md text-[7.5px] font-black uppercase flex items-center gap-0.5 shadow-xs">
+                                                HẾT HẠN
+                                            </span>
+                                        ) : (
+                                            <span className={`px-1.5 py-0.5 bg-white border ${state.isActive ? 'border-emerald-200 text-emerald-600' : 'border-amber-200 text-amber-600'} rounded-md text-[7.5px] font-black uppercase flex items-center gap-0.5 shadow-xs`}>
+                                                {state.isActive ? 'ĐANG MỞ' : 'CHƯA ĐẾN GIỜ'}
+                                            </span>
+                                        )
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 bg-white border border-slate-300 text-slate-500 rounded-md text-[7.5px] font-black uppercase flex items-center gap-0.5 shadow-xs">
+                                            BẢN NHÁP
+                                        </span>
+                                    )}
+
+                                    {q.isPublished && q.isUnlisted && (
+                                        <span className="px-1.5 py-0.5 bg-white border border-indigo-200 text-indigo-600 rounded-md text-[7.5px] font-black uppercase flex items-center gap-0.5 shadow-xs">
+                                            <EyeOff size={9}/> RIÊNG TƯ
+                                        </span>
+                                    )}
+
+                                    {q.isMonitored && (
+                                        <span className="p-0.5 bg-red-50 text-red-500 rounded" title="Có giám sát">
+                                            <ShieldCheck size={9}/>
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div>
+                                    {q.category && (
+                                        <span className="text-[7px] font-bold uppercase truncate text-slate-400 block mb-0.5">
+                                            {q.category}
+                                        </span>
+                                    )}
+                                    <h3 className={`font-black text-xs uppercase line-clamp-2 min-h-[32px] leading-tight transition-colors ${q.isPublished ? 'text-slate-800' : 'text-slate-500'}`}>
+                                        {q.title}
+                                    </h3>
+                                </div>
                             </div>
 
-                            {q.category && (
-                                <span className="text-[8px] font-bold uppercase truncate text-slate-400 mb-1">
-                                    {q.category}
-                                </span>
-                            )}
-                            
-                            <h3 className={`font-black text-sm mb-4 line-clamp-2 min-h-[40px] leading-tight uppercase transition-colors ${q.isPublished ? 'text-slate-800' : 'text-slate-500'}`}>
-                                {q.title}
-                            </h3>
-                            
-                            <div className="grid grid-cols-2 gap-3 mb-6">
-                                <div className={`${q.isPublished ? 'bg-white border-slate-100' : 'bg-slate-200/50 border-slate-200'} rounded-xl p-2 flex flex-col items-center justify-center border shadow-sm`}>
-                                    <FileText size={12} className={q.isUnlisted ? "text-indigo-500" : "text-blue-500"}/>
-                                    <span className={`text-[9px] font-black ${q.isPublished ? 'text-slate-700' : 'text-slate-500'}`}>{q.questionCount || 0} CÂU</span>
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5">
+                                {/* Thống kê: Số câu & Lượt thi */}
+                                <div className="grid grid-cols-2 gap-1.5 text-center">
+                                    <div className="bg-slate-50 py-1.5 px-1 rounded-xl border border-slate-100">
+                                        <p className="text-[7px] font-bold text-slate-500 uppercase flex items-center justify-center gap-1"><FileText size={8} className="text-blue-500"/> SỐ CÂU</p>
+                                        <p className="text-[11px] font-black text-slate-800 mt-0.5">{q.questionCount || (q.questions ? q.questions.length : 0)} CÂU</p>
+                                    </div>
+                                    <div className="bg-slate-50 py-1.5 px-1 rounded-xl border border-slate-100">
+                                        <p className="text-[7px] font-bold text-slate-500 uppercase flex items-center justify-center gap-1"><Users size={8} className="text-indigo-500"/> LƯỢT THI</p>
+                                        <p className="text-[11px] font-black text-slate-800 mt-0.5">{qResults.length} LƯỢT</p>
+                                    </div>
                                 </div>
-                                <div className="bg-white rounded-xl p-2 flex flex-col items-center justify-center border border-slate-100 shadow-sm">
-                                    <Users size={12} className="text-slate-400"/>
-                                    <span className="text-[9px] font-black text-slate-700">
-                                        {results.filter(r => r.quizId === q.id).length} LƯỢT
-                                    </span>
-                                </div>
-                            </div>
 
-                            <div className="mt-auto flex gap-1.5">
-                                <button 
-                                    onClick={() => onPreview(q)} 
-                                    className={`flex-1 py-3 rounded-xl text-[9px] font-extrabold uppercase flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 ${q.isPublished 
-                                        ? (q.isUnlisted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-blue-600 text-white hover:bg-blue-700') 
-                                        : 'bg-slate-800 text-white hover:bg-black'}`}
-                                    title="Xem chi tiết & Xuất Word / JSON"
-                                >
-                                    <Eye size={14}/> Xem & Xuất
-                                </button>
-                                <button
-                                    onClick={(e) => handleExportSingleQuiz(q, e)}
-                                    disabled={exportingQuizId === q.id}
-                                    className="px-2.5 py-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-black uppercase flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 disabled:opacity-50"
-                                    title="Tải nhanh file JSON đề thi"
-                                >
-                                    {exportingQuizId === q.id ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}
-                                    <span>JSON</span>
-                                </button>
-                                <button
-                                    onClick={(e) => openQuickAssignSingle(q, e)}
-                                    className="px-2.5 py-3 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 text-[9px] font-black uppercase flex items-center justify-center transition-all"
-                                    title="Gán phòng nhanh"
-                                >
-                                    <Building2 size={14} />
-                                </button>
+                                {/* Hàng nút hành động dưới cùng: XEM & XUẤT + JSON + GÁN PHÒNG */}
+                                <div className="flex items-center gap-1.5">
+                                    <button 
+                                        onClick={() => onPreview(q)} 
+                                        className={`flex-1 py-2.5 px-2 rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 whitespace-nowrap ${q.isPublished 
+                                            ? (q.isUnlisted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-blue-600 text-white hover:bg-blue-700') 
+                                            : 'bg-slate-800 text-white hover:bg-black'}`}
+                                        title="Xem chi tiết & Xuất Word / JSON"
+                                    >
+                                        <Eye size={13}/>
+                                        <span>XEM & XUẤT</span>
+                                    </button>
+                                    
+                                    {/* Nút JSON */}
+                                    <button
+                                        onClick={(e) => handleExportSingleQuiz(q, e)}
+                                        disabled={exportingQuizId === q.id}
+                                        className="py-2.5 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[8.5px] font-black uppercase flex items-center justify-center gap-1 shadow-xs transition-all active:scale-95 shrink-0 disabled:opacity-50"
+                                        title="Tải nhanh file JSON đề thi"
+                                    >
+                                        {exportingQuizId === q.id ? <Loader2 size={11} className="animate-spin text-amber-600" /> : <FileCode size={11} className="text-amber-600" />}
+                                        <span>JSON</span>
+                                    </button>
+
+                                    {/* Nút Gán phòng / lớp */}
+                                    <button
+                                        onClick={(e) => openQuickAssignSingle(q, e)}
+                                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-indigo-50 text-indigo-700 border border-slate-200 hover:border-indigo-200 text-[8.5px] font-black uppercase flex items-center justify-center shadow-xs transition-all shrink-0 active:scale-95"
+                                        title="Gán phòng/lớp nhanh cho đề thi này"
+                                    >
+                                        <Building2 size={13} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     );
