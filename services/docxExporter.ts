@@ -8,7 +8,7 @@ import {
   TableCell,
   WidthType,
   AlignmentType,
-  Math,
+  Math as DocxMath,
   MathRun,
   MathFraction,
   MathRadical,
@@ -16,9 +16,56 @@ import {
   MathSuperScript,
   MathSubSuperScript,
   MathComponent,
+  ImageRun,
+  XmlComponent,
+  BuilderElement,
+  createMathAccentCharacter,
+  createMathBase,
 } from 'docx';
 import { Quiz, Question } from '../types';
 import { normalizeFullText, repairVietnameseText } from './vietnameseFixer';
+
+/**
+ * Native Word Equation Accent Component (m:acc)
+ * Dùng cho \bar{A}, \vec{v}, \hat{A}, \tilde{x}, \dot{x}, \ddot{x}
+ * Hiển thị thanh gạch / mũi tên / dấu mũ chuẩn Word, thanh thoát và không dính/cắt vào chữ
+ */
+export class MathAccent extends XmlComponent {
+  constructor(options: { children: MathComponent[]; accentChar?: string }) {
+    super('m:acc');
+    this.root.push(
+      new BuilderElement({
+        name: 'm:accPr',
+        children: [
+          createMathAccentCharacter({ accent: options.accentChar || '¯' }),
+        ],
+      })
+    );
+    this.root.push(createMathBase({ children: options.children }));
+  }
+}
+
+/**
+ * Native Word Equation Bar Component (m:bar)
+ * Dùng cho \overline{AB} vạch ngang trên đầu đoạn thẳng hoặc biểu thức
+ */
+export class MathBar extends XmlComponent {
+  constructor(options: { children: MathComponent[]; position?: 'top' | 'bot' }) {
+    super('m:bar');
+    this.root.push(
+      new BuilderElement({
+        name: 'm:barPr',
+        children: [
+          new BuilderElement({
+            name: 'm:pos',
+            attributes: { pos: { key: 'm:val', value: options.position || 'top' } },
+          }),
+        ],
+      })
+    );
+    this.root.push(createMathBase({ children: options.children }));
+  }
+}
 
 const GREEK_AND_MATH_SYMBOLS: Record<string, string> = {
   '\\alpha': 'α',
@@ -172,6 +219,61 @@ function extractScriptToken(str: string, pos: number): { content: string; nextIn
 }
 
 /**
+ * Tải ảnh từ URL hoặc giải mã Base64 sang Uint8Array kèm kích thước căn chỉnh trang in Word
+ */
+async function fetchImageBufferAndDimensions(
+  url?: string
+): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  if (!url || typeof url !== 'string' || !url.trim()) return null;
+
+  try {
+    let uint8Array: Uint8Array;
+    const cleanUrl = url.trim();
+
+    if (cleanUrl.startsWith('data:')) {
+      const base64 = cleanUrl.includes(',') ? cleanUrl.split(',')[1] : cleanUrl;
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      uint8Array = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        uint8Array[i] = binaryString.charCodeAt(i);
+      }
+    } else {
+      const response = await fetch(cleanUrl);
+      if (!response.ok) return null;
+      const arrayBuffer = await response.arrayBuffer();
+      uint8Array = new Uint8Array(arrayBuffer);
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth || 360;
+        let h = img.naturalHeight || 200;
+        const maxWidth = 450;
+        const maxHeight = 300;
+        if (w > maxWidth) {
+          h = (h * maxWidth) / w;
+          w = maxWidth;
+        }
+        if (h > maxHeight) {
+          w = (w * maxHeight) / h;
+          h = maxHeight;
+        }
+        resolve({ data: uint8Array, width: Math.round(w), height: Math.round(h) });
+      };
+      img.onerror = () => {
+        resolve({ data: uint8Array, width: 360, height: 200 });
+      };
+      img.src = cleanUrl;
+    });
+  } catch (err) {
+    console.warn('Lỗi khi tải hình ảnh cho Word export:', url, err);
+    return null;
+  }
+}
+
+/**
  * Phân tích cú pháp chuỗi LaTeX sang các thành phần Word Math OMML Component
  */
 export function parseLatexToDocxMath(latex: string): MathComponent[] {
@@ -266,6 +368,179 @@ export function parseLatexToDocxMath(latex: string): MathComponent[] {
           );
         }
         i = radRes.nextIndex;
+        continue;
+      }
+    }
+
+    // 3. Word Native Math Accents: \bar, \overline, \vec, \hat, \tilde, \dot, \ddot
+    if (clean.startsWith('\\bar', i) || clean.startsWith('\\overline', i)) {
+      flushText();
+      const isOverline = clean.startsWith('\\overline', i);
+      let pos = i + (isOverline ? 9 : 4);
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '¯',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '¯',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
+        continue;
+      }
+    }
+
+    if (clean.startsWith('\\vec', i) || clean.startsWith('\\overrightarrow', i)) {
+      flushText();
+      const isOver = clean.startsWith('\\overrightarrow', i);
+      let pos = i + (isOver ? 16 : 4);
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '→',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '→',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
+        continue;
+      }
+    }
+
+    if (clean.startsWith('\\hat', i) || clean.startsWith('\\widehat', i)) {
+      flushText();
+      const isWide = clean.startsWith('\\widehat', i);
+      let pos = i + (isWide ? 8 : 4);
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '^',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '^',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
+        continue;
+      }
+    }
+
+    if (clean.startsWith('\\tilde', i) || clean.startsWith('\\widetilde', i)) {
+      flushText();
+      const isWide = clean.startsWith('\\widetilde', i);
+      let pos = i + (isWide ? 10 : 6);
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '~',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '~',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
+        continue;
+      }
+    }
+
+    if (clean.startsWith('\\dot', i) && !clean.startsWith('\\dots', i)) {
+      flushText();
+      let pos = i + 4;
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '˙',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '˙',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
+        continue;
+      }
+    }
+
+    if (clean.startsWith('\\ddot', i)) {
+      flushText();
+      let pos = i + 5;
+      while (pos < clean.length && clean[pos] === ' ') pos++;
+      if (pos < clean.length && clean[pos] === '{') {
+        const res = extractBraced(clean, pos);
+        if (res) {
+          components.push(
+            new MathAccent({
+              accentChar: '¨',
+              children: parseLatexToDocxMath(res.content),
+            })
+          );
+          i = res.nextIndex;
+          continue;
+        }
+      } else if (pos < clean.length && /[a-zA-Z0-9]/.test(clean[pos])) {
+        components.push(
+          new MathAccent({
+            accentChar: '¨',
+            children: [new MathRun(clean[pos])],
+          })
+        );
+        i = pos + 1;
         continue;
       }
     }
@@ -410,12 +685,12 @@ export function parseLatexToDocxMath(latex: string): MathComponent[] {
 export function parseTextWithMath(
   text: string,
   options?: { bold?: boolean; italics?: boolean; size?: number; color?: string; underline?: boolean }
-): (TextRun | Math)[] {
+): (TextRun | DocxMath)[] {
   if (!text) return [];
 
   const repaired = repairVietnameseText(text);
   const parts = repaired.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
-  const runs: (TextRun | Math)[] = [];
+  const runs: (TextRun | DocxMath)[] = [];
 
   for (const part of parts) {
     if (!part) continue;
@@ -423,7 +698,7 @@ export function parseTextWithMath(
     if ((part.startsWith('$$') && part.endsWith('$$')) || (part.startsWith('$') && part.endsWith('$'))) {
       const mathComponents = parseLatexToDocxMath(part);
       runs.push(
-        new Math({
+        new DocxMath({
           children: mathComponents,
         })
       );
@@ -520,7 +795,8 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
       })
     );
 
-    mcqQs.forEach((q, idx) => {
+    for (let idx = 0; idx < mcqQs.length; idx++) {
+      const q = mcqQs[idx];
       const qIndex = idx + 1;
       const levelTag = q.level ? `[${q.level.toUpperCase()}] ` : '';
 
@@ -553,6 +829,29 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
         })
       );
 
+      // Chèn hình ảnh câu hỏi nếu có
+      if (q.imageUrl) {
+        const imgObj = await fetchImageBufferAndDimensions(q.imageUrl);
+        if (imgObj) {
+          contentParagraphs.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: 'png',
+                  data: imgObj.data,
+                  transformation: {
+                    width: imgObj.width,
+                    height: imgObj.height,
+                  },
+                }),
+              ],
+              spacing: { before: 60, after: 80 },
+            })
+          );
+        }
+      }
+
       // Options
       if (q.options && q.options.length > 0) {
         q.options.forEach((optText, optIdx) => {
@@ -578,7 +877,7 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
           );
         });
       }
-    });
+    }
   }
 
   // PHẦN 2: ĐÚNG SAI
@@ -608,7 +907,8 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
       })
     );
 
-    groupTfQs.forEach((q, idx) => {
+    for (let idx = 0; idx < groupTfQs.length; idx++) {
+      const q = groupTfQs[idx];
       const qIndex = idx + 1;
       const levelTag = q.level ? `[${q.level.toUpperCase()}] ` : '';
 
@@ -640,6 +940,29 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
           spacing: { before: 100, after: 40 },
         })
       );
+
+      // Chèn hình ảnh câu hỏi nếu có
+      if (q.imageUrl) {
+        const imgObj = await fetchImageBufferAndDimensions(q.imageUrl);
+        if (imgObj) {
+          contentParagraphs.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: 'png',
+                  data: imgObj.data,
+                  transformation: {
+                    width: imgObj.width,
+                    height: imgObj.height,
+                  },
+                }),
+              ],
+              spacing: { before: 60, after: 80 },
+            })
+          );
+        }
+      }
 
       if (q.subQuestions && q.subQuestions.length > 0) {
         q.subQuestions.forEach((sub, subIdx) => {
@@ -675,7 +998,7 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
           );
         });
       }
-    });
+    }
   }
 
   // PHẦN 3: TRẢ LỜI NGẮN
@@ -705,7 +1028,8 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
       })
     );
 
-    shortQs.forEach((q, idx) => {
+    for (let idx = 0; idx < shortQs.length; idx++) {
+      const q = shortQs[idx];
       const qIndex = idx + 1;
       const levelTag = q.level ? `[${q.level.toUpperCase()}] ` : '';
 
@@ -748,7 +1072,30 @@ export async function generateNativeWordDocx(quiz: Quiz, includeAnswers: boolean
           spacing: { before: 100, after: 40 },
         })
       );
-    });
+
+      // Chèn hình ảnh câu hỏi nếu có
+      if (q.imageUrl) {
+        const imgObj = await fetchImageBufferAndDimensions(q.imageUrl);
+        if (imgObj) {
+          contentParagraphs.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: 'png',
+                  data: imgObj.data,
+                  transformation: {
+                    width: imgObj.width,
+                    height: imgObj.height,
+                  },
+                }),
+              ],
+              spacing: { before: 60, after: 80 },
+            })
+          );
+        }
+      }
+    }
   }
 
   // LỜI KẾT
