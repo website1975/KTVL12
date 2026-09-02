@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { X, Download, FileType, AlignLeft, Rows, FileCode } from 'lucide-react';
+import { X, Download, FileType, AlignLeft, Rows, FileCode, CheckCircle2, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import { Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
 import { normalizeFullText, repairVietnameseText } from '../../services/vietnameseFixer';
 import { exportQuizToJson } from '../../services/quizExport';
+import { convertLatexForWordExport } from '../../services/wordExport';
+import { generateNativeWordDocx } from '../../services/docxExporter';
 
 interface QuizPreviewModalProps {
     quiz: Quiz;
@@ -261,12 +263,39 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         );
     };
 
-    const handleExportWord = () => {
+    const [isExportingDocx, setIsExportingDocx] = useState(false);
+
+    // Xuất file .docx chuẩn Microsoft Word Native Equation (OMML) - Phân số, căn thức, số mũ, chỉ số chuẩn 100%
+    const handleExportNativeDocx = async () => {
+        if (!isAdmin) return;
+        try {
+            setIsExportingDocx(true);
+            const blob = await generateNativeWordDocx(quiz, true);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${quiz.title.replace(/[/\\?%*:|"<>]/g, '_')}_Word_Equation.docx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Lỗi xuất Word Native Docx:", err);
+            alert("Có lỗi khi tạo file Word Native Equation. Vui lòng thử lại!");
+        } finally {
+            setIsExportingDocx(false);
+        }
+    };
+
+    // Xuất file .doc chuẩn MathType (Alt + \ Toggle TeX)
+    const handleExportMathType = () => {
         if (!isAdmin) return;
         const originalContent = document.getElementById('quiz-export-content');
         if (!originalContent) return alert("Không tìm thấy nội dung!");
 
         const clone = originalContent.cloneNode(true) as HTMLElement;
+        
+        // Giữ nguyên cú pháp $...$ chuẩn LaTeX cho MathType Toggle TeX
         const latexItems = clone.querySelectorAll('[data-latex]');
         latexItems.forEach(item => {
             const rawLatex = item.getAttribute('data-latex');
@@ -276,9 +305,7 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
             }
         });
 
-        // Chuẩn hóa toàn bộ nội dung HTML xuất ra để đảm bảo không bị lỗi font hay vỡ chữ
         const cleanedHtml = repairVietnameseText(clone.innerHTML);
-        const content = cleanedHtml;
         const header = `
             <html xmlns:o='urn:schemas-microsoft-com:office:office' 
                   xmlns:w='urn:schemas-microsoft-com:office:word' 
@@ -378,13 +405,13 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
             <body>
         `;
         const footer = "</body></html>";
-        const sourceHTML = header + content + footer;
+        const sourceHTML = header + cleanedHtml + footer;
         
         const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${quiz.title.replace(/[/\\?%*:|"<>]/g, '_')}.doc`;
+        link.download = `${quiz.title.replace(/[/\\?%*:|"<>]/g, '_')}_MathType.doc`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -441,22 +468,37 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                         </div>
 
                         {isAdmin && (
-                            <>
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button 
                                     onClick={handleExportJson}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-amber-700 transition-all shadow-xl active:scale-95"
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-amber-700 transition-all shadow-md active:scale-95"
                                     title="Xuất file JSON chuẩn dữ liệu (.json)"
                                 >
-                                    <FileCode size={15}/> Xuất JSON (.json)
+                                    <FileCode size={15}/> JSON
                                 </button>
+
                                 <button 
-                                    onClick={handleExportWord}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-emerald-700 transition-all shadow-xl active:scale-95"
-                                    title="Xuất file Microsoft Word chuẩn định dạng (.doc)"
+                                    onClick={handleExportNativeDocx}
+                                    disabled={isExportingDocx}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-[11px] font-black uppercase hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg active:scale-95 border border-blue-400/30 disabled:opacity-50"
+                                    title="Xuất file .docx chuẩn Microsoft Word Native Equation (OMML). Phân số, căn thức, số mũ, chỉ số tự động biến thành công thức Word xịn 100%!"
                                 >
-                                    <Download size={15}/> Xuất Word (.doc)
+                                    {isExportingDocx ? (
+                                        <Loader2 size={15} className="animate-spin text-white"/>
+                                    ) : (
+                                        <Sparkles size={15} className="text-yellow-300 animate-pulse"/>
+                                    )}
+                                    {isExportingDocx ? 'Đang tạo DOCX...' : 'Xuất Word Equation (.docx)'}
                                 </button>
-                            </>
+
+                                <button 
+                                    onClick={handleExportMathType}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase hover:bg-emerald-700 transition-all shadow-md active:scale-95"
+                                    title="Xuất file Word chứa mã $...$ LaTeX. Mở Word nhấn Ctrl + A rồi Alt + \ để chuyển thành MathType"
+                                >
+                                    <Download size={15}/> Xuất MathType (Alt+\)
+                                </button>
+                            </div>
                         )}
                         <button 
                             onClick={onClose} 
