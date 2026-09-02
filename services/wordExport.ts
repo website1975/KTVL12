@@ -125,6 +125,15 @@ export function latexToWordHtml(latex: string): string {
   // Xử lý Hóa học \ce{...}
   clean = clean.replace(/\\ce\{([^}]+)\}/g, '$1');
 
+  // Bar / Overline \bar{A}, \overline{AB} -> <span style="text-decoration:overline">...</span>
+  clean = clean.replace(/\\bar\{([^{}]+)\}/g, '<span style="text-decoration:overline">$1</span>');
+  clean = clean.replace(/\\overline\{([^{}]+)\}/g, '<span style="text-decoration:overline">$1</span>');
+  clean = clean.replace(/\\bar\s+([a-zA-Z0-9])/g, '<span style="text-decoration:overline">$1</span>');
+  clean = clean.replace(/\\hat\{([^{}]+)\}/g, (_, inner) => inner.split('').map((c: string) => `${c}&#770;`).join(''));
+  clean = clean.replace(/\\tilde\{([^{}]+)\}/g, (_, inner) => inner.split('').map((c: string) => `${c}&#771;`).join(''));
+  clean = clean.replace(/\\dot\{([^{}]+)\}/g, (_, inner) => inner.split('').map((c: string) => `${c}&#775;`).join(''));
+  clean = clean.replace(/\\ddot\{([^{}]+)\}/g, (_, inner) => inner.split('').map((c: string) => `${c}&#776;`).join(''));
+
   // Ký hiệu tập hợp số
   clean = clean.replace(/\\mathbb\{R\}/g, 'ℝ');
   clean = clean.replace(/\\mathbb\{Z\}/g, 'ℤ');
