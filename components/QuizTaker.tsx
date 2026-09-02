@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession, verifyResultExists } from '../services/storage';
+import { shuffleQuestionsByParts, restoreQuestionsOrder } from '../services/quizShuffler';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark } from 'lucide-react';
+import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark, CheckCircle2 } from 'lucide-react';
 import LatexText from './LatexText';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
@@ -17,14 +18,30 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     const sessionIdRef = useRef(`sess_${student.id}_${quiz.id}_${uuidv4().slice(0, 8)}`);
     const backupKey = `quiz_backup_${student.id}_${quiz.id}`;
     const sessionStartKey = `quiz_session_start_${student.id}_${quiz.id}`;
+    const orderStorageKey = `quiz_question_order_${student.id}_${quiz.id}`;
     const isInternalActionRef = useRef(false);
     
+    // Xáo trộn thông minh theo từng phần (Phần 1, Phần 2, Phần 3) & ghi nhớ trong suốt phiên thi của học sinh
     const orderedQuestions = useMemo(() => {
-        const mcq = quiz.questions.filter(q => q.type === 'mcq');
-        const tf = quiz.questions.filter(q => q.type === 'group-tf');
-        const short = quiz.questions.filter(q => q.type === 'short');
-        return [...mcq, ...tf, ...short];
-    }, [quiz.questions]);
+        const savedOrderJson = localStorage.getItem(orderStorageKey);
+        if (savedOrderJson) {
+            try {
+                const savedOrder: string[] = JSON.parse(savedOrderJson);
+                if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+                    const restored = restoreQuestionsOrder(quiz.questions, savedOrder);
+                    if (restored.length === quiz.questions.length) {
+                        return restored;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Tạo thứ tự xáo trộn mới theo đúng chuẩn: Phần 1 (MCQ), Phần 2 (Đúng/Sai), Phần 3 (Trả lời ngắn)
+        const shuffled = shuffleQuestionsByParts(quiz.questions);
+        const orderIds = shuffled.map(q => q.id);
+        localStorage.setItem(orderStorageKey, JSON.stringify(orderIds));
+        return shuffled;
+    }, [quiz.questions, orderStorageKey]);
 
     const getInitialAnswers = () => {
         const saved = localStorage.getItem(backupKey);
@@ -230,7 +247,8 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             bonusPoint: bonusPoint, // LƯU VẾT VÀO DATABASE
             pointsAwarded: Number(score.toFixed(2)),
             userAnswers: finalAnswers,
-            violationCount: finalViolations
+            violationCount: finalViolations,
+            questionOrder: orderedQuestions.map(q => q.id) // GHI NHỚ THỨ TỰ CÂU HỎI ĐÃ XÁO TRỘN CỦA LƯỢT THI NÀY
         };
 
         try {
@@ -247,6 +265,7 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             await deleteExamSession(sessionIdRef.current); 
             localStorage.removeItem(backupKey);
             localStorage.removeItem(sessionStartKey);
+            localStorage.removeItem(orderStorageKey);
             
             setFinalResult(result);
             setSubmitStatus('done');
@@ -427,59 +446,91 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                 </div>
             </div>
 
-            <div className="max-w-7xl w-full mx-auto space-y-12 pb-20 px-4">
-                {orderedQuestions.map((q, idx) => (
-                    <div key={q.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
-                        {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
-                        {q.context && (
-                            <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
-                                <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
-                                    <Bookmark size={16} className="text-amber-600" />
-                                    <span>Lời dẫn / Dữ liệu dùng chung:</span>
-                                </div>
-                                <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
-                                    <LatexText text={q.context} />
-                                </div>
-                            </div>
-                        )}
+            <div className="max-w-7xl w-full mx-auto space-y-10 pb-20 px-4">
+                {orderedQuestions.map((q, idx) => {
+                    const isFirstOfPart = idx === 0 || orderedQuestions[idx - 1].type !== q.type;
+                    let partTitle = '';
+                    let partSub = '';
+                    if (isFirstOfPart) {
+                        if (q.type === 'mcq') {
+                            partTitle = 'PHẦN I: CÂU TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN';
+                            partSub = 'Thí sinh chọn 01 phương án đúng duy nhất cho mỗi câu hỏi.';
+                        } else if (q.type === 'group-tf') {
+                            partTitle = 'PHẦN II: CÂU TRẮC NGHIỆM ĐÚNG SAI';
+                            partSub = 'Trong mỗi ý a, b, c, d, thí sinh chọn Đúng hoặc Sai.';
+                        } else if (q.type === 'short') {
+                            partTitle = 'PHẦN III: CÂU TRẮC NGHIỆM TRẢ LỜI NGẮN';
+                            partSub = 'Thí sinh điền kết quả hoặc đáp số chính xác vào ô trống.';
+                        }
+                    }
 
-                        <div className="flex items-start gap-4 mb-6">
-                            <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {idx + 1}.</span>
-                            <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
-                        </div>
-                        {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
-                        {q.type === 'mcq' && q.options && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
-                                {q.options.map((opt, oi) => (
-                                    <button key={oi} onClick={() => setCurrentAnswers({ ...currentAnswers, [q.id]: opt })} className={`p-5 rounded-2xl border-2 text-left text-sm font-bold transition-all flex items-center gap-3 ${currentAnswers[q.id] === opt ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-[1.02]' : 'bg-slate-50 hover:bg-slate-100 border-slate-100'}`}>
-                                        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${currentAnswers[q.id] === opt ? 'bg-white/20 border-white/40' : 'bg-white border-slate-200'}`}>{String.fromCharCode(65+oi)}</span>
-                                        <LatexText text={opt}/>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {q.type === 'group-tf' && q.subQuestions && (
-                            <div className="space-y-4 pl-0 md:pl-10">
-                                {q.subQuestions.map((sq, si) => (
-                                    <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                        <span className="text-xs font-black text-blue-600 w-6">{String.fromCharCode(97+si)})</span>
-                                        <div className="flex-1 text-sm font-bold"><LatexText text={sq.text}/></div>
-                                        <div className="flex bg-white rounded-xl p-1 border border-slate-200">
-                                            {['True', 'False'].map(v => (
-                                                <button key={v} onClick={() => { const qAns = currentAnswers[q.id] || {}; setCurrentAnswers({ ...currentAnswers, [q.id]: { ...qAns, [si]: v } }); }} className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${currentAnswers[q.id]?.[si] === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
-                                            ))}
+                    return (
+                        <React.Fragment key={q.id}>
+                            {isFirstOfPart && (
+                                <div className="p-6 bg-slate-900 text-white rounded-3xl shadow-lg border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 mt-6 first:mt-0">
+                                    <div>
+                                        <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-blue-400">{partTitle}</h3>
+                                        <p className="text-xs text-slate-300 font-medium mt-1">{partSub}</p>
+                                    </div>
+                                    <span className="self-start md:self-auto px-3.5 py-1.5 bg-blue-600/30 border border-blue-400/30 text-blue-300 text-[10px] font-black uppercase tracking-widest rounded-xl">
+                                        {q.type === 'mcq' ? 'Phần I' : q.type === 'group-tf' ? 'Phần II' : 'Phần III'}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
+                                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
+                                {q.context && (
+                                    <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
+                                        <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
+                                            <Bookmark size={16} className="text-amber-600" />
+                                            <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                                        </div>
+                                        <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
+                                            <LatexText text={q.context} />
                                         </div>
                                     </div>
-                                ))}
+                                )}
+
+                                <div className="flex items-start gap-4 mb-6">
+                                    <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {idx + 1}.</span>
+                                    <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
+                                </div>
+                                {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
+                                {q.type === 'mcq' && q.options && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
+                                        {q.options.map((opt, oi) => (
+                                            <button key={oi} onClick={() => setCurrentAnswers({ ...currentAnswers, [q.id]: opt })} className={`p-5 rounded-2xl border-2 text-left text-sm font-bold transition-all flex items-center gap-3 ${currentAnswers[q.id] === opt ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-[1.02]' : 'bg-slate-50 hover:bg-slate-100 border-slate-100'}`}>
+                                                <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${currentAnswers[q.id] === opt ? 'bg-white/20 border-white/40' : 'bg-white border-slate-200'}`}>{String.fromCharCode(65+oi)}</span>
+                                                <LatexText text={opt}/>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {q.type === 'group-tf' && q.subQuestions && (
+                                    <div className="space-y-4 pl-0 md:pl-10">
+                                        {q.subQuestions.map((sq, si) => (
+                                            <div key={si} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                                <span className="text-xs font-black text-blue-600 w-6">{String.fromCharCode(97+si)})</span>
+                                                <div className="flex-1 text-sm font-bold"><LatexText text={sq.text}/></div>
+                                                <div className="flex bg-white rounded-xl p-1 border border-slate-200">
+                                                    {['True', 'False'].map(v => (
+                                                        <button key={v} onClick={() => { const qAns = currentAnswers[q.id] || {}; setCurrentAnswers({ ...currentAnswers, [q.id]: { ...qAns, [si]: v } }); }} className={`px-6 py-2 text-[10px] font-black rounded-lg transition-all ${currentAnswers[q.id]?.[si] === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>{v === 'True' ? 'ĐÚNG' : 'SAI'}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {q.type === 'short' && (
+                                    <div className="pl-0 md:pl-10">
+                                        <input type="text" className="w-full max-w-md p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-blue-600 focus:border-blue-500 focus:bg-white transition-all" placeholder="Nhập đáp số..." value={currentAnswers[q.id] || ''} onChange={e => setCurrentAnswers({ ...currentAnswers, [q.id]: e.target.value })} />
+                                    </div>
+                                )}
                             </div>
-                        )}
-                        {q.type === 'short' && (
-                            <div className="pl-0 md:pl-10">
-                                <input type="text" className="w-full max-w-md p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-blue-600 focus:border-blue-500 focus:bg-white transition-all" placeholder="Nhập đáp số..." value={currentAnswers[q.id] || ''} onChange={e => setCurrentAnswers({ ...currentAnswers, [q.id]: e.target.value })} />
-                            </div>
-                        )}
-                    </div>
-                ))}
+                        </React.Fragment>
+                    );
+                })}
             </div>
         </div>
     );
