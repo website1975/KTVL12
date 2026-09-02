@@ -3,6 +3,8 @@
  * Giúp mở file Word lên công thức hiển thị đẹp mắt (chỉ số trên, dưới, ký hiệu toán học, chữ nghiêng, phân số)
  * KHÔNG bị lộ các thẻ XML/MathML lạ như <msub><mi>...
  */
+export * from './docxExporter';
+
 
 const LATEX_SYMBOLS: Record<string, string> = {
   // Hy Lạp (Thường)
