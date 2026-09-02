@@ -4,6 +4,7 @@ import { Quiz, Question, User, ExamSession } from '../types';
 import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, HelpCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen, Bookmark } from 'lucide-react';
 import LatexText from './LatexText';
 import { saveExamSession, deleteExamSession } from '../services/storage';
+import { shuffleQuestionsByParts } from '../services/quizShuffler';
 import { v4 as uuidv4 } from 'uuid';
 
 interface QuickPracticeProps {
@@ -20,6 +21,10 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
   const [isAnswered, setIsAnswered] = useState(false);
   const [showContent, setShowContent] = useState(true);
   const [memoryTimer, setMemoryTimer] = useState(10); 
+
+  const practiceQuestions = useMemo(() => {
+    return shuffleQuestionsByParts(quiz.questions);
+  }, [quiz.questions]); 
 
   const updateMonitorStatus = async (isFinished = false) => {
     try {
@@ -48,10 +53,11 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
     };
   }, []);
 
-  const currentQuestion = quiz.questions[currentIndex];
+  const currentQuestion = practiceQuestions[currentIndex] || quiz.questions[0];
 
   // Tính toán đúng/sai
   const checkIsCorrect = () => {
+    if (!currentQuestion) return false;
     if (currentQuestion.type === 'mcq') {
       return selectedOption === currentQuestion.correctAnswer;
     } else if (currentQuestion.type === 'short') {
@@ -80,6 +86,7 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
   const isCorrect = checkIsCorrect();
 
   const isPartial = useMemo(() => {
+    if (!currentQuestion) return false;
     if (currentQuestion.type === 'group-tf' && selectedOption && currentQuestion.subQuestions) {
       const subResults = currentQuestion.subQuestions.map((sq, i) => selectedOption[i] === sq.correctAnswer);
       const subCorrectCount = subResults.filter(r => r === true).length;
@@ -112,7 +119,7 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
   };
 
   const handleNext = () => {
-    if (currentIndex < quiz.questions.length - 1) {
+    if (currentIndex < practiceQuestions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setSelectedOption(null);
       setIsAnswered(false);
@@ -125,7 +132,7 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
 
   // Kiểm tra nút xác nhận có được bấm hay không
   const canConfirm = useMemo(() => {
-    if (!selectedOption) return false;
+    if (!selectedOption || !currentQuestion) return false;
     if (currentQuestion.type === 'group-tf') {
       return Object.keys(selectedOption).length === (currentQuestion.subQuestions?.length || 0);
     }
@@ -138,9 +145,9 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
         <div className="bg-white rounded-full h-8 p-1 flex items-center shadow-sm relative overflow-hidden border">
            <div 
              className="h-full bg-blue-500 rounded-full transition-all duration-1000 flex items-center justify-end px-3"
-             style={{ width: `${((currentIndex + 1) / quiz.questions.length) * 100}%` }}
+             style={{ width: `${((currentIndex + 1) / practiceQuestions.length) * 100}%` }}
            >
-             <span className="text-[10px] text-white font-black">{currentIndex + 1}/{quiz.questions.length}</span>
+             <span className="text-[10px] text-white font-black">{currentIndex + 1}/{practiceQuestions.length}</span>
            </div>
            {!isAnswered && showContent && (
              <div className="absolute top-0 right-4 h-full flex items-center gap-2">
