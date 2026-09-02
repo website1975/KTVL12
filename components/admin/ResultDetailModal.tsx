@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock, Bookmark } from 'lucide-react';
 import { Result, Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
+import { restoreQuestionsOrder } from '../../services/quizShuffler';
 import { isAfter, addMinutes } from 'date-fns';
 
 interface ResultDetailModalProps {
@@ -23,18 +24,13 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
     const endTime = quiz.endTime ? new Date(quiz.endTime) : (startTime ? addMinutes(startTime, quiz.durationMinutes) : null);
     const isEnded = endTime ? isAfter(now, endTime) : false;
 
-    // Cho phép xem đáp án nếu là bài Luyện tập HOẶC bài Kiểm tra đã hết giờ
-    const showDetailAnswers = quiz.type === 'practice' || isEnded;
+    // Cho phép xem đáp án nếu là bài Luyện tập HOẶC bài Kiểm tra được giáo viên bật quyền xem
+    const showDetailAnswers = quiz.type === 'practice' || (quiz.allowReview !== undefined ? quiz.allowReview : isEnded);
 
-    // Sắp xếp câu hỏi theo thứ tự Phần I, II, III giống lúc làm bài
+    // Khôi phục chính xác thứ tự câu hỏi đã xáo trộn riêng cho lượt làm bài này của học sinh
     const orderedQuestions = useMemo(() => {
-        const parts = {
-            mcq: quiz.questions.filter(q => q.type === 'mcq'),
-            'group-tf': quiz.questions.filter(q => q.type === 'group-tf'),
-            short: quiz.questions.filter(q => q.type === 'short')
-        };
-        return [...parts.mcq, ...parts['group-tf'], ...parts.short];
-    }, [quiz.questions]);
+        return restoreQuestionsOrder(quiz.questions, result.questionOrder);
+    }, [quiz.questions, result.questionOrder]);
 
     const renderQuestionDetail = (q: Question, idx: number) => {
         const ans = userAnswers[q.id];
@@ -212,11 +208,15 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
                     <div className="max-w-3xl mx-auto space-y-10 pb-10">
                         
                         {!showDetailAnswers && (
-                            <div className="bg-orange-50 border-2 border-orange-200 p-6 rounded-[2rem] flex items-center gap-4 text-orange-700 mb-6">
-                                <Lock size={24} className="shrink-0"/>
+                            <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[2rem] flex items-center gap-4 text-amber-800 mb-6 shadow-sm">
+                                <div className="p-3 bg-amber-600 text-white rounded-2xl shrink-0 shadow-sm">
+                                    <Lock size={22} />
+                                </div>
                                 <div>
-                                    <p className="font-black uppercase text-xs">Chế độ kiểm tra: Đang diễn ra (Ẩn đáp án)</p>
-                                    <p className="text-[10px] font-medium leading-tight mt-0.5">Bài kiểm tra chính thức đang trong thời gian làm bài. Hệ thống tạm thời chỉ hiển thị các lựa chọn của bạn. Đáp án và lời giải chi tiết sẽ tự động mở sau khi đợt kiểm tra kết thúc.</p>
+                                    <p className="font-black uppercase text-xs text-amber-900">Giáo viên đang khóa đáp án & Lời giải chi tiết</p>
+                                    <p className="text-[11px] font-medium leading-relaxed text-amber-800/90 mt-0.5">
+                                        Đề thi đang được bảo mật để đảm bảo công bằng cho các ca thi khác. Hệ thống chỉ ghi nhận điểm và câu trả lời của bạn. Khi giáo viên cho phép công bố, đáp án và lời giải chi tiết sẽ hiển thị tại đây.
+                                    </p>
                                 </div>
                             </div>
                         )}

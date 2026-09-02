@@ -32,6 +32,12 @@ export default function LatexText({ text }: LatexTextProps) {
 
         if (part.startsWith('$') && part.endsWith('$')) {
           const latex = part.slice(1, -1);
+          
+          // Hỗ trợ trường hợp gõ $\\$ hoặc $\\\\$ để xuống dòng
+          if (latex.trim() === '\\' || latex.trim() === '\\\\' || latex.trim() === '') {
+            return <br key={i} className="my-0.5" />;
+          }
+
           try {
             if (k) {
               const html = k.renderToString(latex, { 
@@ -54,8 +60,9 @@ export default function LatexText({ text }: LatexTextProps) {
           }
         }
 
-        // Cho phép render HTML (như thẻ <br/>, <b>, ...) trong phần văn bản thường
-        return <span key={i} dangerouslySetInnerHTML={{ __html: part }} />;
+        // Cho phép render HTML (như thẻ <br/>, <b>, ...) và tự động chuyển phím Enter (\n) thành <br/>
+        const formattedPart = part.replace(/\n/g, '<br/>');
+        return <span key={i} dangerouslySetInnerHTML={{ __html: formattedPart }} />;
       })}
     </span>
   );
