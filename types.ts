@@ -108,6 +108,7 @@ export interface Result {
   bonusPoint?: number; 
   userAnswers?: Record<string, any>; 
   violationCount?: number;
+  questionOrder?: string[]; // Ghi nhớ thứ tự ID câu hỏi đã xáo trộn riêng cho lượt làm bài này
 }
 
 export interface ExamSession {
