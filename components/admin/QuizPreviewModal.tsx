@@ -270,7 +270,7 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
         if (!isAdmin) return;
         try {
             setIsExportingDocx(true);
-            const blob = await generateNativeWordDocx(quiz, true);
+            const blob = await generateNativeWordDocx(quiz, true, layoutMode);
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -711,12 +711,16 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                             );
                         })}
 
-                        {/* Bảng đáp án cuối đề */}
-                        {renderAnswerKey()}
-
-                        <div className="footer" style={{ textAlign: 'center', marginTop: '40pt', borderTop: '1pt solid #ccc', paddingTop: '15pt', fontWeight: 'bold' }}>
+                        {/* Kết thúc nội dung đề thi */}
+                        <div className="footer" style={{ textAlign: 'center', marginTop: '30pt', marginBottom: '15pt', borderTop: '1pt solid #ccc', paddingTop: '12pt', fontWeight: 'bold' }}>
                             <p style={{ fontSize: '11pt', margin: '5pt 0' }}>--- HẾT ---</p>
+                            <p style={{ fontSize: '10pt', fontStyle: 'italic', fontWeight: 'normal', margin: '3pt 0' }}>
+                                (Thí sinh không được sử dụng tài liệu. Cán bộ coi thi không giải thích gì thêm)
+                            </p>
                         </div>
+
+                        {/* Bảng đáp án cuối đề (trình bày phía dưới nội dung chuẩn giống xuất doc) */}
+                        {renderAnswerKey()}
                     </div>
                 </div>
             </div>
