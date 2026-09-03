@@ -81,14 +81,32 @@ const LATEX_SYMBOLS: Record<string, string> = {
   '\\nabla': '∇',
   '\\to': '→',
   '\\rightarrow': '→',
+  '\\longrightarrow': '⟶',
   '\\leftarrow': '←',
+  '\\longleftarrow': '⟵',
   '\\Rightarrow': '⇒',
+  '\\Longrightarrow': '⟹',
   '\\Leftarrow': '⇐',
+  '\\Longleftarrow': '⟸',
   '\\leftrightarrow': '↔',
+  '\\longleftrightarrow': '⟷',
   '\\Leftrightarrow': '⇔',
+  '\\Longleftrightarrow': '⟺',
   '\\rightleftharpoons': '⇌',
   '\\leftrightharpoons': '⇌',
   '\\mapsto': '↦',
+  '\\uparrow': '↑',
+  '\\downarrow': '↓',
+  '\\updownarrow': '↕',
+  '\\Uparrow': '⇑',
+  '\\Downarrow': '⇓',
+  '\\Updownarrow': '⇕',
+  '\\upuparrows': '⇈',
+  '\\downdownarrows': '⇊',
+  '\\nearrow': '↗',
+  '\\searrow': '↘',
+  '\\swarrow': '↙',
+  '\\nwarrow': '↖',
   '\\perp': '⊥',
   '\\parallel': '∥',
   '\\angle': '∠',
@@ -142,7 +160,7 @@ export function latexToWordHtml(latex: string): string {
   clean = clean.replace(/\\mathbb\{C\}/g, 'ℂ');
 
   // Vector \vec{v} -> v&#8407;
-  clean = clean.replace(/\\vec\{([a-zA-Z])\}/g, '<i>$1&#8407;</i>');
+  clean = clean.replace(/\\vec\{([^}]+)\}/g, '<i>$1&#8407;</i>');
   clean = clean.replace(/\\overrightarrow\{([^}]+)\}/g, '<i>$1&#8407;</i>');
 
   // Góc \widehat{AOB}
@@ -151,6 +169,13 @@ export function latexToWordHtml(latex: string): string {
   // Ký hiệu độ: ^\circ hoặc ^{\circ}
   clean = clean.replace(/\^\{\\circ\}/g, '°');
   clean = clean.replace(/\^\\circ/g, '°');
+
+  // Mũi tên vật lý cùng chiều / ngược chiều
+  clean = clean
+    .replace(/\\uparrow\s*\\uparrow/g, '↑↑')
+    .replace(/\\uparrow\s*\\downarrow/g, '↑↓')
+    .replace(/\\downarrow\s*\\uparrow/g, '↓↑')
+    .replace(/\\downarrow\s*\\downarrow/g, '↓↓');
 
   // Phân số: \frac{A}{B} -> (A)/(B) hoặc trình bày đẹp dạng <sup>A</sup>/<sub>B</sub>
   let fracRegex = /\\frac\{([^{}]+)\}\{([^{}]+)\}/;
@@ -166,10 +191,10 @@ export function latexToWordHtml(latex: string): string {
   clean = clean.replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, '<sup>$1</sup>√($2)');
   clean = clean.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
 
-  // Ký hiệu toán học từ từ điển
-  for (const [tex, sym] of Object.entries(LATEX_SYMBOLS)) {
-    clean = clean.split(tex).join(sym);
-  }
+  // Ký hiệu toán học từ từ điển: Khớp toàn bộ macro chữ cái để tránh đè tiền tố (\\le vs \\leftrightarrow)
+  clean = clean.replace(/\\[a-zA-Z]+/g, (match) => {
+    return LATEX_SYMBOLS[match] !== undefined ? LATEX_SYMBOLS[match] : match;
+  });
 
   // Xử lý ngoặc
   clean = clean.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
