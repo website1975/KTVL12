@@ -1283,7 +1283,11 @@ export default function AdminDashboard() {
                         questions={allAvailableQuestions} chapters={chapters} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
                         bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                         bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
-                        onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setActiveTab('quizzes'); setIsEditingQuiz(true); }}
+                        onAddMultiple={(qs) => { 
+                        setQuestions(prev => [...prev, ...qs]); 
+                        setActiveTab('quizzes'); 
+                        setIsEditingQuiz(true); 
+                    }}
                     />
                 )}
             </div>
@@ -1336,7 +1340,10 @@ export default function AdminDashboard() {
                             bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                             bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
                             bSearch={bSearch} setBSearch={setBSearch}
-                            onAddMultiple={(qs) => { setQuestions([...questions, ...qs]); setIsBankOpen(false); }}
+                            onAddMultiple={(qs) => { 
+                                setQuestions(prev => [...prev, ...qs]); 
+                                setIsBankOpen(false); 
+                            }}
                         />
                     )}
                 </div>
