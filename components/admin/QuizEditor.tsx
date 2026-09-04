@@ -6,11 +6,12 @@ import {
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
-  Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste
+  Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste,
+  FolderTree, AlertTriangle, ArrowLeft, RotateCcw
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
-import { parseQuestionsFromJSON } from '../../services/gemini';
+import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
 import { extractTextFromDocx } from '../../services/docxExtractor';
@@ -62,6 +63,8 @@ interface QuizEditorProps {
     onUploadImage: (qId: string, file: File) => void;
     uploadingId: string | null;
     isAiLoading?: boolean;
+    onCancel?: () => void;
+    onResetQuiz?: () => void;
 }
 
 const safeParseScore = (val: any): number => {
@@ -85,6 +88,7 @@ interface QuestionSectionProps {
     onOpenBatchForImage?: (imageUrl: string) => void;
     uniqueImagesCount?: number;
     onOpenLatexHelper?: (qId: string, qLabel?: string) => void;
+    relevantChapters?: Chapter[];
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -98,7 +102,8 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onOpenGalleryForQuestion,
     onOpenBatchForImage,
     uniqueImagesCount = 0,
-    onOpenLatexHelper
+    onOpenLatexHelper,
+    relevantChapters = []
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
@@ -295,6 +300,35 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                 );
                             })}
                         </div>
+
+                        {/* CHỌN CHƯƠNG HỌC CHO TỪNG CÂU HỎI (HỖ TRỢ ĐỀ KTTX, KTGK, CUỐI KỲ) */}
+                        {relevantChapters && relevantChapters.length > 0 && (
+                            <div className="flex items-center gap-1.5 bg-slate-100 p-1 px-3 rounded-2xl border border-slate-200">
+                                <FolderTree size={13} className="text-purple-600 shrink-0" />
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Chương:</span>
+                                <select
+                                    value={q.chapterName || ''}
+                                    onChange={(e) => {
+                                        const selectedName = e.target.value;
+                                        const matched = relevantChapters.find(c => c.name === selectedName);
+                                        const nl = [...questions];
+                                        const i = nl.findIndex(x => x.id === q.id);
+                                        if (i !== -1) {
+                                            nl[i].chapterName = selectedName || undefined;
+                                            nl[i].chapterId = matched?.id || undefined;
+                                            setQuestions(nl);
+                                        }
+                                    }}
+                                    className="bg-transparent text-[10px] font-black text-slate-700 outline-none cursor-pointer max-w-[180px] truncate"
+                                    title={q.chapterName ? `Chương: ${q.chapterName}` : 'Chưa gán riêng (mặc định lấy theo chuyên đề đề thi)'}
+                                >
+                                    <option value="">(Theo chuyên đề của đề)</option>
+                                    {relevantChapters.map(c => (
+                                        <option key={c.id} value={c.name}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-2xl border-2 border-blue-100 ml-auto">
                             <TargetIcon size={14} className="text-blue-500" />
@@ -589,7 +623,126 @@ export default function QuizEditor(props: QuizEditorProps) {
     const [latexInitialCode, setLatexInitialCode] = useState<string>('');
 
     const totalPoints = props.questions.reduce((acc, q) => acc + safeParseScore(q.points), 0);
-    const relevantChapters = props.chapters.filter(c => String(c.grade) === String(props.grade));
+    
+    // Danh sách chương phù hợp: lọc theo khối của đề thi, hoặc lấy toàn bộ nếu không khớp hoặc grade là 'all'
+    const relevantChapters = useMemo(() => {
+        let list = props.chapters.filter(c => String(c.grade) === String(props.grade));
+        if (list.length === 0) {
+            list = props.chapters;
+        }
+        return list;
+    }, [props.chapters, props.grade]);
+
+    // Danh sách chương chuyên môn gửi cho AI (ưu tiên các chương kiến thức cụ thể thay vì mục chung 'Ôn thi TX-CK')
+    const aiTargetChapters = useMemo(() => {
+        const knowledgeOnly = relevantChapters.filter(c => {
+            const lower = (c.name || '').toLowerCase();
+            return !lower.includes('ôn thi tx') && !lower.includes('ôn gk') && !lower.includes('luyện thi');
+        });
+        return knowledgeOnly.length > 0 ? knowledgeOnly : relevantChapters;
+    }, [relevantChapters]);
+
+    // Quản lý Chương học cho câu hỏi (Hỗ trợ đề KTTX, KTGK, Cuối kỳ)
+    const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
+    const [categorizeMessage, setCategorizeMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+    const [batchRangeFrom, setBatchRangeFrom] = useState(1);
+    const [batchRangeTo, setBatchRangeTo] = useState(props.questions.length || 1);
+    const [batchTargetChapter, setBatchTargetChapter] = useState('');
+    const [showBatchAssignBar, setShowBatchAssignBar] = useState(false);
+
+    // Tính phân bố số lượng câu hỏi theo chương trong đề
+    const chapterDistribution = useMemo(() => {
+        const counts: Record<string, number> = {};
+        props.questions.forEach(q => {
+            const ch = q.chapterName || (props.category && props.category !== 'KTGK' && props.category !== 'KTTX' ? props.category : 'Chưa gán chương');
+            counts[ch] = (counts[ch] || 0) + 1;
+        });
+        return counts;
+    }, [props.questions, props.category]);
+
+    // AI Phân loại chương tự động cho tất cả câu hỏi
+    const handleAutoCategorizeChapters = async () => {
+        if (props.questions.length === 0) {
+            setCategorizeMessage({ type: 'error', text: "Đề thi chưa có câu hỏi nào để phân loại!" });
+            return;
+        }
+        if (aiTargetChapters.length === 0) {
+            setCategorizeMessage({ 
+                type: 'error', 
+                text: `Hệ thống chưa tìm thấy danh mục chương học nào cho Khối ${props.grade}! Vui lòng vào tab 'Chương' để tạo danh mục chương trước.` 
+            });
+            return;
+        }
+        setIsAutoCategorizing(true);
+        setCategorizeMessage({ 
+            type: 'info', 
+            text: `🤖 AI đang đọc và phân loại ${props.questions.length} câu hỏi theo kiến thức các chương... Vui lòng đợi trong giây lát.` 
+        });
+        try {
+            const results = await autoCategorizeChaptersWithAI(
+                props.questions,
+                aiTargetChapters.map(c => ({ id: c.id, name: c.name }))
+            );
+            if (results && results.length > 0) {
+                const map = new Map(results.map(r => [r.id, r]));
+                let count = 0;
+                const updated = props.questions.map(q => {
+                    const match = map.get(q.id);
+                    if (match && match.chapterName) {
+                        count++;
+                        return {
+                            ...q,
+                            chapterName: match.chapterName,
+                            chapterId: match.chapterId || relevantChapters.find(c => c.name === match.chapterName)?.id
+                        };
+                    }
+                    return q;
+                });
+                props.setQuestions(updated);
+                setCategorizeMessage({
+                    type: 'success',
+                    text: `🎉 AI đã tự động phân loại thành công ${count}/${props.questions.length} câu hỏi vào đúng các chương tương ứng!`
+                });
+            } else {
+                setCategorizeMessage({
+                    type: 'error',
+                    text: "AI chưa phân loại được chương phù hợp cho danh sách câu hỏi này. Bạn có thể chọn chương thủ công hoặc gán theo dải câu."
+                });
+            }
+        } catch (err: any) {
+            setCategorizeMessage({
+                type: 'error',
+                text: "Lỗi phân loại chương bằng AI: " + (err.message || 'Lỗi xử lý')
+            });
+        } finally {
+            setIsAutoCategorizing(false);
+        }
+    };
+
+    // Gán nhanh chương theo dải số câu (VD: câu 1 đến câu 10)
+    const handleApplyBatchChapterRange = () => {
+        if (!batchTargetChapter) {
+            setCategorizeMessage({ type: 'error', text: "Vui lòng chọn chương muốn gán trước!" });
+            return;
+        }
+        const from = Math.max(1, Number(batchRangeFrom)) - 1;
+        const to = Math.min(props.questions.length, Number(batchRangeTo)) - 1;
+        if (from > to) {
+            setCategorizeMessage({ type: 'error', text: "Khoảng câu hỏi không hợp lệ (từ câu phải nhỏ hơn hoặc bằng đến câu)!" });
+            return;
+        }
+        const matched = relevantChapters.find(c => c.name === batchTargetChapter);
+        const updated = [...props.questions];
+        for (let i = from; i <= to; i++) {
+            updated[i].chapterName = batchTargetChapter;
+            updated[i].chapterId = matched?.id;
+        }
+        props.setQuestions(updated);
+        setCategorizeMessage({
+            type: 'success',
+            text: `Đã gán thành công Chương "${batchTargetChapter}" cho ${to - from + 1} câu hỏi (Từ câu ${from + 1} đến câu ${to + 1})!`
+        });
+    };
 
     // Đếm tổng số ảnh phân biệt trong đề
     const uniqueImagesCount = useMemo(() => {
@@ -804,6 +957,44 @@ export default function QuizEditor(props: QuizEditorProps) {
                     </div>
                 </div>
             )}
+
+            {/* THANH ĐIỀU HƯỚNG & TRẠNG THÁI ĐỀ THI */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-6 py-4 rounded-3xl border border-slate-200/80 shadow-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                    {props.onCancel && (
+                        <button
+                            type="button"
+                            onClick={props.onCancel}
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all"
+                        >
+                            <ArrowLeft size={14} /> Quay lại danh sách
+                        </button>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            props.editingId ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                        }`}>
+                            {props.editingId ? 'Đang chỉnh sửa đề đã lưu' : 'Đề thi mới'}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">
+                            • {props.questions.length} câu hỏi
+                        </span>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    {props.onResetQuiz && (
+                        <button
+                            type="button"
+                            onClick={props.onResetQuiz}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 rounded-xl text-[10px] font-black uppercase transition-all shadow-2xs"
+                            title="Xóa toàn bộ câu hỏi và thông tin đề hiện tại để làm lại đề mới hoàn toàn"
+                        >
+                            <RotateCcw size={12} /> Làm trống đề (Tạo mới)
+                        </button>
+                    )}
+                </div>
+            </div>
 
             <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-50 shadow-sm space-y-8 relative overflow-hidden">
                 <div className={`absolute top-0 right-16 px-8 py-3 rounded-b-3xl font-black text-xs uppercase shadow-xl z-10 transition-colors ${totalPoints === 10 ? 'bg-emerald-600' : 'bg-orange-500'} text-white`}>
@@ -1501,6 +1692,142 @@ export default function QuizEditor(props: QuizEditorProps) {
                 </div>
             </div>
 
+            {/* THANH QUẢN LÝ PHÂN LOẠI CHƯƠNG & MA TRẬN ĐỀ THI (HỖ TRỢ ĐỀ KTTX, KTGK, CUỐI KỲ) */}
+            <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-2xl border border-purple-100">
+                            <FolderTree size={18} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                                Phân loại Chương câu hỏi & Ma trận đề
+                                <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">KTTX / KTGK / Cuối kỳ</span>
+                            </h3>
+                            <p className="text-[11px] text-slate-400 font-bold">
+                                Gán từng câu hỏi vào đúng chương để khi lưu vào Ngân hàng hoặc xuất JSON, câu hỏi sẽ tự về đúng danh mục kiến thức.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-auto">
+                        {/* Nút AI tự động nhận diện chương */}
+                        <button
+                            type="button"
+                            onClick={handleAutoCategorizeChapters}
+                            disabled={isAutoCategorizing || props.questions.length === 0}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl text-xs font-black uppercase hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                            title="AI sẽ đọc toàn bộ câu hỏi và tự động đối chiếu ghép vào chương tương ứng"
+                        >
+                            {isAutoCategorizing ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>AI đang phân loại...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={14} />
+                                    <span>AI nhận diện chương</span>
+                                </>
+                            )}
+                        </button>
+
+                        {/* Nút bật thanh gán nhanh theo dải câu */}
+                        <button
+                            type="button"
+                            onClick={() => setShowBatchAssignBar(!showBatchAssignBar)}
+                            className={`flex items-center gap-1.5 px-3.5 py-2.5 border-2 rounded-2xl text-xs font-black uppercase transition-all ${
+                                showBatchAssignBar ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Zap size={14} />
+                            <span>Gán theo dải câu</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* THÔNG BÁO TRẠNG THÁI AI / GÁN CHƯƠNG */}
+                {categorizeMessage && (
+                    <div className={`p-4 rounded-2xl border-2 flex items-center justify-between gap-3 text-xs font-bold animate-fade-in ${
+                        categorizeMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                        categorizeMessage.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' :
+                        'bg-blue-50 border-blue-200 text-blue-800'
+                    }`}>
+                        <div className="flex items-center gap-2.5">
+                            {categorizeMessage.type === 'info' && <Loader2 size={16} className="animate-spin text-blue-600 shrink-0" />}
+                            {categorizeMessage.type === 'success' && <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />}
+                            {categorizeMessage.type === 'error' && <AlertTriangle size={16} className="text-rose-600 shrink-0" />}
+                            <span>{categorizeMessage.text}</span>
+                        </div>
+                        <button 
+                            type="button" 
+                            onClick={() => setCategorizeMessage(null)}
+                            className="p-1 hover:bg-black/5 rounded-lg transition-colors shrink-0"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
+
+                {/* Phân bố các chương hiện tại */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                    <span className="text-[10px] font-black text-slate-400 uppercase mr-1">Phân bố chương:</span>
+                    {Object.entries(chapterDistribution).map(([chName, count]) => (
+                        <div key={chName} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1 rounded-xl text-[11px] font-bold text-slate-700">
+                            <span className="truncate max-w-[200px]">{chName}:</span>
+                            <span className="bg-purple-100 text-purple-800 font-black px-1.5 py-0.2 rounded-md text-[10px]">{count} câu</span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Thanh công cụ gán nhanh theo dải câu */}
+                {showBatchAssignBar && (
+                    <div className="bg-purple-50/70 border-2 border-purple-200 p-4 rounded-2xl flex flex-wrap items-center gap-3 animate-fade-in">
+                        <span className="text-xs font-black text-purple-900 uppercase">Gán nhanh:</span>
+                        <div className="flex items-center gap-1 text-xs font-bold text-slate-700">
+                            <span>Từ câu</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={props.questions.length}
+                                value={batchRangeFrom}
+                                onChange={(e) => setBatchRangeFrom(Number(e.target.value))}
+                                className="w-14 bg-white border border-purple-200 rounded-lg px-2 py-1 text-center font-black text-purple-700 outline-none"
+                            />
+                            <span>đến câu</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={props.questions.length}
+                                value={batchRangeTo}
+                                onChange={(e) => setBatchRangeTo(Number(e.target.value))}
+                                className="w-14 bg-white border border-purple-200 rounded-lg px-2 py-1 text-center font-black text-purple-700 outline-none"
+                            />
+                        </div>
+
+                        <span className="text-xs font-bold text-slate-600">vào</span>
+                        <select
+                            value={batchTargetChapter}
+                            onChange={(e) => setBatchTargetChapter(e.target.value)}
+                            className="bg-white border border-purple-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none max-w-[260px]"
+                        >
+                            <option value="">-- Chọn Chương muốn gán --</option>
+                            {relevantChapters.map(c => (
+                                <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                        </select>
+
+                        <button
+                            type="button"
+                            onClick={handleApplyBatchChapterRange}
+                            className="px-4 py-1.5 bg-purple-700 text-white rounded-xl text-xs font-black uppercase hover:bg-purple-800 transition-all shadow-sm active:scale-95"
+                        >
+                            Áp dụng gán
+                        </button>
+                    </div>
+                )}
+            </div>
+
             <QuestionSection 
                 sectionTitle="PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN" 
                 type="mcq" 
@@ -1513,6 +1840,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                relevantChapters={relevantChapters}
             />
             <QuestionSection 
                 sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
@@ -1526,6 +1854,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                relevantChapters={relevantChapters}
             />
             <QuestionSection 
                 sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
@@ -1539,6 +1868,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                relevantChapters={relevantChapters}
             />
 
             {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}
