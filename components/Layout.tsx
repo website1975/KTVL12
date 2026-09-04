@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { LogOut, GraduationCap, Key, XCircle, Database, Sparkles } from 'lucide-react';
 import { changePassword, isDatabaseConnected } from '../services/storage';
+import { getAIKey } from '../services/gemini';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -18,8 +19,8 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isOnline = isDatabaseConnected();
-  const rawKey = process.env.API_KEY;
-  const isAIReady = rawKey && rawKey !== "undefined" && rawKey.length > 10;
+  const rawKey = getAIKey();
+  const isAIReady = Boolean(rawKey && rawKey.length > 10);
 
   const handleChangePass = async (e: React.FormEvent) => {
       e.preventDefault();
