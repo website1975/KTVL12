@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Question, Grade, QuestionLevel, SubQuestion } from "../types";
+import { Question, Grade, QuestionLevel, SubQuestion, QuestionType } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 import { normalizeFullText } from './vietnameseFixer';
 
@@ -267,7 +267,9 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         return {
             ...item,
             type,
-            id: uuidv4(),
+            id: item.id || uuidv4(),
+            chapterName: item.chapterName ? String(item.chapterName).trim() : undefined,
+            chapterId: item.chapterId ? String(item.chapterId).trim() : undefined,
             context: item.context ? String(item.context).trim() : undefined,
             text: cleanedText,
             level: finalLevel,
@@ -289,8 +291,18 @@ const processAIQuestions = (rawData: any[]): Question[] => {
     });
 };
 
+const getAIClient = (): GoogleGenAI => {
+    const key = (typeof process !== 'undefined' && process.env) 
+        ? (process.env.GEMINI_API_KEY || process.env.API_KEY || '') 
+        : '';
+    if (!key) {
+        throw new Error("Chưa có API key Google Gemini. Vui lòng kiểm tra lại cấu hình GEMINI_API_KEY trong hệ thống.");
+    }
+    return new GoogleGenAI({ apiKey: key });
+};
+
 export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAIClient();
     
     let matrixPrompt = "";
     if (config.matrix) {
@@ -387,7 +399,7 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
 };
 
 export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   
   try {
     const response = await ai.models.generateContent({
@@ -636,10 +648,16 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
         const rawSolution = q.solution || q.explanation || q.loi_giai || q.huong_dan_giai || q.guide || '';
         const rawLevel = q.level ?? q.muc_do ?? q.mucdo ?? q.mucDo ?? q.do_kho ?? q.dokho ?? q.doKho ?? q.difficulty ?? q.bloom ?? q.bloomLevel ?? q.level_code ?? q.cognitiveLevel ?? q.cognitive_level ?? q.rank ?? q.phan_loai ?? q.phanLoai ?? q.tier ?? q.grade_level;
 
+        // Trích xuất chương học từ file JSON nếu có
+        const rawChapterName = q.chapterName || q.chapter || q.chuong || q.ten_chuong || q.tenChuong || q.chapter_name || q.quizCategory || q.category;
+        const rawChapterId = q.chapterId || q.chapter_id;
+
         return {
             ...q,
             type,
             level: normalizeLevel(rawLevel),
+            chapterName: rawChapterName ? String(rawChapterName).trim() : undefined,
+            chapterId: rawChapterId ? String(rawChapterId).trim() : undefined,
             context: contextStr ? contextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$') : undefined,
             text: mainTextStr.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'),
             options: type === 'mcq' ? options : undefined,
@@ -662,7 +680,7 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
 };
 
 export const parseQuestionsFromText = async (rawText: string): Promise<Question[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAIClient();
     
     try {
         const response = await ai.models.generateContent({
@@ -710,3 +728,206 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
         throw new Error("Lỗi bóc tách văn bản: " + error.message);
     }
 };
+
+/**
+ * AI tự động đọc nội dung câu hỏi và gán vào Chương học phù hợp nhất
+ * Hỗ trợ chia nhỏ lô câu hỏi (chunks) để xử lý nhanh và tránh lỗi quá tải
+ */
+export const autoCategorizeChaptersWithAI = async (
+    questions: Question[],
+    chapters: { id: string; name: string }[]
+): Promise<{ id: string; chapterId?: string; chapterName: string }[]> => {
+    if (!questions || questions.length === 0 || !chapters || chapters.length === 0) {
+        return [];
+    }
+    const ai = getAIClient();
+    
+    const chapterListText = chapters.map((c, idx) => `${idx + 1}. [Mã: "${c.id}"] - Tên chương: "${c.name}"`).join('\n');
+    
+    // Chia câu hỏi thành các lô nhỏ tối đa 15 câu/lô để AI phản hồi trong vài giây
+    const CHUNK_SIZE = 15;
+    const chunks: Question[][] = [];
+    for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
+        chunks.push(questions.slice(i, i + CHUNK_SIZE));
+    }
+
+    const processChunk = async (chunkQuestions: Question[]) => {
+        const questionsPayload = chunkQuestions.map((q, idx) => ({
+            id: q.id,
+            index: idx + 1,
+            text: (q.text || '').slice(0, 300)
+        }));
+
+        const prompt = `Bạn là chuyên gia giáo dục và giáo viên Vật lý THPT giàu kinh nghiệm theo chương trình GDPT 2018.
+DƯỚI ĐÂY LÀ DANH SÁCH CÁC CHƯƠNG HỌC:
+${chapterListText}
+
+DƯỚI ĐÂY LÀ DANH SÁCH CÂU HỎI CẦN PHÂN LOẠI:
+${JSON.stringify(questionsPayload, null, 2)}
+
+NHIỆM VỤ:
+1. Đọc kỹ nội dung kiến thức, công thức và chủ đề của từng câu hỏi.
+2. Xác định câu hỏi đó thuộc CHƯƠNG HỌC nào phù hợp nhất trong danh sách các chương trên.
+3. Chỉ chọn chính xác tên chương và mã chương có trong danh sách trên.
+4. Trả về mảng JSON thuần túy (không kèm giải thích):
+[
+  { "id": "id_câu_hỏi", "chapterId": "mã_chương", "chapterName": "tên_chương_chính_xác" }
+]
+`;
+
+        const generateWithFallback = async (modelName: string) => {
+            return await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                id: { type: Type.STRING },
+                                chapterId: { type: Type.STRING },
+                                chapterName: { type: Type.STRING }
+                            },
+                            required: ["id", "chapterName"]
+                        }
+                    }
+                }
+            });
+        };
+
+        let response;
+        try {
+            response = await generateWithFallback('gemini-3-flash-preview');
+        } catch (e1: any) {
+            console.warn("gemini-3-flash-preview lỗi, chuyển sang gemini-2.5-flash:", e1?.message);
+            response = await generateWithFallback('gemini-2.5-flash');
+        }
+
+        const textOutput = response.text || "[]";
+        const result = JSON.parse(cleanJsonString(textOutput));
+        return Array.isArray(result) ? result : [];
+    };
+
+    try {
+        const chunkResults = await Promise.all(chunks.map(chunk => processChunk(chunk)));
+        return chunkResults.flat();
+    } catch (err: any) {
+        console.error("Lỗi AI phân loại chương:", err);
+        throw new Error("Không thể phân loại chương bằng AI: " + (err.message || "Lỗi kết nối AI"));
+    }
+};
+
+/**
+ * AI tự động tạo bổ sung câu hỏi cho một Chương và Mức độ cụ thể khi Ngân hàng câu hỏi bị thiếu
+ */
+export const generateMissingQuestionsForChapter = async (
+    grade: string,
+    chapterName: string,
+    level: 'B' | 'H' | 'VD' | 'VDC',
+    count: number,
+    existingSampleTexts: string[] = [],
+    questionType: QuestionType = 'mcq'
+): Promise<Question[]> => {
+    if (count <= 0) return [];
+    const ai = getAIClient();
+
+    const levelTextMap: Record<string, string> = {
+        'B': 'Nhận biết (dễ, kiểm tra định nghĩa, công thức cơ bản)',
+        'H': 'Thông hiểu (trung bình, giải thích hiện tượng, biến đổi công thức đơn giản)',
+        'VD': 'Vận dụng (bài tập tính toán, áp dụng công thức 1-2 bước)',
+        'VDC': 'Vận dụng cao (bài toán thực tiễn, phân tích đồ thị, bài toán tổng hợp nhiều bước)'
+    };
+
+    const levelName = levelTextMap[level] || 'Thông hiểu';
+
+    let typePromptDesc = '';
+    let jsonFormatDesc = '';
+
+    if (questionType === 'group-tf') {
+        typePromptDesc = `Dạng câu hỏi: Trắc nghiệm Đúng / Sai (Phần II cấu trúc Bộ GD&ĐT 2025/2018).
+Mỗi câu hỏi có 1 phần dẫn chung (text) và đúng 4 ý con a, b, c, d (subQuestions), mỗi ý chỉ định correctAnswer là 'True' hoặc 'False'.`;
+        jsonFormatDesc = `[
+  {
+    "type": "group-tf",
+    "text": "Lời dẫn hoặc bối cảnh thí nghiệm/bài toán...",
+    "level": "${level}",
+    "subQuestions": [
+      { "text": "Ý a...", "correctAnswer": "True" },
+      { "text": "Ý b...", "correctAnswer": "False" },
+      { "text": "Ý c...", "correctAnswer": "True" },
+      { "text": "Ý d...", "correctAnswer": "False" }
+    ],
+    "solution": "Lời giải chi tiết từng ý a, b, c, d...",
+    "chapterName": "${chapterName}"
+  }
+]`;
+    } else if (questionType === 'short') {
+        typePromptDesc = `Dạng câu hỏi: Trắc nghiệm Trả lời ngắn (Phần III cấu trúc Bộ GD&ĐT 2025/2018).
+Học sinh phải điền đáp án số hoặc kết quả ngắn gọn vào ô (correctAnswer là giá trị số, ví dụ "15" hoặc "2.5" hoặc "-4").`;
+        jsonFormatDesc = `[
+  {
+    "type": "short",
+    "text": "Nội dung bài toán yêu cầu tìm giá trị đại lượng...",
+    "level": "${level}",
+    "correctAnswer": "12.5",
+    "solution": "Lời giải chi tiết các bước tính toán...",
+    "chapterName": "${chapterName}"
+  }
+]`;
+    } else {
+        typePromptDesc = `Dạng câu hỏi: Trắc nghiệm 4 lựa chọn A, B, C, D (Phần I cấu trúc Bộ GD&ĐT).
+Có đúng 4 phương án A, B, C, D, chỉ có duy nhất 1 phương án đúng.`;
+        jsonFormatDesc = `[
+  {
+    "type": "mcq",
+    "text": "Nội dung câu hỏi...",
+    "level": "${level}",
+    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+    "correctAnswer": "A",
+    "solution": "Lời giải chi tiết...",
+    "chapterName": "${chapterName}"
+  }
+]`;
+    }
+
+    const prompt = `Bạn là giáo viên chuyên gia Vật lý THPT Việt Nam theo chương trình GDPT 2018.
+HÃY SOẠN ĐÚNG ${count} CÂU HỎI VẬT LÝ VỚI YÊU CẦU:
+- Khối lớp: Lớp ${grade}
+- Chương kiến thức: ${chapterName}
+- ${typePromptDesc}
+- Mức độ nhận thức: ${levelName} (Mã: "${level}")
+- Yêu cầu kỹ thuật:
+  1. Sử dụng ký hiệu công thức LaTeX chuẩn đặt trong dấu $...$ (VD: $v = \\omega A$, $\\lambda = \\frac{v}{f}$).
+  2. Có đáp án chính xác rõ ràng và lời giải chi tiết, chuẩn xác về mặt khoa học.
+  3. Tránh trùng lặp với các câu hỏi sau: ${JSON.stringify(existingSampleTexts.slice(0, 5))}
+
+TRẢ VỀ MẢNG JSON CẤU TRÚC:
+${jsonFormatDesc}`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const textOutput = response.text || "[]";
+        const rawData = JSON.parse(cleanJsonString(textOutput));
+        const processed = processAIQuestions(rawData);
+        return processed.map(q => ({
+            ...q,
+            type: questionType,
+            chapterName: chapterName,
+            level: level,
+            quizGrade: grade as Grade
+        }));
+    } catch (err: any) {
+        console.error("Lỗi AI sinh bù câu hỏi cho ma trận:", err);
+        return [];
+    }
+};
+
