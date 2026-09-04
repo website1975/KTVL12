@@ -291,10 +291,43 @@ const processAIQuestions = (rawData: any[]): Question[] => {
     });
 };
 
+export const getAIKey = (): string => {
+    let key = '';
+
+    // 1. Literal replacement by Vite define
+    try {
+        if (process.env.GEMINI_API_KEY) key = process.env.GEMINI_API_KEY;
+        else if (process.env.API_KEY) key = process.env.API_KEY;
+    } catch {
+        // Ignore in environments where process is not replaced
+    }
+
+    // 2. Vite import.meta.env
+    if (!key && typeof import.meta !== 'undefined' && (import.meta as any).env) {
+        key = (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.VITE_API_KEY || '';
+    }
+
+    // 3. Fallback: window or localStorage
+    if (!key && typeof window !== 'undefined') {
+        try {
+            key = (window as any).GEMINI_API_KEY || 
+                  localStorage.getItem('gemini_api_key') || 
+                  localStorage.getItem('GEMINI_API_KEY') || 
+                  '';
+        } catch {
+            // Ignore security/localStorage restrictions
+        }
+    }
+
+    if (key && (key === 'undefined' || key === 'null' || key === '""')) {
+        return '';
+    }
+
+    return key ? key.trim() : '';
+};
+
 const getAIClient = (): GoogleGenAI => {
-    const key = (typeof process !== 'undefined' && process.env) 
-        ? (process.env.GEMINI_API_KEY || process.env.API_KEY || '') 
-        : '';
+    const key = getAIKey();
     if (!key) {
         throw new Error("Chưa có API key Google Gemini. Vui lòng kiểm tra lại cấu hình GEMINI_API_KEY trong hệ thống.");
     }
