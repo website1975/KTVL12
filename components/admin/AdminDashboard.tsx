@@ -487,6 +487,7 @@ export default function AdminDashboard() {
     p2: number;
     p3: number;
     target: 'editor' | 'bank';
+    editorAction?: 'replace' | 'append';
     matrix?: { easy: number; medium: number; hard: number; vhard: number };
     pdfBase64?: string;
   }) => {
@@ -503,10 +504,17 @@ export default function AdminDashboard() {
       });
       
       if (config.target === 'editor') {
-        setQuestions([...questions, ...newQs]);
+        const isAppend = config.editorAction === 'append';
+        if (isAppend) {
+          setQuestions(prev => [...prev, ...newQs]);
+        } else {
+          // Mặc định: Tạo đề mới hoàn toàn (set trống đề cũ)
+          setEditingQuizId(null);
+          setQuestions(newQs);
+          setQuizTitle(config.topic ? config.topic.slice(0, 60).toUpperCase() : 'ĐỀ THI MỚI (AI)');
+        }
         setActiveTab('quizzes');
         setIsEditingQuiz(true);
-        if (!quizTitle) setQuizTitle(config.topic.slice(0, 50).toUpperCase());
       } else {
         for (const q of newQs) {
           await saveBankQuestion(q);
@@ -518,6 +526,41 @@ export default function AdminDashboard() {
       alert(error.message);
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+  const handleGenerateFromMatrix = async (
+    createdQuestions: Question[],
+    newQuizTitle: string,
+    target: 'editor' | 'bank',
+    durationMinutes: number,
+    editorAction: 'replace' | 'append' = 'replace'
+  ) => {
+    if (target === 'editor') {
+      if (editorAction === 'append') {
+        setQuestions(prev => [...prev, ...createdQuestions]);
+      } else {
+        // Mặc định: Tạo đề mới hoàn toàn (set trống đề cũ)
+        setEditingQuizId(null);
+        setQuestions(createdQuestions);
+        setQuizTitle(newQuizTitle);
+        setDuration(durationMinutes);
+      }
+      setActiveTab('quizzes');
+      setIsEditingQuiz(true);
+    } else {
+      setIsSavingInProgress(true);
+      try {
+        for (const q of createdQuestions) {
+          await saveBankQuestion(q);
+        }
+        alert(`Đã lưu ${createdQuestions.length} câu hỏi mới vào Ngân hàng!`);
+        loadTabData('bank');
+      } catch (e: any) {
+        alert("Lỗi lưu vào ngân hàng: " + e.message);
+      } finally {
+        setIsSavingInProgress(false);
+      }
     }
   };
 
@@ -553,7 +596,11 @@ export default function AdminDashboard() {
           // Thêm trực tiếp đề mới vào State React (lọc bỏ nếu trùng id do cache/sync)
           setQuizzes(prev => [metaQuiz, ...prev.filter(q => q.id !== quiz.id)]);
       }
+      // Sau khi lưu thành công, thoát trình soạn thảo và làm trống state để sẵn sàng tạo đề mới tiếp theo
       setIsEditingQuiz(false);
+      setEditingQuizId(null);
+      setQuestions([]);
+      setQuizTitle('');
       alert("Đã lưu đề thi thành công vào Database Cloud!");
     } catch (e: any) { 
       alert("Lỗi khi lưu đề thi: " + (e.message || "Không xác định"));
@@ -648,10 +695,15 @@ export default function AdminDashboard() {
     try {
       const reader = new FileReader();
       reader.onload = async () => {
-        const base64 = (reader.result as string).split(',')[1];
-        const newQs = await parseQuestionsFromPDF(base64);
-        setQuestions([...questions, ...newQs]);
-        setIsAiLoading(false);
+        try {
+          const base64 = (reader.result as string).split(',')[1];
+          const newQs = await parseQuestionsFromPDF(base64);
+          setQuestions([...questions, ...newQs]);
+        } catch (error: any) {
+          alert("Lỗi bóc tách PDF: " + (error.message || 'Lỗi xử lý'));
+        } finally {
+          setIsAiLoading(false);
+        }
       };
       reader.readAsDataURL(file);
     } catch (error: any) { alert(error.message); setIsAiLoading(false); }
@@ -1129,6 +1181,19 @@ export default function AdminDashboard() {
                         setIsBankOpen(true); 
                     }}
                     onPdfExtract={handlePdfExtract} onTextExtract={handleTextExtract} onUploadImage={handleUploadImage} uploadingId={uploadingId} isAiLoading={isAiLoading}
+                    onCancel={() => {
+                        setIsEditingQuiz(false);
+                        setEditingQuizId(null);
+                        setQuestions([]);
+                        setQuizTitle('');
+                    }}
+                    onResetQuiz={() => {
+                        if (window.confirm("Bạn có chắc chắn muốn làm trống đề hiện tại để tạo đề mới?")) {
+                            setEditingQuizId(null);
+                            setQuestions([]);
+                            setQuizTitle('');
+                        }
+                    }}
                 />
               </>
             ) : (
@@ -1202,7 +1267,12 @@ export default function AdminDashboard() {
                 <AIRenderer 
                     grade={quizGrade} 
                     setGrade={setQuizGrade} 
+                    chapters={chapters}
+                    bankQuestions={bankQuestions}
+                    isBankLoading={isBankLoading}
+                    onLoadBank={loadBankDataIfNeeded}
                     onGenerate={handleAiGenerate}
+                    onGenerateFromMatrix={handleGenerateFromMatrix}
                     isLoading={isAiLoading}
                     hasQuestionsInEditor={questions.length > 0}
                 />
@@ -1284,10 +1354,11 @@ export default function AdminDashboard() {
                         bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                         bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
                         onAddMultiple={(qs) => { 
-                        setQuestions(prev => [...prev, ...qs]); 
-                        setActiveTab('quizzes'); 
-                        setIsEditingQuiz(true); 
-                    }}
+                            setQuestions(prev => [...prev, ...qs]); 
+                            setActiveTab('quizzes'); 
+                            setIsEditingQuiz(true); 
+                        }}
+                        onOpenMatrixGenerator={() => setActiveTab('ai')}
                     />
                 )}
             </div>
@@ -1343,6 +1414,10 @@ export default function AdminDashboard() {
                             onAddMultiple={(qs) => { 
                                 setQuestions(prev => [...prev, ...qs]); 
                                 setIsBankOpen(false); 
+                            }}
+                            onOpenMatrixGenerator={() => {
+                                setIsBankOpen(false);
+                                setActiveTab('ai');
                             }}
                         />
                     )}
