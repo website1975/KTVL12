@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../types';
-import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers } from 'lucide-react';
+import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -17,6 +17,7 @@ interface QuestionBankProps {
     bSearch: string;
     setBSearch: (val: string) => void;
     onAddMultiple: (qs: Question[]) => void;
+    onOpenMatrixGenerator?: () => void;
 }
 
 const PAGE_SIZE = 40;
@@ -76,7 +77,7 @@ const getQuestionImageUrl = (q: any): string | null => {
 };
 
 export default function QuestionBank({ 
-    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple 
+    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple, onOpenMatrixGenerator 
 }: QuestionBankProps) {
     // Sử dụng Map<string, Question> để lưu TOÀN BỘ đối tượng câu hỏi đã chọn từ mọi mức độ (Biết, Hiểu, Vận dụng...)
     const [selectedMap, setSelectedMap] = useState<Map<string, Question>>(new Map());
@@ -99,10 +100,11 @@ export default function QuestionBank({
             const qGradeRaw = (q.quizGrade || 'all').toString().trim();
             const matchGrade = bGradeFilter === 'all' || qGradeRaw === bGradeFilter;
 
-            // Lọc chương
-            const qChapter = (q.quizCategory || '').toString().trim().toLowerCase();
+            // Lọc chương: hỗ trợ cả chapterName, quizCategory và chapterId
+            const qChapter = (q.chapterName || q.quizCategory || '').toString().trim().toLowerCase();
+            const qChapterId = (q.chapterId || '').toString().trim().toLowerCase();
             const filterVal = bChapterFilter.trim().toLowerCase();
-            const matchChapter = bChapterFilter === 'all' || qChapter === filterVal;
+            const matchChapter = bChapterFilter === 'all' || qChapter === filterVal || (qChapterId !== '' && qChapterId === filterVal);
             
             // Lọc dạng - Xử lý cả 'group_tf' và 'group-tf'
             let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
@@ -270,6 +272,18 @@ export default function QuestionBank({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {onOpenMatrixGenerator && (
+                            <button
+                                type="button"
+                                onClick={onOpenMatrixGenerator}
+                                className="flex items-center gap-1.5 text-[9px] font-black uppercase text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-3 py-1.5 rounded-xl shadow-xs active:scale-95 transition-all"
+                                title="Tạo đề thi tự động từ Ngân hàng theo Ma trận chương và mức độ"
+                            >
+                                <Zap size={13} className="text-amber-300 fill-amber-300" />
+                                <span>⚡ Tạo đề theo Ma trận</span>
+                            </button>
+                        )}
+
                         {/* Nút lọc riêng các câu đã chọn */}
                         {selectedMap.size > 0 && (
                             <button
@@ -388,9 +402,10 @@ export default function QuestionBank({
                                         <span className="text-[8px] text-slate-500 font-bold uppercase bg-slate-100 px-2 py-0.5 rounded">
                                             Khối {bq.quizGrade || 'all'}
                                         </span>
-                                        {bq.quizCategory && (
-                                            <span className="text-[8px] text-purple-600 font-bold uppercase bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
-                                                {bq.quizCategory}
+                                        {(bq.chapterName || bq.quizCategory) && (
+                                            <span className="flex items-center gap-1 text-[8px] text-purple-600 font-bold uppercase bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                                                <FolderTree size={9} />
+                                                {bq.chapterName || bq.quizCategory}
                                             </span>
                                         )}
                                         {bq.quizTitle && (
