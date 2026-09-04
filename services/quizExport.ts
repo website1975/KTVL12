@@ -58,7 +58,8 @@ export const exportQuizToJson = (quiz: Quiz) => {
             solution: q.solution || undefined,
             points: q.points || (q.type === 'mcq' ? 0.25 : 1.0),
             imageUrl: q.imageUrl || undefined,
-            chapterId: q.chapterId || undefined
+            chapterId: q.chapterId || undefined,
+            chapterName: q.chapterName || (quiz.category && quiz.category !== 'KTGK' && quiz.category !== 'KTTX' ? quiz.category : undefined) || undefined
         })),
         createdAt: quiz.createdAt || new Date().toISOString()
     };
@@ -104,7 +105,8 @@ export const exportQuizzesBatchToJson = (quizzes: Quiz[], packageTitle: string =
                 solution: q.solution || undefined,
                 points: q.points || (q.type === 'mcq' ? 0.25 : 1.0),
                 imageUrl: q.imageUrl || undefined,
-                chapterId: q.chapterId || undefined
+                chapterId: q.chapterId || undefined,
+                chapterName: q.chapterName || (quiz.category && quiz.category !== 'KTGK' && quiz.category !== 'KTTX' ? quiz.category : undefined) || undefined
             }))
         }))
     };

@@ -1069,15 +1069,18 @@ export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{
                         // Nếu câu hỏi đã có, kiểm tra xem bản mới có thông tin phong phú hơn không (VD: có thêm level hoặc solution)
                         const hasNewLevel = (!existingQ.level && q.level);
                         const hasNewSolution = (!existingQ.solution && q.solution);
+                        const hasNewChapter = (!existingQ.chapterName && q.chapterName);
                         
-                        if (hasNewLevel || hasNewSolution) {
+                        if (hasNewLevel || hasNewSolution || hasNewChapter) {
                             const enriched: Question = {
                                 ...existingQ,
                                 level: q.level || existingQ.level,
                                 solution: q.solution || existingQ.solution,
+                                chapterName: q.chapterName || existingQ.chapterName || quiz.category,
+                                chapterId: q.chapterId || existingQ.chapterId,
                                 quizTitle: quiz.title || existingQ.quizTitle,
                                 quizGrade: quiz.grade || existingQ.quizGrade,
-                                quizCategory: quiz.category || existingQ.quizCategory
+                                quizCategory: q.chapterName || quiz.category || existingQ.quizCategory
                             };
                             questionsToSave.push(enriched);
                             updatedCount++;
@@ -1088,9 +1091,11 @@ export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{
                         // Câu hỏi hoàn toàn mới chưa có trong Ngân hàng -> Thêm mới
                         const newQ: Question = {
                             ...q,
+                            chapterName: q.chapterName || quiz.category,
+                            chapterId: q.chapterId,
                             quizTitle: quiz.title,
                             quizGrade: quiz.grade,
-                            quizCategory: quiz.category
+                            quizCategory: q.chapterName || quiz.category
                         };
                         questionsToSave.push(newQ);
                         existingFingerprintMap.set(fp, newQ);

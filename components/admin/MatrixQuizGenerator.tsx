@@ -420,7 +420,7 @@ export default function MatrixQuizGenerator({
                         const shuffled = shuffleArray(matched);
                         const picked = shuffled.slice(0, requestedCount);
 
-                        picked.forEach(q => {
+                        picked.forEach((q: Question) => {
                             existingQuestionTexts.add((q.text || '').trim());
                             finalQuestions.push({
                                 ...q,
@@ -470,7 +470,7 @@ export default function MatrixQuizGenerator({
                         shortfall.type
                     );
 
-                    aiCreated.forEach(q => {
+                    aiCreated.forEach((q: Question) => {
                         existingQuestionTexts.add((q.text || '').trim());
                         finalQuestions.push(q);
                     });
