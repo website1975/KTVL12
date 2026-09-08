@@ -34,7 +34,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     if (!isSilent) setIsLoading(true);
     try {
         const [allQuizzes, userResults, latestPubs, allChapters] = await Promise.all([
-            getQuizzesMetadata('all', forceRefresh), 
+            getQuizzesMetadata(gradeFilter, forceRefresh), 
             getResultsForStudent(user.id, user.studentCode, forceRefresh), 
             getPublishedResults(20, forceRefresh),
             getChapters(forceRefresh)
