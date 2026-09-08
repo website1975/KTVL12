@@ -386,6 +386,58 @@ export const changePassword = async (userId: string, newPassword: string): Promi
     return !error;
 };
 
+// Định nghĩa các trường Metadata của Đề thi (chỉ lấy thông tin hiển thị, KHÔNG LẤY cột câu hỏi để giảm 98% băng thông)
+const QUIZ_METADATA_PROJECTION = `
+    id,
+    grade,
+    data->title,
+    data->description,
+    data->type,
+    data->academicYear,
+    data->category,
+    data->startTime,
+    data->endTime,
+    data->durationMinutes,
+    data->questionCount,
+    data->attemptCount,
+    data->createdAt,
+    data->isPublished,
+    data->isMonitored,
+    data->isUnlisted,
+    data->targetType,
+    data->assignedClassIds,
+    data->assignedClasses,
+    data->maxAttempts,
+    data->allowReview,
+    data->orderIndex
+`;
+
+const mapRowToQuizMeta = (row: any): Quiz => ({
+    id: row.id,
+    grade: row.grade || '12',
+    title: row.title || 'Đề thi',
+    description: row.description || '',
+    type: row.type || 'practice',
+    academicYear: row.academicYear || '',
+    category: row.category || '',
+    startTime: row.startTime || '',
+    endTime: row.endTime || '',
+    durationMinutes: typeof row.durationMinutes === 'number' ? row.durationMinutes : (parseInt(row.durationMinutes) || 45),
+    questionCount: typeof row.questionCount === 'number' ? row.questionCount : (parseInt(row.questionCount) || 0),
+    attemptCount: typeof row.attemptCount === 'number' ? row.attemptCount : (parseInt(row.attemptCount) || 0),
+    createdAt: row.createdAt || new Date().toISOString(),
+    isPublished: row.isPublished === true || row.isPublished === 'true',
+    isMonitored: row.isMonitored === true || row.isMonitored === 'true',
+    isUnlisted: row.isUnlisted === true || row.isUnlisted === 'true',
+    targetType: row.targetType || 'all',
+    assignedClassIds: Array.isArray(row.assignedClassIds) ? row.assignedClassIds : [],
+    assignedClasses: Array.isArray(row.assignedClasses) ? row.assignedClasses : [],
+    maxAttempts: typeof row.maxAttempts === 'number' ? row.maxAttempts : 2,
+    allowReview: row.allowReview ?? true,
+    orderIndex: typeof row.orderIndex === 'number' ? row.orderIndex : 0,
+    questions: [] // Tuyệt đối không tải mảng câu hỏi ở metadata để tiết kiệm 98% băng thông
+});
+
 // --- Quizzes ---
 export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20, grade?: Grade): Promise<{ data: Quiz[], total: number }> => {
   if (!supabase) return { data: [], total: 0 };
@@ -394,7 +446,7 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
     const to = from + pageSize - 1;
 
     let query = supabase.from('quizzes')
-      .select('id, grade, data', { count: 'exact' })
+      .select(QUIZ_METADATA_PROJECTION, { count: 'exact' })
       .order('id', { ascending: false })
       .range(from, to);
       
@@ -405,17 +457,7 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
     const { data, count, error } = await query;
     if (error) throw error;
     
-    const quizzes = data ? data.map((row: any) => {
-        const quiz = row.data as Quiz;
-        return {
-            ...quiz,
-            id: row.id,
-            grade: row.grade,
-            attemptCount: quiz.attemptCount || 0,
-            questions: []
-        };
-    }) : [];
-
+    const quizzes = data ? data.map(mapRowToQuizMeta) : [];
     return { data: quizzes, total: count || 0 };
   } catch (e) {
     console.error("Lỗi getQuizzesMetadataPage:", e);
@@ -433,6 +475,15 @@ export const invalidateCache = (prefix?: string) => {
   } else {
     Object.keys(memoryCache).filter(k => k.startsWith(prefix)).forEach(k => delete memoryCache[k]);
   }
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      if (!prefix) {
+        Object.keys(sessionStorage).filter(k => k.startsWith('quizzes_') || k.startsWith('quiz_')).forEach(k => sessionStorage.removeItem(k));
+      } else {
+        Object.keys(sessionStorage).filter(k => k.startsWith(prefix)).forEach(k => sessionStorage.removeItem(k));
+      }
+    }
+  } catch (e) {}
 };
 
 // Cập nhật trực tiếp 1 đề thi vào Cache Memory mà không làm mất bộ đệm 70 đề khác
@@ -444,6 +495,11 @@ export const updateQuizInCache = (updatedQuiz: Quiz) => {
   };
 
   quizDetailCache.set(updatedQuiz.id, updatedQuiz);
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(`quiz_detail_${updatedQuiz.id}`, JSON.stringify(updatedQuiz));
+    }
+  } catch (e) {}
 
   Object.keys(memoryCache).forEach(k => {
     if (k.startsWith('quizzes_meta_')) {
@@ -465,6 +521,11 @@ export const updateQuizInCache = (updatedQuiz: Quiz) => {
 // Xóa 1 đề thi khỏi Cache Memory trực tiếp
 export const removeQuizFromCache = (quizId: string) => {
   quizDetailCache.delete(quizId);
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(`quiz_detail_${quizId}`);
+    }
+  } catch (e) {}
   Object.keys(memoryCache).forEach(k => {
     if (k.startsWith('quizzes_meta_') || k.startsWith('quizzes_full_')) {
       const list = memoryCache[k].data as Quiz[];
@@ -483,6 +544,20 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
     return memoryCache[cacheKey].data;
   }
 
+  // Kiểm tra sessionStorage để khi học sinh chuyển trang/F5 không phải kéo lại từ Supabase
+  try {
+    if (!forceRefresh && typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem(cacheKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.expires > now && Array.isArray(parsed.data)) {
+          memoryCache[cacheKey] = parsed;
+          return parsed.data;
+        }
+      }
+    }
+  } catch (e) {}
+
   try {
     let allQuizzes: any[] = [];
     let from = 0;
@@ -491,7 +566,7 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
 
     while (hasMore) {
         let query = supabase.from('quizzes')
-            .select('id, grade, data')
+            .select(QUIZ_METADATA_PROJECTION)
             .order('id', { ascending: false })
             .range(from, from + step - 1);
             
@@ -511,18 +586,16 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
         }
     }
     
-    const mapped = allQuizzes.map((row: any) => {
-        const quiz = row.data as Quiz;
-        return {
-            ...quiz,
-            id: row.id,
-            grade: row.grade,
-            attemptCount: quiz.attemptCount || 0,
-            questions: [] // Không tải câu hỏi để tiết kiệm băng thông
-        };
-    });
+    const mapped = allQuizzes.map(mapRowToQuizMeta);
 
-    memoryCache[cacheKey] = { data: mapped, expires: now + CACHE_TTL };
+    const cachePayload = { data: mapped, expires: now + CACHE_TTL };
+    memoryCache[cacheKey] = cachePayload;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(cacheKey, JSON.stringify(cachePayload));
+      }
+    } catch (e) {}
+
     return mapped;
   } catch (e) {
     console.error("Lỗi getQuizzesMetadata:", e);
@@ -583,10 +656,30 @@ export const getQuizById = async (id: string, forceRefresh: boolean = false): Pr
     if (!forceRefresh && quizDetailCache.has(id)) {
         return quizDetailCache.get(id)!;
     }
+
+    // Kiểm tra sessionStorage để tải đề tức thì không tốn băng thông mạng
+    try {
+        if (!forceRefresh && typeof sessionStorage !== 'undefined') {
+            const cached = sessionStorage.getItem(`quiz_detail_${id}`);
+            if (cached) {
+                const parsed = JSON.parse(cached) as Quiz;
+                quizDetailCache.set(id, parsed);
+                return parsed;
+            }
+        }
+    } catch (e) {}
+
     const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).single();
     if (error || !data) return null;
     const quiz = data.data as Quiz;
     quizDetailCache.set(id, quiz);
+
+    try {
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(`quiz_detail_${id}`, JSON.stringify(quiz));
+        }
+    } catch (e) {}
+
     return quiz;
 };
 
