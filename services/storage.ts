@@ -1030,9 +1030,10 @@ export const assignStudentsToClass = async (studentIds: string[], classInfo: { c
 };
 
 // --- Question Bank ---
-export const getBankQuestions = async (forceRefresh: boolean = false): Promise<Question[]> => {
+export const getBankQuestions = async (gradeFilter?: Grade | 'all', forceRefresh: boolean = false): Promise<Question[]> => {
     if (!supabase) return [];
-    const cacheKey = 'bank_questions_all';
+    const filterKey = gradeFilter || 'all';
+    const cacheKey = `bank_questions_${filterKey}`;
     const now = Date.now();
     if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
       return memoryCache[cacheKey].data;
@@ -1044,9 +1045,14 @@ export const getBankQuestions = async (forceRefresh: boolean = false): Promise<Q
         let hasMore = true;
 
         while (hasMore) {
-            const { data, error } = await supabase.from('bank_questions')
-                .select('data')
-                .range(from, from + step - 1);
+            let query = supabase.from('bank_questions')
+                .select('data');
+            
+            if (gradeFilter && gradeFilter !== 'all') {
+                query = query.or(`data->>quizGrade.eq.${gradeFilter},data->>grade.eq.${gradeFilter}`);
+            }
+
+            const { data, error } = await query.range(from, from + step - 1);
             
             if (error) throw error;
             if (data && data.length > 0) {
