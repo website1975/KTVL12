@@ -1030,8 +1030,22 @@ export const assignStudentsToClass = async (studentIds: string[], classInfo: { c
 };
 
 // --- Question Bank ---
-export const getBankQuestions = async (gradeFilter?: Grade | 'all', forceRefresh: boolean = false): Promise<Question[]> => {
+export const getBankQuestions = async (
+    gradeFilterOrForce?: Grade | 'all' | boolean, 
+    forceRefreshParam: boolean = false
+): Promise<Question[]> => {
     if (!supabase) return [];
+    
+    let gradeFilter: Grade | 'all' | undefined;
+    let forceRefresh = forceRefreshParam;
+
+    if (typeof gradeFilterOrForce === 'boolean') {
+        forceRefresh = gradeFilterOrForce;
+        gradeFilter = 'all';
+    } else {
+        gradeFilter = gradeFilterOrForce;
+    }
+
     const filterKey = gradeFilter || 'all';
     const cacheKey = `bank_questions_${filterKey}`;
     const now = Date.now();
@@ -1257,9 +1271,133 @@ export const saveBankQuestion = async (q: Question): Promise<void> => {
     }
 };
 
-export const uploadQuizImage = async (file: File): Promise<string> => {
-    // Helper convert sang Base64 Data URL
-    const toBase64 = (f: File): Promise<string> => {
+// --- Cấu hình lưu trữ hình ảnh (ImgBB & Supabase Storage) ---
+export type ImageStorageProvider = 'auto' | 'imgbb' | 'supabase';
+
+export interface ImageStorageConfig {
+    provider: ImageStorageProvider;
+    imgbbApiKey: string;
+}
+
+export const DEFAULT_IMGBB_KEY = '2ea8b9b28f97a0369bac68c8cd6c0a3d';
+
+export const getImageStorageConfig = (): ImageStorageConfig => {
+    try {
+        const storedProvider = localStorage.getItem('eduquiz_image_provider') as ImageStorageProvider;
+        const storedKey = localStorage.getItem('eduquiz_imgbb_key');
+        return {
+            provider: (storedProvider === 'imgbb' || storedProvider === 'supabase' || storedProvider === 'auto') ? storedProvider : 'auto',
+            imgbbApiKey: (storedKey && storedKey.trim()) ? storedKey.trim() : DEFAULT_IMGBB_KEY
+        };
+    } catch (e) {
+        return {
+            provider: 'auto',
+            imgbbApiKey: DEFAULT_IMGBB_KEY
+        };
+    }
+};
+
+export const saveImageStorageConfig = (config: Partial<ImageStorageConfig>): void => {
+    try {
+        if (config.provider) {
+            localStorage.setItem('eduquiz_image_provider', config.provider);
+        }
+        if (config.imgbbApiKey !== undefined) {
+            localStorage.setItem('eduquiz_imgbb_key', config.imgbbApiKey.trim());
+        }
+    } catch (e) {}
+};
+
+/**
+ * Tải ảnh trực tiếp lên ImgBB qua API
+ */
+export const uploadToImgbb = async (file: File | Blob, apiKey?: string): Promise<string> => {
+    const key = (apiKey && apiKey.trim()) || getImageStorageConfig().imgbbApiKey || DEFAULT_IMGBB_KEY;
+    if (!key) throw new Error("Chưa cung cấp ImgBB API Key");
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+
+    try {
+        const response = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => null);
+            throw new Error(errData?.error?.message || `ImgBB trả về mã lỗi HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data || !data.success || !data.data) {
+            throw new Error(data?.error?.message || "ImgBB không trả về dữ liệu hình ảnh hợp lệ");
+        }
+
+        // Trả về direct URL của ảnh (display_url hoặc url trên CDN i.ibb.co)
+        const imageUrl = data.data.display_url || data.data.url;
+        if (!imageUrl) {
+            throw new Error("Không tìm thấy đường link ảnh từ ImgBB");
+        }
+        return imageUrl;
+    } catch (error: any) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error("Tải ảnh lên ImgBB bị quá thời gian chờ (Timeout)");
+        }
+        throw error;
+    }
+};
+
+/**
+ * Tải ảnh lên Supabase Storage (Bucket 'quiz-images')
+ */
+export const uploadToSupabaseStorage = async (file: File | Blob): Promise<string> => {
+    if (!supabase) throw new Error("Mất kết nối Supabase");
+    const fileExt = (file instanceof File && file.name ? file.name.split('.').pop() : 'png') || 'png';
+    const fileName = `${uuidv4()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file, {
+        contentType: (file as any).type || 'image/png',
+        upsert: true
+    });
+
+    if (uploadError) {
+        throw uploadError;
+    }
+
+    const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
+    if (!data?.publicUrl) {
+        throw new Error("Không lấy được Public URL từ Supabase Storage");
+    }
+    return data.publicUrl;
+};
+
+export interface ImageUploadResult {
+    url: string;
+    provider: 'imgbb' | 'supabase' | 'base64';
+    error?: string;
+}
+
+/**
+ * Tải ảnh đề thi với cơ chế lựa chọn thông minh & tự động fallback:
+ * Ưu tiên ImgBB -> Chuyển Supabase Storage -> Chuyển Base64 DataURL
+ */
+export const uploadQuizImageWithResult = async (
+    file: File | Blob, 
+    customProvider?: ImageStorageProvider,
+    customApiKey?: string
+): Promise<ImageUploadResult> => {
+    const config = getImageStorageConfig();
+    const provider = customProvider || config.provider;
+    const apiKey = customApiKey || config.imgbbApiKey;
+
+    const toBase64 = (f: File | Blob): Promise<string> => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result as string || '');
@@ -1268,29 +1406,59 @@ export const uploadQuizImage = async (file: File): Promise<string> => {
         });
     };
 
-    if (!supabase) {
-        return await toBase64(file);
-    }
-
-    try {
-        const fileExt = (file.name || 'image.png').split('.').pop() || 'png';
-        const fileName = `${uuidv4()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('quiz-images').upload(fileName, file, {
-            contentType: file.type || 'image/png',
-            upsert: true
-        });
-
-        if (uploadError) {
-            console.warn("Lỗi upload Supabase storage, tự động chuyển sang lưu dạng DataURL:", uploadError);
-            return await toBase64(file);
+    // 1. Chế độ 'auto' (Ưu tiên ImgBB -> Fallback Supabase Storage -> Fallback Base64)
+    if (provider === 'auto') {
+        try {
+            const imgbbUrl = await uploadToImgbb(file, apiKey);
+            return { url: imgbbUrl, provider: 'imgbb' };
+        } catch (imgbbErr: any) {
+            console.warn("⚠️ Upload ImgBB không thành công, tự động chuyển sang Supabase Storage:", imgbbErr?.message || imgbbErr);
+            try {
+                const supabaseUrl = await uploadToSupabaseStorage(file);
+                return { url: supabaseUrl, provider: 'supabase' };
+            } catch (supabaseErr: any) {
+                console.warn("⚠️ Upload Supabase Storage cũng không thành công, fallback sang Base64 DataURL:", supabaseErr?.message || supabaseErr);
+                const base64Url = await toBase64(file);
+                return { 
+                    url: base64Url, 
+                    provider: 'base64', 
+                    error: `ImgBB: ${imgbbErr?.message || 'Lỗi'}; Supabase: ${supabaseErr?.message || 'Lỗi'}` 
+                };
+            }
         }
-
-        const { data } = supabase.storage.from('quiz-images').getPublicUrl(fileName);
-        return data?.publicUrl || (await toBase64(file));
-    } catch (err) {
-        console.warn("Lỗi upload ảnh, chuyển fallback:", err);
-        return await toBase64(file);
     }
+
+    // 2. Chế độ 'imgbb' (Chỉ dùng ImgBB -> Fallback Base64)
+    if (provider === 'imgbb') {
+        try {
+            const imgbbUrl = await uploadToImgbb(file, apiKey);
+            return { url: imgbbUrl, provider: 'imgbb' };
+        } catch (imgbbErr: any) {
+            console.warn("⚠️ Upload ImgBB thất bại, fallback sang Base64:", imgbbErr);
+            const base64Url = await toBase64(file);
+            return { url: base64Url, provider: 'base64', error: imgbbErr?.message };
+        }
+    }
+
+    // 3. Chế độ 'supabase' (Chỉ dùng Supabase Storage -> Fallback Base64)
+    if (provider === 'supabase') {
+        try {
+            const supabaseUrl = await uploadToSupabaseStorage(file);
+            return { url: supabaseUrl, provider: 'supabase' };
+        } catch (supabaseErr: any) {
+            console.warn("⚠️ Upload Supabase thất bại, fallback sang Base64:", supabaseErr);
+            const base64Url = await toBase64(file);
+            return { url: base64Url, provider: 'base64', error: supabaseErr?.message };
+        }
+    }
+
+    const fallbackUrl = await toBase64(file);
+    return { url: fallbackUrl, provider: 'base64' };
+};
+
+export const uploadQuizImage = async (file: File | Blob): Promise<string> => {
+    const res = await uploadQuizImageWithResult(file);
+    return res.url;
 };
 
 export const getPublishedResults = async (limit: number = 20, forceRefresh: boolean = false): Promise<PublishedResult[]> => {
