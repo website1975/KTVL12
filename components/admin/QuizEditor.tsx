@@ -14,8 +14,10 @@ import LatexText from '../LatexText';
 import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
+import ImageStorageSettingsModal from './ImageStorageSettingsModal';
 import { extractTextFromDocx } from '../../services/docxExtractor';
 import { exportQuizToJson } from '../../services/quizExport';
+import { getImageStorageConfig, ImageStorageConfig } from '../../services/storage';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -89,6 +91,8 @@ interface QuestionSectionProps {
     uniqueImagesCount?: number;
     onOpenLatexHelper?: (qId: string, qLabel?: string) => void;
     relevantChapters?: Chapter[];
+    onOpenImageStorageSettings?: () => void;
+    imageStorageConfig?: ImageStorageConfig;
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -103,7 +107,9 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onOpenBatchForImage,
     uniqueImagesCount = 0,
     onOpenLatexHelper,
-    relevantChapters = []
+    relevantChapters = [],
+    onOpenImageStorageSettings,
+    imageStorageConfig
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
@@ -524,11 +530,25 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                 )}
                             </div>
                             
-                            <div className="flex items-center gap-1.5 text-[9.5px] font-bold text-slate-500 bg-white/70 px-3 py-1.5 rounded-lg border border-slate-200/60 w-fit">
-                                <Sparkles size={12} className="text-amber-500 shrink-0" />
-                                <span>
-                                    <strong className="text-emerald-700 font-black">Mẹo siêu tốc:</strong> Chụp vùng hình (<kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Win + Shift + S</kbd>) rồi bấm <strong className="text-emerald-700 font-black">"DÁN ẢNH (CTRL + V)"</strong> hoặc bấm phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Ctrl + V</kbd> — Không cần lưu file!
-                                </span>
+                            <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-1">
+                                <div className="flex items-center gap-1.5 text-[9.5px] font-bold text-slate-500 bg-white/70 px-3 py-1.5 rounded-lg border border-slate-200/60 w-fit">
+                                    <Sparkles size={12} className="text-amber-500 shrink-0" />
+                                    <span>
+                                        <strong className="text-emerald-700 font-black">Mẹo siêu tốc:</strong> Chụp vùng hình (<kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Win + Shift + S</kbd>) rồi bấm <strong className="text-emerald-700 font-black">"DÁN ẢNH (CTRL + V)"</strong> hoặc bấm phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[9px] text-slate-800 font-bold">Ctrl + V</kbd> — Không cần lưu file!
+                                    </span>
+                                </div>
+
+                                {onOpenImageStorageSettings && (
+                                    <button
+                                        type="button"
+                                        onClick={onOpenImageStorageSettings}
+                                        className="flex items-center gap-1.5 text-[9.5px] font-black uppercase text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-all shadow-xs"
+                                        title="Cấu hình lưu trữ ảnh: ImgBB CDN hoặc Supabase Storage"
+                                    >
+                                        <Zap size={11} className="text-amber-500" />
+                                        <span>Lưu: {imageStorageConfig?.provider === 'supabase' ? 'Supabase' : imageStorageConfig?.provider === 'imgbb' ? 'ImgBB CDN' : 'ImgBB ⚡ (Auto)'}</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -619,6 +639,8 @@ export default function QuizEditor(props: QuizEditorProps) {
     const [isLatexHelperOpen, setIsLatexHelperOpen] = useState(false);
     const [latexTargetQId, setLatexTargetQId] = useState<string | null>(null);
     const [latexTargetLabel, setLatexTargetLabel] = useState<string | null>(null);
+    const [isImageStorageSettingsOpen, setIsImageStorageSettingsOpen] = useState(false);
+    const [imageStorageConfig, setImageStorageConfig] = useState<ImageStorageConfig>(getImageStorageConfig());
 
     const [latexInitialCode, setLatexInitialCode] = useState<string>('');
 
@@ -1009,6 +1031,16 @@ export default function QuizEditor(props: QuizEditorProps) {
                         </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
+                        {/* Nút mở Cấu hình Lưu trữ Ảnh (ImgBB / Supabase) */}
+                        <button
+                            type="button"
+                            onClick={() => setIsImageStorageSettingsOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-xs active:scale-95 whitespace-nowrap"
+                            title="Tùy chọn lưu trữ hình ảnh: ImgBB CDN hoặc Supabase Storage"
+                        >
+                            <Zap size={13} className="text-amber-500"/> 
+                            Lưu ảnh: {imageStorageConfig.provider === 'supabase' ? 'Supabase' : imageStorageConfig.provider === 'imgbb' ? 'ImgBB' : 'ImgBB ⚡ (Auto)'}
+                        </button>
                         {/* Nút mở Thư viện ảnh đề thi */}
                         <button
                             type="button"
@@ -1841,6 +1873,8 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
                 relevantChapters={relevantChapters}
+                onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
+                imageStorageConfig={imageStorageConfig}
             />
             <QuestionSection 
                 sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
@@ -1855,6 +1889,8 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
                 relevantChapters={relevantChapters}
+                onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
+                imageStorageConfig={imageStorageConfig}
             />
             <QuestionSection 
                 sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
@@ -1869,6 +1905,8 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
                 relevantChapters={relevantChapters}
+                onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
+                imageStorageConfig={imageStorageConfig}
             />
 
             {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}
@@ -1896,6 +1934,18 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onInsertCode={latexTargetQId ? handleInsertLatexSnippet : undefined}
                 targetQuestionLabel={latexTargetLabel}
                 initialCode={latexInitialCode}
+            />
+
+            {/* Modal Cấu hình Lưu trữ Hình ảnh (ImgBB CDN / Supabase Storage) */}
+            <ImageStorageSettingsModal
+                isOpen={isImageStorageSettingsOpen}
+                onClose={() => {
+                    setIsImageStorageSettingsOpen(false);
+                    setImageStorageConfig(getImageStorageConfig());
+                }}
+                onConfigChanged={() => {
+                    setImageStorageConfig(getImageStorageConfig());
+                }}
             />
         </div>
     );
