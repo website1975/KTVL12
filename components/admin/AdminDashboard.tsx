@@ -519,11 +519,11 @@ export default function AdminDashboard() {
         for (const q of newQs) {
           await saveBankQuestion(q);
         }
-        alert(`Đã lưu ${newQs.length} câu hỏi mới vào Ngân hàng!`);
+        showAlert("Thành công", `Đã lưu ${newQs.length} câu hỏi mới vào Ngân hàng!`, "success");
         loadTabData('bank');
       }
     } catch (error: any) {
-      alert(error.message);
+      showAlert("Lỗi tạo đề AI", error.message || "Không thể tạo đề bằng AI.", "error");
     } finally {
       setIsAiLoading(false);
     }
@@ -724,9 +724,17 @@ export default function AdminDashboard() {
 
   const handleUploadImage = async (id: string, f: File) => {
     setUploadingId(id);
-    const url = await uploadQuizImage(f);
-    if (url) setQuestions(questions.map(q => q.id === id ? { ...q, imageUrl: url } : q));
-    setUploadingId(null);
+    try {
+      const url = await uploadQuizImage(f);
+      if (url) {
+        setQuestions(prev => prev.map(q => q.id === id ? { ...q, imageUrl: url } : q));
+      }
+    } catch (err: any) {
+      console.error("Lỗi khi tải ảnh:", err);
+      alert("Lỗi khi tải ảnh: " + (err?.message || "Không xác định"));
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   const handleCleanLabels = () => {
