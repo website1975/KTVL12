@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
-import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI } from '../../services/gemini';
+import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI, autoClassifyLevelsWithAI, generateSolutionForQuestionWithAI, batchGenerateSolutionsWithAI } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import LatexHelperModal from './LatexHelperModal';
 import ImageStorageSettingsModal from './ImageStorageSettingsModal';
@@ -93,6 +93,10 @@ interface QuestionSectionProps {
     relevantChapters?: Chapter[];
     onOpenImageStorageSettings?: () => void;
     imageStorageConfig?: ImageStorageConfig;
+    onSolveQuestion?: (qId: string) => void;
+    onBatchSolveSection?: () => void;
+    solvingQId?: string | null;
+    isSolvingBatch?: boolean;
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -109,7 +113,11 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onOpenLatexHelper,
     relevantChapters = [],
     onOpenImageStorageSettings,
-    imageStorageConfig
+    imageStorageConfig,
+    onSolveQuestion,
+    onBatchSolveSection,
+    solvingQId,
+    isSolvingBatch
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
@@ -261,6 +269,27 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                             <Zap size={14}/>
                         </button>
                     </div>
+                    {sectionQuestions.some(q => !q.solution || q.solution.trim() === '') && onBatchSolveSection && (
+                        <button
+                            type="button"
+                            onClick={onBatchSolveSection}
+                            disabled={isSolvingBatch}
+                            className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-50 border-2 border-amber-200 text-amber-800 hover:bg-amber-100 rounded-2xl text-[10px] font-black uppercase transition-all shadow-xs active:scale-95 disabled:opacity-50"
+                            title="AI tự động tạo lời giải chi tiết cho tất cả câu chưa có lời giải trong phần này"
+                        >
+                            {isSolvingBatch ? (
+                                <>
+                                    <Loader2 size={13} className="animate-spin text-amber-700" />
+                                    <span>AI đang giải...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={13} className="text-amber-600" />
+                                    <span>AI giải câu chưa có lời giải</span>
+                                </>
+                            )}
+                        </button>
+                    )}
                     <button onClick={() => onOpenBank(type)} className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-50 transition-colors"><Database size={14}/> Ngân hàng</button>
                     <button onClick={addManual} className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-xl active:scale-95"><Plus size={14}/> Thêm câu mới</button>
                 </div>
@@ -611,9 +640,32 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 
                     <div className="pt-8 border-t-2 border-slate-100 grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="space-y-3">
-                            <div className="flex items-center gap-2 ml-2">
-                                <Lightbulb size={16} className="text-orange-500"/>
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Hướng dẫn giải (LaTeX: $...$)</label>
+                            <div className="flex items-center justify-between ml-2">
+                                <div className="flex items-center gap-2">
+                                    <Lightbulb size={16} className="text-orange-500"/>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase">Hướng dẫn giải (LaTeX: $...$)</label>
+                                </div>
+                                {onSolveQuestion && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onSolveQuestion(q.id)}
+                                        disabled={solvingQId === q.id}
+                                        className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-[10px] font-black uppercase transition-all shadow-xs active:scale-95 disabled:opacity-50"
+                                        title={q.solution ? "AI giải lại và tạo lời giải chi tiết mới" : "AI tự động tạo lời giải chi tiết cho câu hỏi này"}
+                                    >
+                                        {solvingQId === q.id ? (
+                                            <>
+                                                <Loader2 size={12} className="animate-spin text-amber-700" />
+                                                <span>AI đang giải...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles size={12} className="text-amber-700" />
+                                                <span>{q.solution ? 'AI Giải lại' : 'AI Giải'}</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
                             </div>
                             <textarea className="w-full p-5 bg-orange-50/20 border-2 border-orange-100 rounded-[2rem] text-sm font-medium outline-none min-h-[100px] focus:border-orange-300" value={q.solution} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].solution = e.target.value; setQuestions(nl); }} placeholder="Viết lời giải chi tiết tại đây để hỗ trợ học sinh..." />
                         </div>
@@ -666,6 +718,9 @@ export default function QuizEditor(props: QuizEditorProps) {
 
     // Quản lý Chương học cho câu hỏi (Hỗ trợ đề KTTX, KTGK, Cuối kỳ)
     const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
+    const [isAutoClassifyingLevels, setIsAutoClassifyingLevels] = useState(false);
+    const [solvingQId, setSolvingQId] = useState<string | null>(null);
+    const [isSolvingBatchSection, setIsSolvingBatchSection] = useState<QuestionType | null>(null);
     const [categorizeMessage, setCategorizeMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
     const [batchRangeFrom, setBatchRangeFrom] = useState(1);
     const [batchRangeTo, setBatchRangeTo] = useState(props.questions.length || 1);
@@ -681,6 +736,139 @@ export default function QuizEditor(props: QuizEditorProps) {
         });
         return counts;
     }, [props.questions, props.category]);
+
+    // AI Phân loại mức độ tự động (B, H, VD, VDC) cho các câu hỏi chưa có mức độ
+    const handleAutoClassifyLevels = async () => {
+        if (props.questions.length === 0) {
+            setCategorizeMessage({ type: 'error', text: "Đề thi chưa có câu hỏi nào để quét mức độ!" });
+            return;
+        }
+
+        // Lọc các câu chưa có mức độ hoặc có ý con chưa có mức độ
+        const unclassifiedQuestions = props.questions.filter(q => {
+            if (!q.level) return true;
+            if (q.type === 'group-tf' && q.subQuestions && q.subQuestions.some(sq => !sq.level)) return true;
+            return false;
+        });
+
+        let targetQuestions = unclassifiedQuestions;
+        if (unclassifiedQuestions.length === 0) {
+            const reClassifyAll = confirm("Tất cả câu hỏi trong đề đều đã được phân loại mức độ. Bạn có muốn AI quét và đánh giá lại mức độ cho toàn bộ đề thi không?");
+            if (!reClassifyAll) return;
+            targetQuestions = props.questions;
+        }
+
+        setIsAutoClassifyingLevels(true);
+        setCategorizeMessage({ 
+            type: 'info', 
+            text: `🎯 AI đang phân tích và xác định mức độ nhận thức (B, H, VD, VDC) cho ${targetQuestions.length} câu hỏi... Vui lòng đợi trong giây lát.` 
+        });
+
+        try {
+            const results = await autoClassifyLevelsWithAI(targetQuestions, props.grade);
+            if (results && results.length > 0) {
+                const map = new Map(results.map(r => [r.id, r]));
+                let count = 0;
+                const updated = props.questions.map(q => {
+                    const match = map.get(q.id);
+                    if (match && match.level) {
+                        count++;
+                        let updatedSub = q.subQuestions;
+                        if (q.type === 'group-tf' && q.subQuestions && match.subQuestions) {
+                            updatedSub = q.subQuestions.map((sq, idx) => {
+                                const sqMatch = match.subQuestions?.find(s => s.id === sq.id) || match.subQuestions?.[idx];
+                                return {
+                                    ...sq,
+                                    level: sqMatch?.level || sq.level || match.level
+                                };
+                            });
+                        }
+                        return {
+                            ...q,
+                            level: match.level,
+                            subQuestions: updatedSub
+                        };
+                    }
+                    return q;
+                });
+                props.setQuestions(updated);
+                setCategorizeMessage({
+                    type: 'success',
+                    text: `🎉 AI đã tự động phân loại mức độ nhận thức thành công cho ${count}/${targetQuestions.length} câu hỏi!`
+                });
+            } else {
+                setCategorizeMessage({
+                    type: 'error',
+                    text: "AI chưa thể phân loại mức độ cho các câu hỏi này. Vui lòng thử lại sau giây lát."
+                });
+            }
+        } catch (err: any) {
+            setCategorizeMessage({
+                type: 'error',
+                text: "Lỗi AI phân mức độ: " + (err.message || 'Lỗi xử lý')
+            });
+        } finally {
+            setIsAutoClassifyingLevels(false);
+        }
+    };
+
+    // AI Tự động tạo lời giải chi tiết cho một câu hỏi cụ thể
+    const handleSolveSingleQuestion = async (qId: string) => {
+        const targetQ = props.questions.find(q => q.id === qId);
+        if (!targetQ) return;
+
+        if (!targetQ.text && (!targetQ.subQuestions || targetQ.subQuestions.length === 0)) {
+            alert("Câu hỏi này chưa có nội dung để AI tạo lời giải!");
+            return;
+        }
+
+        setSolvingQId(qId);
+        try {
+            const solution = await generateSolutionForQuestionWithAI(targetQ, props.grade);
+            if (solution) {
+                const updated = props.questions.map(q => q.id === qId ? { ...q, solution } : q);
+                props.setQuestions(updated);
+            }
+        } catch (err: any) {
+            alert("Lỗi khi AI tạo lời giải: " + (err.message || 'Lỗi kết nối'));
+        } finally {
+            setSolvingQId(null);
+        }
+    };
+
+    // AI Tự động giải tất cả câu hỏi chưa có lời giải trong một phần
+    const handleBatchSolveSection = async (sectionType: QuestionType) => {
+        const missingQs = props.questions.filter(q => q.type === sectionType && (!q.solution || q.solution.trim() === ''));
+        if (missingQs.length === 0) {
+            alert("Tất cả các câu hỏi trong phần này đều đã có lời giải!");
+            return;
+        }
+
+        setIsSolvingBatchSection(sectionType);
+        try {
+            const results = await batchGenerateSolutionsWithAI(missingQs, props.grade);
+            if (results && results.length > 0) {
+                const solMap = new Map(results.map(r => [r.id, r.solution]));
+                let count = 0;
+                const updated = props.questions.map(q => {
+                    if (q.type === sectionType && (!q.solution || q.solution.trim() === '')) {
+                        const sol = solMap.get(q.id);
+                        if (sol) {
+                            count++;
+                            return { ...q, solution: sol };
+                        }
+                    }
+                    return q;
+                });
+                props.setQuestions(updated);
+                alert(`🎉 Đã dùng AI tạo lời giải thành công cho ${count}/${missingQs.length} câu hỏi!`);
+            }
+        } catch (err: any) {
+            alert("Lỗi AI giải hàng loạt: " + (err.message || 'Lỗi xử lý'));
+        } finally {
+            setIsSolvingBatchSection(null);
+        }
+    };
 
     // AI Phân loại chương tự động cho tất cả câu hỏi
     const handleAutoCategorizeChapters = async () => {
@@ -1764,6 +1952,27 @@ export default function QuizEditor(props: QuizEditorProps) {
                             )}
                         </button>
 
+                        {/* Nút AI quét phân mức độ (B, H, VD, VDC) */}
+                        <button
+                            type="button"
+                            onClick={handleAutoClassifyLevels}
+                            disabled={isAutoClassifyingLevels || props.questions.length === 0}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-2xl text-xs font-black uppercase hover:from-amber-700 hover:to-orange-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                            title="AI sẽ quét các câu hỏi chưa có mức độ và tự động phân loại B (Biết), H (Hiểu), VD (Vận dụng), VDC (Vận dụng cao)"
+                        >
+                            {isAutoClassifyingLevels ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>AI đang quét mức độ...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <TargetIcon size={14} />
+                                    <span>AI quét phân mức độ</span>
+                                </>
+                            )}
+                        </button>
+
                         {/* Nút bật thanh gán nhanh theo dải câu */}
                         <button
                             type="button"
@@ -1875,6 +2084,10 @@ export default function QuizEditor(props: QuizEditorProps) {
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
+                onSolveQuestion={handleSolveSingleQuestion}
+                onBatchSolveSection={() => handleBatchSolveSection('mcq')}
+                solvingQId={solvingQId}
+                isSolvingBatch={isSolvingBatchSection === 'mcq'}
             />
             <QuestionSection 
                 sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
@@ -1891,6 +2104,10 @@ export default function QuizEditor(props: QuizEditorProps) {
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
+                onSolveQuestion={handleSolveSingleQuestion}
+                onBatchSolveSection={() => handleBatchSolveSection('group-tf')}
+                solvingQId={solvingQId}
+                isSolvingBatch={isSolvingBatchSection === 'group-tf'}
             />
             <QuestionSection 
                 sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
@@ -1907,6 +2124,10 @@ export default function QuizEditor(props: QuizEditorProps) {
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
+                onSolveQuestion={handleSolveSingleQuestion}
+                onBatchSolveSection={() => handleBatchSolveSection('short')}
+                solvingQId={solvingQId}
+                isSolvingBatch={isSolvingBatchSection === 'short'}
             />
 
             {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}
