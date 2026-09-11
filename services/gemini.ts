@@ -326,6 +326,42 @@ export const getAIKey = (): string => {
     return key ? key.trim() : '';
 };
 
+export const FALLBACK_MODELS = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-3-flash-preview'
+];
+
+export const formatAIError = (error: any): string => {
+    if (!error) return "Đã xảy ra lỗi kết nối AI không xác định.";
+    const raw = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+    
+    if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED') || raw.includes('quota') || raw.includes('Quota exceeded') || raw.includes('limit: 20')) {
+        return "Tài khoản Gemini API của bạn đã tạm thời đạt giới hạn tần suất yêu cầu (Rate Limit / Quota Exceeded của gói miễn phí). Vui lòng đợi khoảng 30–60 giây rồi thử lại, hoặc thêm phương thức thanh toán trên Google AI Studio để mở rộng hạn mức.";
+    }
+    if (raw.includes('503') || raw.includes('UNAVAILABLE') || raw.includes('high demand')) {
+        return "Máy chủ AI của Google hiện đang có lượng truy cập tăng đột biến (503 High Demand). Vui lòng thử lại sau giây lát.";
+    }
+    if (raw.includes('API key') || raw.includes('API_KEY')) {
+        return "Khóa API Gemini chưa hợp lệ hoặc chưa được cấu hình. Vui lòng kiểm tra lại biến môi trường GEMINI_API_KEY.";
+    }
+    return raw;
+};
+
+export const callAIWithFallback = async (requestFn: (model: string) => Promise<any>): Promise<any> => {
+    let lastError: any = null;
+    for (const model of FALLBACK_MODELS) {
+        try {
+            return await requestFn(model);
+        } catch (err: any) {
+            lastError = err;
+            console.warn(`Thử model ${model} thất bại:`, err?.message || err);
+        }
+    }
+    throw new Error(formatAIError(lastError));
+};
+
 const getAIClient = (): GoogleGenAI => {
     const key = getAIKey();
     if (!key) {
@@ -354,7 +390,6 @@ Hãy phân bổ độ khó cho các câu hỏi sao cho tỉ lệ các mức đ�
         : "NGUỒN DỮ LIỆU: Sử dụng kho tri thức chuyên sâu của bạn về chương trình giáo dục phổ thông Việt Nam để soạn đề.";
 
     const prompt = `Bạn là chuyên gia soạn đề thi THPT quốc gia Việt Nam môn Toán/Lý/Hóa.
-Sử dụng model: gemini-3-flash-preview.
 ${sourceInstruction}
 
 YÊU CẦU CHI TIẾT:
@@ -385,49 +420,51 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
             }
             : prompt;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: contents,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING },
-                            text: { type: Type.STRING },
-                            level: { type: Type.STRING, nullable: true },
-                            points: { type: Type.NUMBER },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                            correctAnswer: { type: Type.STRING, nullable: true },
-                            solution: { type: Type.STRING },
-                            subQuestions: {
-                                type: Type.ARRAY,
-                                nullable: true,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        text: { type: Type.STRING },
-                                        correctAnswer: { type: Type.STRING },
-                                        level: { type: Type.STRING, nullable: true }
-                                    },
-                                    required: ["text", "correctAnswer"]
+        const response = await callAIWithFallback((model) => 
+            ai.models.generateContent({
+                model,
+                contents: contents,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { type: Type.STRING },
+                                text: { type: Type.STRING },
+                                level: { type: Type.STRING, nullable: true },
+                                points: { type: Type.NUMBER },
+                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                                correctAnswer: { type: Type.STRING, nullable: true },
+                                solution: { type: Type.STRING },
+                                subQuestions: {
+                                    type: Type.ARRAY,
+                                    nullable: true,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            text: { type: Type.STRING },
+                                            correctAnswer: { type: Type.STRING },
+                                            level: { type: Type.STRING, nullable: true }
+                                        },
+                                        required: ["text", "correctAnswer"]
+                                    }
                                 }
-                            }
-                        },
-                        required: ["type", "text", "points", "solution"]
+                            },
+                            required: ["type", "text", "points", "solution"]
+                        }
                     }
                 }
-            }
-        });
+            })
+        );
 
         const textOutput = response.text || "[]";
         const rawData = JSON.parse(cleanJsonString(textOutput));
         
         return processAIQuestions(rawData);
     } catch (error: any) {
-        throw new Error("AI không thể tạo đề: " + error.message);
+        throw new Error("AI không thể tạo đề: " + formatAIError(error));
     }
 };
 
@@ -435,54 +472,56 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
   const ai = getAIClient();
   
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-          parts: [
-              { inlineData: { mimeType: "application/pdf", data: base64Data } },
-              { text: EXTRACTION_INSTRUCTION }
-          ]
-      },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    type: { type: Type.STRING },
-                    text: { type: Type.STRING },
-                    level: { type: Type.STRING, nullable: true },
-                    points: { type: Type.NUMBER },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                    correctAnswer: { type: Type.STRING, nullable: true },
-                    solution: { type: Type.STRING },
-                    subQuestions: {
-                        type: Type.ARRAY,
-                        nullable: true,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                text: { type: Type.STRING },
-                                correctAnswer: { type: Type.STRING },
-                                level: { type: Type.STRING, nullable: true }
-                            },
-                            required: ["text", "correctAnswer"]
-                        }
-                    }
-                },
-                required: ["type", "text", "solution"]
-            }
+    const response = await callAIWithFallback((model) => 
+      ai.models.generateContent({
+        model,
+        contents: {
+            parts: [
+                { inlineData: { mimeType: "application/pdf", data: base64Data } },
+                { text: EXTRACTION_INSTRUCTION }
+            ]
+        },
+        config: { 
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                  type: Type.OBJECT,
+                  properties: {
+                      type: { type: Type.STRING },
+                      text: { type: Type.STRING },
+                      level: { type: Type.STRING, nullable: true },
+                      points: { type: Type.NUMBER },
+                      options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                      correctAnswer: { type: Type.STRING, nullable: true },
+                      solution: { type: Type.STRING },
+                      subQuestions: {
+                          type: Type.ARRAY,
+                          nullable: true,
+                          items: {
+                              type: Type.OBJECT,
+                              properties: {
+                                  text: { type: Type.STRING },
+                                  correctAnswer: { type: Type.STRING },
+                                  level: { type: Type.STRING, nullable: true }
+                              },
+                              required: ["text", "correctAnswer"]
+                          }
+                      }
+                  },
+                  required: ["type", "text", "solution"]
+              }
+          }
         }
-      }
-    });
+      })
+    );
 
     const textOutput = response.text || "[]";
     const rawData = JSON.parse(cleanJsonString(textOutput));
     
     return processAIQuestions(rawData);
   } catch (error: any) {
-    throw new Error("Lỗi đọc PDF: " + error.message);
+    throw new Error("Lỗi đọc PDF: " + formatAIError(error));
   }
 };
 
@@ -716,49 +755,51 @@ export const parseQuestionsFromText = async (rawText: string): Promise<Question[
     const ai = getAIClient();
     
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT VÀ PHÂN LOẠI MỨC ĐỘ:\n${rawText}`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING },
-                            text: { type: Type.STRING },
-                            level: { type: Type.STRING, nullable: true },
-                            points: { type: Type.NUMBER },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                            correctAnswer: { type: Type.STRING, nullable: true },
-                            solution: { type: Type.STRING },
-                            subQuestions: {
-                                type: Type.ARRAY,
-                                nullable: true,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        text: { type: Type.STRING },
-                                        correctAnswer: { type: Type.STRING },
-                                        level: { type: Type.STRING, nullable: true }
-                                    },
-                                    required: ["text", "correctAnswer"]
+        const response = await callAIWithFallback((model) => 
+            ai.models.generateContent({
+                model,
+                contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT VÀ PHÂN LOẠI MỨC ĐỘ:\n${rawText}`,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { type: Type.STRING },
+                                text: { type: Type.STRING },
+                                level: { type: Type.STRING, nullable: true },
+                                points: { type: Type.NUMBER },
+                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                                correctAnswer: { type: Type.STRING, nullable: true },
+                                solution: { type: Type.STRING },
+                                subQuestions: {
+                                    type: Type.ARRAY,
+                                    nullable: true,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            text: { type: Type.STRING },
+                                            correctAnswer: { type: Type.STRING },
+                                            level: { type: Type.STRING, nullable: true }
+                                        },
+                                        required: ["text", "correctAnswer"]
+                                    }
                                 }
-                            }
-                        },
-                        required: ["type", "text", "solution"]
+                            },
+                            required: ["type", "text", "solution"]
+                        }
                     }
                 }
-            }
-        });
+            })
+        );
 
         const textOutput = response.text || "[]";
         const rawData = JSON.parse(cleanJsonString(textOutput));
         
         return processAIQuestions(rawData);
     } catch (error: any) {
-        throw new Error("Lỗi bóc tách văn bản: " + error.message);
+        throw new Error("Lỗi bóc tách văn bản: " + formatAIError(error));
     }
 };
 
@@ -808,9 +849,9 @@ NHIỆM VỤ:
 ]
 `;
 
-        const generateWithFallback = async (modelName: string) => {
-            return await ai.models.generateContent({
-                model: modelName,
+        const response = await callAIWithFallback((model) => 
+            ai.models.generateContent({
+                model,
                 contents: prompt,
                 config: {
                     responseMimeType: "application/json",
@@ -827,16 +868,8 @@ NHIỆM VỤ:
                         }
                     }
                 }
-            });
-        };
-
-        let response;
-        try {
-            response = await generateWithFallback('gemini-3-flash-preview');
-        } catch (e1: any) {
-            console.warn("gemini-3-flash-preview lỗi, chuyển sang gemini-2.5-flash:", e1?.message);
-            response = await generateWithFallback('gemini-2.5-flash');
-        }
+            })
+        );
 
         const textOutput = response.text || "[]";
         const result = JSON.parse(cleanJsonString(textOutput));
@@ -848,7 +881,7 @@ NHIỆM VỤ:
         return chunkResults.flat();
     } catch (err: any) {
         console.error("Lỗi AI phân loại chương:", err);
-        throw new Error("Không thể phân loại chương bằng AI: " + (err.message || "Lỗi kết nối AI"));
+        throw new Error("Không thể phân loại chương bằng AI: " + formatAIError(err));
     }
 };
 
@@ -940,13 +973,15 @@ TRẢ VỀ MẢNG JSON CẤU TRÚC:
 ${jsonFormatDesc}`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json"
-            }
-        });
+        const response = await callAIWithFallback((model) => 
+            ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json"
+                }
+            })
+        );
 
         const textOutput = response.text || "[]";
         const rawData = JSON.parse(cleanJsonString(textOutput));
@@ -961,6 +996,255 @@ ${jsonFormatDesc}`;
     } catch (err: any) {
         console.error("Lỗi AI sinh bù câu hỏi cho ma trận:", err);
         return [];
+    }
+};
+
+/**
+ * AI tự động quét và phân loại mức độ nhận thức (B, H, VD, VDC) cho danh sách câu hỏi chưa phân loại
+ */
+export const autoClassifyLevelsWithAI = async (
+    questions: Question[],
+    grade?: string
+): Promise<{ id: string; level: QuestionLevel; subQuestions?: { id?: string; level: QuestionLevel }[] }[]> => {
+    if (!questions || questions.length === 0) return [];
+    const ai = getAIClient();
+
+    const CHUNK_SIZE = 15;
+    const chunks: Question[][] = [];
+    for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
+        chunks.push(questions.slice(i, i + CHUNK_SIZE));
+    }
+
+    const processChunk = async (chunkQuestions: Question[]) => {
+        const questionsPayload = chunkQuestions.map((q, idx) => ({
+            id: q.id,
+            index: idx + 1,
+            type: q.type,
+            text: q.text,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            subQuestions: q.subQuestions?.map(sq => ({ id: sq.id, text: sq.text, correctAnswer: sq.correctAnswer }))
+        }));
+
+        const prompt = `Bạn là chuyên gia khảo thí và giáo viên Vật lý/KHTN THPT giàu kinh nghiệm theo chương trình GDPT 2018 ${grade ? `(Khối ${grade})` : ''}.
+NHIỆM VỤ: Đọc kỹ từng câu hỏi và phân loại chính xác MỨC ĐỘ NHẬN THỨC (level: "B" | "H" | "VD" | "VDC").
+
+QUY TẮC ĐÁNH GIÁ MỨC ĐỘ:
+1. "B" (Biết / Nhận biết): Nhận diện định nghĩa, khái niệm, công thức, đơn vị, định luật trực tiếp; bài toán áp dụng công thức 1 bước không cần biến đổi.
+2. "H" (Hiểu / Thông hiểu): Hiểu bản chất vật lý/khoa học, giải thích hiện tượng, đọc đồ thị/bảng số liệu đơn giản, tính toán 1-2 bước cơ bản.
+3. "VD" (Vận dụng): Tổng hợp kiến thức, liên hệ thực tiễn, tính toán nhiều bước, biến đổi công thức trung bình.
+4. "VDC" (Vận dụng cao): Bài toán cực trị, đồ thị biến thiên phức tạp, bài toán phân hóa điểm 9-10, tích hợp liên chương hoặc tình huống thực nghiệm sáng tạo.
+
+ĐỐI VỚI CÂU HỎI ĐÚNG/SAI (group-tf):
+- Phân loại mức độ cho câu hỏi chung ('level').
+- BẮT BUỘC phân loại mức độ cho từng ý con (a, b, c, d) trong mảng 'subQuestions' ("B", "H", "VD", "VDC").
+
+DANH SÁCH CÂU HỎI CẦN PHÂN MỨC ĐỘ:
+${JSON.stringify(questionsPayload, null, 2)}
+
+TRẢ VỀ MẢNG JSON THUẦN TÚY:
+[
+  {
+    "id": "id_câu_hỏi",
+    "level": "B" | "H" | "VD" | "VDC",
+    "subQuestions": [
+      { "id": "id_ý_con", "level": "B" | "H" | "VD" | "VDC" }
+    ]
+  }
+]`;
+
+        const response = await callAIWithFallback((model) => 
+            ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                id: { type: Type.STRING },
+                                level: { type: Type.STRING },
+                                subQuestions: {
+                                    type: Type.ARRAY,
+                                    nullable: true,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            id: { type: Type.STRING },
+                                            level: { type: Type.STRING }
+                                        },
+                                        required: ["level"]
+                                    }
+                                }
+                            },
+                            required: ["id", "level"]
+                        }
+                    }
+                }
+            })
+        );
+
+        const textOutput = response.text || "[]";
+        const result = JSON.parse(cleanJsonString(textOutput));
+        return Array.isArray(result) ? result.map((item: any) => ({
+            id: item.id,
+            level: normalizeLevel(item.level) || 'H',
+            subQuestions: Array.isArray(item.subQuestions) ? item.subQuestions.map((sq: any) => ({
+                id: sq.id,
+                level: normalizeLevel(sq.level) || 'H'
+            })) : undefined
+        })) : [];
+    };
+
+    try {
+        const chunkResults = await Promise.all(chunks.map(chunk => processChunk(chunk)));
+        return chunkResults.flat();
+    } catch (err: any) {
+        console.error("Lỗi AI phân mức độ:", err);
+        throw new Error("Không thể phân loại mức độ bằng AI: " + formatAIError(err));
+    }
+};
+
+/**
+ * AI tự động tạo lời giải chi tiết (chuẩn sư phạm, định dạng LaTeX $...$) cho một câu hỏi
+ */
+export const generateSolutionForQuestionWithAI = async (
+    question: Question,
+    grade?: string
+): Promise<string> => {
+    const ai = getAIClient();
+
+    let questionDetail = '';
+    if (question.type === 'mcq') {
+        const optionsText = (question.options || []).map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt}`).join('\n');
+        questionDetail = `Dạng: Trắc nghiệm 4 lựa chọn (MCQ)
+Nội dung câu hỏi: ${question.text}
+${optionsText}
+Đáp án đúng đã chọn: ${question.correctAnswer || '(Chưa có đáp án cụ thể)'}`;
+    } else if (question.type === 'group-tf') {
+        const subText = (question.subQuestions || []).map((sq, i) => `${String.fromCharCode(97 + i)}) ${sq.text} [Đáp án: ${sq.correctAnswer === 'True' ? 'ĐÚNG' : 'SAI'}]`).join('\n');
+        questionDetail = `Dạng: Trắc nghiệm Đúng/Sai (Group-TF)
+Lời dẫn chung: ${question.text}
+Các ý mệnh đề:
+${subText}`;
+    } else {
+        questionDetail = `Dạng: Trả lời ngắn (Short answer)
+Nội dung câu hỏi: ${question.text}
+Đáp số đúng: ${question.correctAnswer || '(Chưa có)'}`;
+    }
+
+    const prompt = `Bạn là giáo viên Vật lý/KHTN THPT giàu kinh nghiệm sư phạm ${grade ? `(Lớp ${grade})` : ''}.
+NHIỆM VỤ: Hãy viết HƯỚNG DẪN GIẢI CHI TIẾT, CHUẨN XÁC, DỄ HIỂU cho câu hỏi sau.
+
+THÔNG TIN CÂU HỎI:
+${questionDetail}
+
+QUY TẮC BẮT BUỘC KHI TRÌNH BÀY LỜI GIẢI:
+1. Mọi công thức, ký hiệu toán học/vật lý, đại lượng, đơn vị BẮT BUỘC phải đặt trong cặp dấu $...$ (Ví dụ: $v = \\omega A$, $T = 2\\pi\\sqrt{\\frac{m}{k}}$, $g = 10\\text{ m/s}^2$).
+2. Trình bày rõ ràng, mạch lạc các bước: Phương pháp giải / Phân tích hiện tượng -> Công thức áp dụng -> Biến đổi và thay số -> Kết luận đáp án.
+3. Đối với câu trắc nghiệm Đúng/Sai (Group-TF): BẮT BUỘC giải thích chi tiết cho từng ý a), b), c), d) theo mẫu:
+   a) [Đúng/Sai]: Vì [Giải thích chi tiết có công thức LaTeX]
+   b) [Đúng/Sai]: Vì [Giải thích chi tiết có công thức LaTeX]
+   c) [Đúng/Sai]: Vì [Giải thích chi tiết có công thức LaTeX]
+   d) [Đúng/Sai]: Vì [Giải thích chi tiết có công thức LaTeX]
+4. Đối với câu trắc nghiệm 4 lựa chọn (MCQ): Nêu rõ lập luận dẫn đến đáp án đúng.
+5. Chỉ trả về nội dung văn bản lời giải trực tiếp (bằng tiếng Việt), không kèm lời mở đầu/kết thúc xã giao, không bọc trong dấu nháy JSON.`;
+
+    try {
+        const response = await callAIWithFallback((model) =>
+            ai.models.generateContent({
+                model,
+                contents: prompt
+            })
+        );
+        return (response.text || "").trim();
+    } catch (err: any) {
+        console.error("Lỗi AI tạo lời giải:", err);
+        throw new Error("Không thể tạo lời giải bằng AI: " + formatAIError(err));
+    }
+};
+
+/**
+ * AI tự động giải hàng loạt cho danh sách các câu hỏi chưa có lời giải
+ */
+export const batchGenerateSolutionsWithAI = async (
+    questions: Question[],
+    grade?: string
+): Promise<{ id: string; solution: string }[]> => {
+    if (!questions || questions.length === 0) return [];
+    const ai = getAIClient();
+
+    const CHUNK_SIZE = 6;
+    const chunks: Question[][] = [];
+    for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
+        chunks.push(questions.slice(i, i + CHUNK_SIZE));
+    }
+
+    const processChunk = async (chunkQuestions: Question[]) => {
+        const questionsPayload = chunkQuestions.map((q, idx) => ({
+            id: q.id,
+            index: idx + 1,
+            type: q.type,
+            text: q.text,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            subQuestions: q.subQuestions?.map(sq => ({ id: sq.id, text: sq.text, correctAnswer: sq.correctAnswer }))
+        }));
+
+        const prompt = `Bạn là giáo viên chuyên gia Vật lý THPT Việt Nam ${grade ? `(Lớp ${grade})` : ''}.
+NHIỆM VỤ: Viết lời giải chi tiết chuẩn sư phạm (với công thức LaTeX nằm trong $...$) cho từng câu hỏi sau.
+
+YÊU CẦU:
+1. Mọi công thức, ký hiệu toán/lý phải đặt trong cặp dấu $...$.
+2. Với câu trắc nghiệm Đúng/Sai: Giải thích chi tiết cho từng ý a), b), c), d).
+3. Với câu trắc nghiệm MCQ: Giải thích vì sao đáp án đúng được chọn.
+4. Với câu trả lời ngắn: Nêu công thức, thế số và ra kết quả.
+
+DANH SÁCH CÂU HỎI CẦN GIẢI:
+${JSON.stringify(questionsPayload, null, 2)}
+
+TRẢ VỀ MẢNG JSON:
+[
+  {
+    "id": "id_câu_hỏi",
+    "solution": "Nội dung lời giải chi tiết..."
+  }
+]`;
+
+        const response = await callAIWithFallback((model) =>
+            ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                id: { type: Type.STRING },
+                                solution: { type: Type.STRING }
+                            },
+                            required: ["id", "solution"]
+                        }
+                    }
+                }
+            })
+        );
+
+        const textOutput = response.text || "[]";
+        const result = JSON.parse(cleanJsonString(textOutput));
+        return Array.isArray(result) ? result : [];
+    };
+
+    try {
+        const chunkResults = await Promise.all(chunks.map(chunk => processChunk(chunk)));
+        return chunkResults.flat();
+    } catch (err: any) {
+        console.error("Lỗi AI giải hàng loạt:", err);
+        throw new Error("Không thể giải hàng loạt bằng AI: " + formatAIError(err));
     }
 };
 
