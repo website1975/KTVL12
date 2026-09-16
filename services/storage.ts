@@ -957,25 +957,14 @@ export const deleteChapter = async (id: string): Promise<void> => {
 };
 
 // --- Quiz Folders (Thư mục đề thi con trong từng Chương) ---
-const FOLDERS_LOCAL_STORAGE_KEY = 'eduquiz_quiz_folders_v1';
+// Dữ liệu được lưu trữ 100% trên Supabase Server (Single Source of Truth)
 
-export const getLocalFolders = (): QuizFolder[] => {
-  try {
-    if (typeof localStorage === 'undefined') return [];
-    const saved = localStorage.getItem(FOLDERS_LOCAL_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch (e) {
-    return [];
+// Tự động dọn dẹp bộ nhớ đệm ổ cứng cũ nếu có
+try {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('eduquiz_quiz_folders_v1');
   }
-};
-
-export const saveLocalFolders = (folders: QuizFolder[]) => {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(FOLDERS_LOCAL_STORAGE_KEY, JSON.stringify(folders));
-    }
-  } catch (e) {}
-};
+} catch (e) {}
 
 export const getQuizFolders = async (grade?: Grade, forceRefresh: boolean = false): Promise<QuizFolder[]> => {
   const cacheKey = `quiz_folders_${grade || 'all'}`;
@@ -983,8 +972,6 @@ export const getQuizFolders = async (grade?: Grade, forceRefresh: boolean = fals
   if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
     return memoryCache[cacheKey].data;
   }
-
-  const localList = getLocalFolders();
 
   const fetchPromise = async (): Promise<QuizFolder[]> => {
     let dbFolders: QuizFolder[] = [];
@@ -995,18 +982,15 @@ export const getQuizFolders = async (grade?: Grade, forceRefresh: boolean = fals
           query = query.or(`grade.eq.${grade},grade.eq.all`);
         }
         const { data, error } = await query;
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           dbFolders = data.map((row: any) => row.data as QuizFolder);
         }
       } catch (e) {
-        // Bỏ qua nếu chưa tạo bảng quiz_folders trên Supabase
+        console.warn("Chưa đọc được bảng quiz_folders trên Supabase:", e);
       }
     }
 
     const folderMap = new Map<string, QuizFolder>();
-    localList.forEach(f => {
-      if (f && f.id) folderMap.set(f.id, f);
-    });
     dbFolders.forEach(f => {
       if (f && f.id) folderMap.set(f.id, f);
     });
@@ -1021,27 +1005,24 @@ export const getQuizFolders = async (grade?: Grade, forceRefresh: boolean = fals
     return merged;
   };
 
-  return withTimeout(fetchPromise(), 5000, localList);
+  const cached = memoryCache[cacheKey]?.data || [];
+  return withTimeout(fetchPromise(), 5000, cached);
 };
 
 export const saveQuizFolder = async (folder: QuizFolder): Promise<void> => {
   invalidateCache('quiz_folders_');
-  // 1. Lưu vào LocalStorage
-  const current = getLocalFolders();
-  const filtered = current.filter(f => f.id !== folder.id);
-  saveLocalFolders([...filtered, folder]);
+  // Lưu 100% trực tiếp lên Supabase Database
+  if (!supabase) throw new Error("Mất kết nối với cơ sở dữ liệu Supabase");
 
-  // 2. Lưu vào Supabase nếu có bảng
-  if (supabase) {
-    try {
-      await supabase.from('quiz_folders').upsert({
-        id: folder.id,
-        grade: folder.grade || 'all',
-        data: folder
-      });
-    } catch (e) {
-      console.warn("Không thể lưu quiz_folder lên Supabase (có thể chưa tạo bảng):", e);
-    }
+  const { error } = await supabase.from('quiz_folders').upsert({
+    id: folder.id,
+    grade: folder.grade || 'all',
+    data: folder
+  });
+
+  if (error) {
+    console.error("Lỗi lưu quiz_folder lên Supabase:", error);
+    throw new Error(`Không thể lưu thư mục lên máy chủ: ${error.message || 'Lỗi không xác định'}. Hãy chắc chắn bảng quiz_folders đã được tạo trên Supabase.`);
   }
 };
 
@@ -1050,44 +1031,39 @@ export const deleteQuizFolder = async (folderId: string): Promise<void> => {
   invalidateCache('quizzes_meta_');
   invalidateCache('quizzes_full_');
   
-  // 1. Xóa khỏi LocalStorage
-  const current = getLocalFolders();
-  saveLocalFolders(current.filter(f => f.id !== folderId));
+  if (!supabase) throw new Error("Mất kết nối với cơ sở dữ liệu Supabase");
 
-  // 2. Xóa trên Supabase & Trả các đề thi thuộc folder này về chưa phân thư mục
-  if (supabase) {
-    try {
-      await supabase.from('quiz_folders').delete().eq('id', folderId);
-    } catch (e) {
-      console.warn("Lỗi xóa folder trên Supabase:", e);
-    }
+  // 1. Xóa thư mục trên Supabase
+  const { error } = await supabase.from('quiz_folders').delete().eq('id', folderId);
+  if (error) {
+    console.warn("Lỗi xóa folder trên Supabase:", error);
+  }
 
-    try {
-      // Tìm các đề thi đang nằm trong thư mục bị xóa
-      const { data: matchedRows } = await supabase
-        .from('quizzes')
-        .select('id, grade, data');
+  // 2. Trả các đề thi thuộc folder này về trạng thái chưa phân thư mục trên Supabase
+  try {
+    const { data: matchedRows } = await supabase
+      .from('quizzes')
+      .select('id, grade, data');
 
-      if (matchedRows && matchedRows.length > 0) {
-        for (const row of matchedRows) {
-          const q = row.data as Quiz;
-          if (q && q.folderId === folderId) {
-            const updatedQuiz: Quiz = {
-              ...q,
-              folderId: undefined,
-              folderName: undefined
-            };
-            updateQuizInCache(updatedQuiz);
-            await supabase.from('quizzes').update({
-              data: updatedQuiz,
-              grade: row.grade || q.grade
-            }).eq('id', row.id);
-          }
+    if (matchedRows && matchedRows.length > 0) {
+      for (const row of matchedRows) {
+        const q = row.data as Quiz;
+        if (q && q.folderId === folderId) {
+          const updatedQuiz: Quiz = {
+            ...q,
+            folderId: undefined,
+            folderName: undefined
+          };
+          updateQuizInCache(updatedQuiz);
+          await supabase.from('quizzes').update({
+            data: updatedQuiz,
+            grade: row.grade || q.grade
+          }).eq('id', row.id);
         }
       }
-    } catch (e) {
-      console.warn("Lỗi hoàn trả đề thi về vùng chưa phân:", e);
     }
+  } catch (e) {
+    console.warn("Lỗi hoàn trả đề thi về vùng chưa phân:", e);
   }
 };
 
