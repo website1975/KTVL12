@@ -138,15 +138,7 @@ export default function AdminDashboard() {
   const [resultsTotal, setResultsTotal] = useState(0);
   const [resultsPage, setResultsPage] = useState(1);
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [folders, setFolders] = useState<QuizFolder[]>(() => {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const raw = localStorage.getItem('eduquiz_quiz_folders_v1');
-        if (raw) return JSON.parse(raw);
-      }
-    } catch {}
-    return [];
-  });
+  const [folders, setFolders] = useState<QuizFolder[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
 
   // Lazy loading data with memory cache & forceRefresh
