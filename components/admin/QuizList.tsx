@@ -224,12 +224,25 @@ export default function QuizList({
         });
     }, [folders, qGradeFilter, qChapterFilter]);
 
-    // Khớp đề thi vào thư mục (chính xác theo ID hoặc theo tên folder)
+    // Khớp đề thi vào thư mục
     const isQuizInFolder = (q: Quiz, folder: QuizFolder) => {
+        // 1. Khớp chính xác theo ID thư mục
         if (q.folderId && q.folderId === folder.id) return true;
-        if (folder.name && q.folderName && q.folderName.trim().toLowerCase() === folder.name.trim().toLowerCase()) {
-            return true;
+        
+        // 2. Khớp dự phòng theo Tên thư mục (phải đúng cả Chương học và Khối lớp để không bị kéo nhầm đề từ chương khác)
+        if (!q.folderId && folder.name && q.folderName && q.folderName.trim().toLowerCase() === folder.name.trim().toLowerCase()) {
+            const matchGrade = !folder.grade || folder.grade === 'all' || !q.grade || q.grade === 'all' || String(folder.grade) === String(q.grade);
+            const matchChapter = !folder.chapterName || !q.category || folder.chapterName.trim().toLowerCase() === q.category.trim().toLowerCase();
+            return matchGrade && matchChapter;
         }
+        return false;
+    };
+
+    // Kiểm tra đề thi đã vào thư mục nào chưa
+    const isQuizUnassigned = (q: Quiz) => {
+        if (!q.folderId && !q.folderName) return true;
+        if (q.folderId && !folders.some(f => f.id === q.folderId)) return true;
+        if (!q.folderId && q.folderName && !folders.some(f => f.name.trim().toLowerCase() === q.folderName?.trim().toLowerCase())) return true;
         return false;
     };
 
@@ -241,13 +254,13 @@ export default function QuizList({
     // Số đề chưa phân thư mục
     const unassignedQuizzes = useMemo(() => {
         return uniqueQuizzes.filter(q => {
-            const isUnassigned = !q.folderId && !q.folderName;
+            const isUnassigned = isQuizUnassigned(q);
             if (!isUnassigned) return false;
             const matchGrade = qGradeFilter === 'all' || !q.grade || q.grade === 'all' || String(q.grade) === String(qGradeFilter);
             const matchChapter = qChapterFilter === 'all' || (q.category && q.category.trim().toLowerCase() === qChapterFilter.trim().toLowerCase());
             return matchGrade && matchChapter;
         });
-    }, [uniqueQuizzes, qGradeFilter, qChapterFilter]);
+    }, [uniqueQuizzes, folders, qGradeFilter, qChapterFilter]);
 
     // Lọc danh sách đề thi tổng thể
     const filtered = useMemo(() => {
@@ -257,7 +270,7 @@ export default function QuizList({
             // KHI ĐANG MỞ MỘT THƯ MỤC CỤ THỂ
             if (activeFolderId) {
                 if (activeFolderId === 'unassigned') {
-                    const isUnassigned = !q.folderId && !q.folderName;
+                    const isUnassigned = isQuizUnassigned(q);
                     const matchGrade = qGradeFilter === 'all' || !q.grade || q.grade === 'all' || String(q.grade) === String(qGradeFilter);
                     const matchChapter = qChapterFilter === 'all' || (q.category && q.category.trim().toLowerCase() === qChapterFilter.trim().toLowerCase());
                     return isUnassigned && matchGrade && matchChapter && matchSearch;
