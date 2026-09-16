@@ -296,7 +296,7 @@ export default function AIRenderer({
                                     <div className="p-6 bg-blue-50/50 rounded-[2rem] border-2 border-blue-100 flex items-center gap-3">
                                         <Sparkles className="text-blue-600 shrink-0" size={24} />
                                         <div className="text-xs text-blue-900 font-bold">
-                                            AI Gemini 3 Flash được tối ưu hóa riêng cho Vật lý THPT, sinh công thức LaTeX và lời giải chuẩn.
+                                            AI Gemini thông minh hỗ trợ đa mô hình (Flash Lite, 3.8 Flash), tối ưu riêng cho THPT, tự động chuyển mô hình dự phòng khi quá tải.
                                         </div>
                                     </div>
                                 </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom } from '../../types';
+import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom, QuizFolder } from '../../types';
 import { 
   Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, 
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
@@ -46,6 +46,11 @@ interface QuizEditorProps {
     questions: Question[];
     setQuestions: React.Dispatch<React.SetStateAction<Question[]>> | ((val: Question[]) => void);
     chapters: Chapter[];
+    folders?: QuizFolder[];
+    folderId?: string;
+    setFolderId?: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
+    folderName?: string;
+    setFolderName?: React.Dispatch<React.SetStateAction<string>> | ((val: string) => void);
     classes?: ClassRoom[];
     targetType?: 'all' | 'classes';
     setTargetType?: React.Dispatch<React.SetStateAction<'all' | 'classes'>> | ((val: 'all' | 'classes') => void);
@@ -1309,10 +1314,19 @@ export default function QuizEditor(props: QuizEditorProps) {
                     />
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Khối lớp</label>
-                        <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.grade} onChange={e => { props.setGrade(e.target.value as Grade); props.setCategory(''); }}>
+                        <select 
+                            className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" 
+                            value={props.grade} 
+                            onChange={e => { 
+                                props.setGrade(e.target.value as Grade); 
+                                props.setCategory(''); 
+                                if (props.setFolderId) props.setFolderId('');
+                                if (props.setFolderName) props.setFolderName('');
+                            }}
+                        >
                             <option value="12">Khối 12</option>
                             <option value="11">Khối 11</option>
                             <option value="10">Khối 10</option>
@@ -1334,13 +1348,64 @@ export default function QuizEditor(props: QuizEditorProps) {
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Chương học</label>
-                        <select className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.category} onChange={e => props.setCategory(e.target.value)}>
+                        <select 
+                            className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" 
+                            value={props.category} 
+                            onChange={e => {
+                                const newCat = e.target.value;
+                                props.setCategory(newCat);
+                                if (props.setFolderId) props.setFolderId('');
+                                if (props.setFolderName) props.setFolderName('');
+                            }}
+                        >
                             <option value="">Chọn chương...</option>
                             {relevantChapters.map(c => <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>)}
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng làm bài (phút)</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center justify-between">
+                            <span>Thư mục con</span>
+                            {props.folderName && (
+                                <span className="text-[9px] font-bold text-amber-600 truncate max-w-[110px]" title={props.folderName}>
+                                    ({props.folderName})
+                                </span>
+                            )}
+                        </label>
+                        <select 
+                            className="w-full border-2 border-amber-200/80 rounded-[1.5rem] p-4 text-xs font-black bg-amber-50/30 text-slate-800 focus:border-amber-400 outline-none cursor-pointer" 
+                            value={props.folderId || ''} 
+                            onChange={e => {
+                                const fId = e.target.value;
+                                if (!fId) {
+                                    if (props.setFolderId) props.setFolderId('');
+                                    if (props.setFolderName) props.setFolderName('');
+                                } else {
+                                    const foundFolder = (props.folders || []).find(f => f.id === fId);
+                                    if (props.setFolderId) props.setFolderId(fId);
+                                    if (props.setFolderName) props.setFolderName(foundFolder ? foundFolder.name : '');
+                                }
+                            }}
+                        >
+                            <option value="">
+                                📁 Thư mục gốc {props.category ? `(${props.category})` : ''} - Không phân thư mục con
+                            </option>
+                            {(props.folders || [])
+                                .filter(f => {
+                                    if (props.category) {
+                                        return f.chapterName === props.category;
+                                    }
+                                    return f.grade === props.grade || f.grade === 'all';
+                                })
+                                .map(f => (
+                                    <option key={f.id} value={f.id}>
+                                        📂 {f.name}
+                                    </option>
+                                ))
+                            }
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Thời lượng (phút)</label>
                         <input type="number" min="1" className="w-full border-2 border-slate-100 rounded-[1.5rem] p-4 text-xs font-black bg-slate-50 focus:border-blue-300 outline-none" value={props.duration} onChange={e => props.setDuration(parseInt(e.target.value) || 45)} />
                     </div>
                 </div>

@@ -261,6 +261,19 @@ export default function QuizImageGalleryModal({
                               <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-100">
                                 {imgItem.usedInQuestionIds.length} câu đang dùng
                               </span>
+                              {imgItem.url.includes('ibb.co') ? (
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md border border-amber-200">
+                                  ⚡ ImgBB CDN
+                                </span>
+                              ) : imgItem.url.includes('supabase.co') ? (
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-purple-50 text-purple-700 rounded-md border border-purple-200">
+                                  ☁️ Supabase
+                                </span>
+                              ) : imgItem.url.startsWith('data:image') ? (
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md border border-slate-200">
+                                  DataURL
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-[11px] font-bold text-slate-600 line-clamp-2 leading-tight">
                               📌 {imgItem.usedInQuestionLabels.join(', ')}

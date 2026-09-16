@@ -36,6 +36,18 @@ export interface Chapter {
   order: number;
 }
 
+export interface QuizFolder {
+  id: string;
+  name: string; // e.g. "Đề củng cố Bài học", "Đề ôn chương", "Đề tổng hợp"
+  chapterId?: string; // ID của chương chứa folder
+  chapterName: string; // Tên chương (e.g. "Chương 1: Vật lý nhiệt")
+  grade: Grade; // '10' | '11' | '12' | 'all'
+  color?: 'amber' | 'blue' | 'emerald' | 'purple' | 'rose' | 'indigo' | 'cyan' | string;
+  order?: number;
+  description?: string;
+  createdAt?: string;
+}
+
 export interface SubQuestion {
   id: string;
   text: string;
@@ -71,6 +83,8 @@ export interface Quiz {
   grade: Grade;
   academicYear?: string; // Niên khóa / Năm học (ví dụ: "2025-2026")
   category?: string; 
+  folderId?: string; // ID của Thư mục chứa đề này (nằm trong Chương)
+  folderName?: string; // Tên Thư mục (e.g. "Đề củng cố Bài học", "Đề ôn chương")
   startTime?: string;
   endTime?: string; 
   durationMinutes: number;

@@ -35,14 +35,17 @@ const App: React.FC = () => {
         const parsedUser = JSON.parse(storedUser);
         
         if (isDatabaseConnected() && parsedUser.studentCode) {
-            const dbUser = await findUserByStudentCode(parsedUser.studentCode);
-            if (!dbUser) {
-                handleLogout();
-                setIsChecking(false);
-                return;
+            try {
+              const dbUser = await findUserByStudentCode(parsedUser.studentCode);
+              if (dbUser) {
+                setAuth({ user: dbUser, isAuthenticated: true });
+                localStorage.setItem('eduquiz_current_user', JSON.stringify(dbUser));
+              } else {
+                setAuth({ user: parsedUser, isAuthenticated: true });
+              }
+            } catch (err) {
+              setAuth({ user: parsedUser, isAuthenticated: true });
             }
-            setAuth({ user: dbUser, isAuthenticated: true });
-            localStorage.setItem('eduquiz_current_user', JSON.stringify(dbUser));
         } else {
             setAuth({ user: parsedUser, isAuthenticated: true });
         }

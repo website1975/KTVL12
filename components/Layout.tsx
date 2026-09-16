@@ -92,18 +92,18 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       <main className="flex-1 w-full">
         {children}
       </main>
-      <footer className="bg-white border-t mt-auto py-6">
-         <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm flex flex-col items-center gap-3">
-            <span>© 2024 EduQuiz VN. LH Thạnh 0909091634</span>
-            <div className="flex flex-wrap justify-center gap-3">
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                    <Database size={12}/> {isOnline ? 'Cloud: lchfhsio...' : 'DB Offline'}
+      <footer className="bg-white border-t mt-auto py-2 px-4 sm:px-6 shadow-xs">
+         <div className="w-full max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-slate-500 text-xs">
+            <span className="text-[11px] font-medium text-slate-500">© 2024 EduQuiz VN • LH Thạnh 0909091634</span>
+            <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                    <Database size={11}/> {isOnline ? 'Cloud: lchfhsio...' : 'DB Offline'}
                 </div>
                 <div 
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border cursor-help ${isAIReady ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-red-50 text-red-700 border-red-200'}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border cursor-help ${isAIReady ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-red-50 text-red-700 border-red-200'}`}
                   title={isAIReady ? "Hệ thống AI đã sẵn sàng" : "Thiếu API_KEY hoặc cần Redeploy lại trên Vercel"}
                 >
-                    <Sparkles size={12}/> {isAIReady ? 'AI Ready' : 'AI No Key'}
+                    <Sparkles size={11}/> {isAIReady ? 'AI Ready' : 'AI No Key'}
                 </div>
             </div>
          </div>

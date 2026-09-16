@@ -2,7 +2,7 @@
 /// <reference types="vite/client" />
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter, Question, ExamSession, PublishedResult, Grade, ClassRoom } from '../types';
+import { User, Quiz, Result, Chapter, QuizFolder, Question, ExamSession, PublishedResult, Grade, ClassRoom } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 let cleanedUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://lchfhsioxvgkjfsikycl.supabase.co').trim();
@@ -22,6 +22,26 @@ try {
 } catch (e) {
   console.error("Lỗi khởi tạo Supabase:", e);
 }
+
+// Helper timeout an toàn để Supabase không bao giờ làm treo UI hoặc quay vô tận
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number = 6000, fallback: T): Promise<T> => {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[Supabase Timeout] Truy vấn vượt quá ${timeoutMs}ms, tự động chuyển về dữ liệu dự phòng`);
+      resolve(fallback);
+    }, timeoutMs);
+  });
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timer);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    console.warn("[Supabase Catch Error]", err);
+    return fallback;
+  }
+};
 
 export const isDatabaseConnected = (): boolean => {
     return !!supabase;
@@ -87,16 +107,20 @@ export const getResultsMetadata = async (quizId?: string, maxRecords: number = 1
 
       while (hasMore && allData.length < maxRecords) {
           let query = supabase.from('results')
-            .select('id, quiz_id, student_id, data')
+            .select('*')
             .order('id', { ascending: false })
             .range(from, from + step - 1);
             
           if (quizId && quizId !== 'all') {
-            query = query.eq('quiz_id', quizId);
+            query = query.or(`quiz_id.eq.${quizId},data->>quizId.eq.${quizId}`);
           }
           
           const { data, error } = await query;
-          if (error) throw error;
+          if (error) {
+            console.warn("Lỗi fetch results meta batch:", error);
+            hasMore = false;
+            break;
+          }
           
           if (data && data.length > 0) {
               allData = [...allData, ...data];
@@ -108,13 +132,13 @@ export const getResultsMetadata = async (quizId?: string, maxRecords: number = 1
       }
       
       const mapped = allData.map((row: any) => {
-          const res = row.data as Result;
+          const res = (row.data && typeof row.data === 'object') ? row.data : (row || {});
           return {
               ...res,
-              id: row.id,
-              quizId: row.quiz_id,
-              studentId: row.student_id
-          };
+              id: row.id || res.id,
+              quizId: row.quiz_id || res.quizId,
+              studentId: row.student_id || res.studentId
+          } as Result;
       });
       memoryCache[cacheKey] = { data: mapped, expires: now + CACHE_TTL };
       return mapped;
@@ -395,6 +419,8 @@ const QUIZ_METADATA_PROJECTION = `
     data->type,
     data->academicYear,
     data->category,
+    data->folderId,
+    data->folderName,
     data->startTime,
     data->endTime,
     data->durationMinutes,
@@ -412,31 +438,36 @@ const QUIZ_METADATA_PROJECTION = `
     data->orderIndex
 `;
 
-const mapRowToQuizMeta = (row: any): Quiz => ({
-    id: row.id,
-    grade: row.grade || '12',
-    title: row.title || 'Đề thi',
-    description: row.description || '',
-    type: row.type || 'practice',
-    academicYear: row.academicYear || '',
-    category: row.category || '',
-    startTime: row.startTime || '',
-    endTime: row.endTime || '',
-    durationMinutes: typeof row.durationMinutes === 'number' ? row.durationMinutes : (parseInt(row.durationMinutes) || 45),
-    questionCount: typeof row.questionCount === 'number' ? row.questionCount : (parseInt(row.questionCount) || 0),
-    attemptCount: typeof row.attemptCount === 'number' ? row.attemptCount : (parseInt(row.attemptCount) || 0),
-    createdAt: row.createdAt || new Date().toISOString(),
-    isPublished: row.isPublished === true || row.isPublished === 'true',
-    isMonitored: row.isMonitored === true || row.isMonitored === 'true',
-    isUnlisted: row.isUnlisted === true || row.isUnlisted === 'true',
-    targetType: row.targetType || 'all',
-    assignedClassIds: Array.isArray(row.assignedClassIds) ? row.assignedClassIds : [],
-    assignedClasses: Array.isArray(row.assignedClasses) ? row.assignedClasses : [],
-    maxAttempts: typeof row.maxAttempts === 'number' ? row.maxAttempts : 2,
-    allowReview: row.allowReview ?? true,
-    orderIndex: typeof row.orderIndex === 'number' ? row.orderIndex : 0,
-    questions: [] // Tuyệt đối không tải mảng câu hỏi ở metadata để tiết kiệm 98% băng thông
-});
+const mapRowToQuizMeta = (row: any): Quiz => {
+    const d = (row && row.data && typeof row.data === 'object') ? row.data : (row || {});
+    return {
+        id: String(row.id || d.id || ''),
+        grade: String(d.grade || row.grade || '12') as Grade,
+        title: d.title || row.title || 'Đề thi',
+        description: d.description || row.description || '',
+        type: d.type || row.type || 'practice',
+        academicYear: d.academicYear || row.academicYear || '',
+        category: d.category || row.category || '',
+        folderId: d.folderId || row.folderId || undefined,
+        folderName: d.folderName || row.folderName || undefined,
+        startTime: d.startTime || row.startTime || '',
+        endTime: d.endTime || row.endTime || '',
+        durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : (parseInt(d.durationMinutes || row.durationMinutes) || 45),
+        questionCount: typeof d.questionCount === 'number' ? d.questionCount : (typeof row.questionCount === 'number' ? row.questionCount : (parseInt(d.questionCount || row.questionCount) || (Array.isArray(d.questions) ? d.questions.length : 0))),
+        attemptCount: typeof d.attemptCount === 'number' ? d.attemptCount : (parseInt(d.attemptCount || row.attemptCount) || 0),
+        createdAt: d.createdAt || row.createdAt || new Date().toISOString(),
+        isPublished: d.isPublished === true || d.isPublished === 'true' || row.isPublished === true || row.isPublished === 'true',
+        isMonitored: d.isMonitored === true || d.isMonitored === 'true' || row.isMonitored === true || row.isMonitored === 'true',
+        isUnlisted: d.isUnlisted === true || d.isUnlisted === 'true' || row.isUnlisted === true || row.isUnlisted === 'true',
+        targetType: d.targetType || row.targetType || 'all',
+        assignedClassIds: Array.isArray(d.assignedClassIds) ? d.assignedClassIds : (Array.isArray(row.assignedClassIds) ? row.assignedClassIds : []),
+        assignedClasses: Array.isArray(d.assignedClasses) ? d.assignedClasses : (Array.isArray(row.assignedClasses) ? row.assignedClasses : []),
+        maxAttempts: typeof d.maxAttempts === 'number' ? d.maxAttempts : (typeof row.maxAttempts === 'number' ? row.maxAttempts : 2),
+        allowReview: d.allowReview ?? row.allowReview ?? true,
+        orderIndex: typeof d.orderIndex === 'number' ? d.orderIndex : (typeof row.orderIndex === 'number' ? row.orderIndex : 0),
+        questions: [] // Tuyệt đối không tải mảng câu hỏi ở metadata để tiết kiệm bộ nhớ và băng thông
+    };
+};
 
 // --- Quizzes ---
 export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20, grade?: Grade): Promise<{ data: Quiz[], total: number }> => {
@@ -446,18 +477,17 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
     const to = from + pageSize - 1;
 
     let query = supabase.from('quizzes')
-      .select(QUIZ_METADATA_PROJECTION, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('id', { ascending: false })
       .range(from, to);
-      
-    if (grade && grade !== 'all') {
-      query = query.or(`grade.eq.${grade},grade.eq.all`);
-    }
     
     const { data, count, error } = await query;
     if (error) throw error;
     
-    const quizzes = data ? data.map(mapRowToQuizMeta) : [];
+    let quizzes: Quiz[] = data ? data.map(mapRowToQuizMeta) : [];
+    if (grade && grade !== 'all') {
+      quizzes = quizzes.filter((q: Quiz) => !q.grade || q.grade === 'all' || q.grade === grade);
+    }
     return { data: quizzes, total: count || 0 };
   } catch (e) {
     console.error("Lỗi getQuizzesMetadataPage:", e);
@@ -544,13 +574,13 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
     return memoryCache[cacheKey].data;
   }
 
-  // Kiểm tra sessionStorage để khi học sinh chuyển trang/F5 không phải kéo lại từ Supabase
+  // Kiểm tra localStorage / sessionStorage để khi load/F5 có dữ liệu hiển thị tức thì
   try {
-    if (!forceRefresh && typeof sessionStorage !== 'undefined') {
-      const stored = sessionStorage.getItem(cacheKey);
+    if (!forceRefresh && typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(cacheKey) || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(cacheKey) : null);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed && parsed.expires > now && Array.isArray(parsed.data)) {
+        if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
           memoryCache[cacheKey] = parsed;
           return parsed.data;
         }
@@ -558,7 +588,7 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
     }
   } catch (e) {}
 
-  try {
+  const fetchPromise = async (): Promise<Quiz[]> => {
     let allQuizzes: any[] = [];
     let from = 0;
     const step = 1000;
@@ -566,16 +596,23 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
 
     while (hasMore) {
         let query = supabase.from('quizzes')
-            .select(QUIZ_METADATA_PROJECTION)
-            .order('id', { ascending: false })
+            .select('*')
             .range(from, from + step - 1);
             
-        if (grade && grade !== 'all') {
-            query = query.or(`grade.eq.${grade},grade.eq.all`);
-        }
+        try {
+          query = query.order('id', { ascending: false });
+        } catch {}
         
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) {
+            console.warn("Lỗi query getQuizzesMetadata:", error);
+            const fallbackQuery = await supabase.from('quizzes').select('*');
+            if (fallbackQuery.data && fallbackQuery.data.length > 0) {
+              allQuizzes = fallbackQuery.data;
+            }
+            hasMore = false;
+            break;
+        }
         
         if (data && data.length > 0) {
             allQuizzes = [...allQuizzes, ...data];
@@ -586,21 +623,39 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
         }
     }
     
-    const mapped = allQuizzes.map(mapRowToQuizMeta);
+    let mapped: Quiz[] = allQuizzes.map(mapRowToQuizMeta);
 
-    const cachePayload = { data: mapped, expires: now + CACHE_TTL };
+    if (grade && grade !== 'all') {
+        mapped = mapped.filter((q: Quiz) => !q.grade || q.grade === 'all' || q.grade === grade);
+    }
+
+    const cachePayload = { data: mapped, expires: Date.now() + CACHE_TTL };
     memoryCache[cacheKey] = cachePayload;
     try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(cacheKey, JSON.stringify(cachePayload));
+      }
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(cacheKey, JSON.stringify(cachePayload));
       }
     } catch (e) {}
 
     return mapped;
-  } catch (e) {
-    console.error("Lỗi getQuizzesMetadata:", e);
-    return [];
-  }
+  };
+
+  // Lấy dữ liệu từ cache local sẵn có làm fallback nếu mạng quá chậm
+  let fallbackData: Quiz[] = [];
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(cacheKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed?.data)) fallbackData = parsed.data;
+      }
+    }
+  } catch {}
+
+  return withTimeout(fetchPromise(), 6000, fallbackData);
 };
 
 export const getQuizzes = async (grade?: Grade, forceRefresh: boolean = false): Promise<Quiz[]> => {
@@ -879,10 +934,16 @@ export const getChapters = async (forceRefresh: boolean = false): Promise<Chapte
   if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
     return memoryCache[cacheKey].data;
   }
-  const { data } = await supabase.from('chapters').select('data');
-  const result = data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
-  memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
-  return result;
+  
+  const fetchPromise = async (): Promise<Chapter[]> => {
+    const { data } = await supabase.from('chapters').select('data');
+    const result = data ? data.map((row: any) => row.data as Chapter).sort((a: Chapter, b: Chapter) => a.order - b.order) : [];
+    memoryCache[cacheKey] = { data: result, expires: Date.now() + CACHE_TTL };
+    return result;
+  };
+
+  const cached = memoryCache[cacheKey]?.data || [];
+  return withTimeout(fetchPromise(), 5000, cached);
 };
 
 export const saveChapter = async (c: Chapter): Promise<void> => {
@@ -893,6 +954,197 @@ export const saveChapter = async (c: Chapter): Promise<void> => {
 export const deleteChapter = async (id: string): Promise<void> => {
   invalidateCache('chapters_all');
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
+};
+
+// --- Quiz Folders (Thư mục đề thi con trong từng Chương) ---
+const FOLDERS_LOCAL_STORAGE_KEY = 'eduquiz_quiz_folders_v1';
+
+export const getLocalFolders = (): QuizFolder[] => {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const saved = localStorage.getItem(FOLDERS_LOCAL_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const saveLocalFolders = (folders: QuizFolder[]) => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(FOLDERS_LOCAL_STORAGE_KEY, JSON.stringify(folders));
+    }
+  } catch (e) {}
+};
+
+export const getQuizFolders = async (grade?: Grade, forceRefresh: boolean = false): Promise<QuizFolder[]> => {
+  const cacheKey = `quiz_folders_${grade || 'all'}`;
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
+
+  const localList = getLocalFolders();
+
+  const fetchPromise = async (): Promise<QuizFolder[]> => {
+    let dbFolders: QuizFolder[] = [];
+    if (supabase) {
+      try {
+        let query = supabase.from('quiz_folders').select('data');
+        if (grade && grade !== 'all') {
+          query = query.or(`grade.eq.${grade},grade.eq.all`);
+        }
+        const { data, error } = await query;
+        if (!error && data) {
+          dbFolders = data.map((row: any) => row.data as QuizFolder);
+        }
+      } catch (e) {
+        // Bỏ qua nếu chưa tạo bảng quiz_folders trên Supabase
+      }
+    }
+
+    const folderMap = new Map<string, QuizFolder>();
+    localList.forEach(f => {
+      if (f && f.id) folderMap.set(f.id, f);
+    });
+    dbFolders.forEach(f => {
+      if (f && f.id) folderMap.set(f.id, f);
+    });
+
+    let merged = Array.from(folderMap.values());
+    if (grade && grade !== 'all') {
+      merged = merged.filter(f => !f.grade || f.grade === 'all' || f.grade === grade);
+    }
+
+    merged.sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+    memoryCache[cacheKey] = { data: merged, expires: Date.now() + CACHE_TTL };
+    return merged;
+  };
+
+  return withTimeout(fetchPromise(), 5000, localList);
+};
+
+export const saveQuizFolder = async (folder: QuizFolder): Promise<void> => {
+  invalidateCache('quiz_folders_');
+  // 1. Lưu vào LocalStorage
+  const current = getLocalFolders();
+  const filtered = current.filter(f => f.id !== folder.id);
+  saveLocalFolders([...filtered, folder]);
+
+  // 2. Lưu vào Supabase nếu có bảng
+  if (supabase) {
+    try {
+      await supabase.from('quiz_folders').upsert({
+        id: folder.id,
+        grade: folder.grade || 'all',
+        data: folder
+      });
+    } catch (e) {
+      console.warn("Không thể lưu quiz_folder lên Supabase (có thể chưa tạo bảng):", e);
+    }
+  }
+};
+
+export const deleteQuizFolder = async (folderId: string): Promise<void> => {
+  invalidateCache('quiz_folders_');
+  invalidateCache('quizzes_meta_');
+  invalidateCache('quizzes_full_');
+  
+  // 1. Xóa khỏi LocalStorage
+  const current = getLocalFolders();
+  saveLocalFolders(current.filter(f => f.id !== folderId));
+
+  // 2. Xóa trên Supabase & Trả các đề thi thuộc folder này về chưa phân thư mục
+  if (supabase) {
+    try {
+      await supabase.from('quiz_folders').delete().eq('id', folderId);
+    } catch (e) {
+      console.warn("Lỗi xóa folder trên Supabase:", e);
+    }
+
+    try {
+      // Tìm các đề thi đang nằm trong thư mục bị xóa
+      const { data: matchedRows } = await supabase
+        .from('quizzes')
+        .select('id, grade, data');
+
+      if (matchedRows && matchedRows.length > 0) {
+        for (const row of matchedRows) {
+          const q = row.data as Quiz;
+          if (q && q.folderId === folderId) {
+            const updatedQuiz: Quiz = {
+              ...q,
+              folderId: undefined,
+              folderName: undefined
+            };
+            updateQuizInCache(updatedQuiz);
+            await supabase.from('quizzes').update({
+              data: updatedQuiz,
+              grade: row.grade || q.grade
+            }).eq('id', row.id);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Lỗi hoàn trả đề thi về vùng chưa phân:", e);
+    }
+  }
+};
+
+// Di chuyển nhanh đề thi vào một thư mục
+export const updateQuizFolderAssignment = async (
+  quizId: string,
+  folderId?: string,
+  folderName?: string,
+  chapterName?: string
+): Promise<void> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
+  if (error || !data) throw new Error("Không tìm thấy đề thi");
+  const currentQuiz = data.data as Quiz;
+  const updatedQuiz: Quiz = {
+    ...currentQuiz,
+    folderId: folderId || undefined,
+    folderName: folderName || undefined,
+    category: chapterName || currentQuiz.category
+  };
+  updateQuizInCache(updatedQuiz);
+  const { error: updateErr } = await supabase.from('quizzes').update({
+    data: updatedQuiz,
+    grade: data.grade
+  }).eq('id', quizId);
+  handleSupabaseError(updateErr, "Di chuyển đề thi vào thư mục");
+};
+
+// Di chuyển hàng loạt đề thi vào thư mục
+export const batchMoveQuizzesToFolder = async (
+  quizIds: string[],
+  folderId?: string,
+  folderName?: string,
+  chapterName?: string
+): Promise<number> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  if (quizIds.length === 0) return 0;
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').in('id', quizIds);
+  if (error || !data) throw new Error("Lỗi khi nạp danh sách đề thi");
+
+  let count = 0;
+  for (const row of data) {
+    const currentQuiz = row.data as Quiz;
+    const updatedQuiz: Quiz = {
+      ...currentQuiz,
+      folderId: folderId || undefined,
+      folderName: folderName || undefined,
+      category: chapterName || currentQuiz.category
+    };
+    updateQuizInCache(updatedQuiz);
+    const { error: updateErr } = await supabase.from('quizzes').update({
+      data: updatedQuiz,
+      grade: row.grade
+    }).eq('id', row.id);
+    if (!updateErr) count++;
+  }
+  return count;
 };
 
 // --- Classroom & Academic Year Management ---
