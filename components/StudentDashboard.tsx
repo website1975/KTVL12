@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Quiz, Result, PublishedResult, Chapter, Grade } from '../types';
-import { getQuizzesMetadata, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions, deleteExamSession, getChapters } from '../services/storage';
+import { getQuizzesMetadata, getResultsForStudent, getPublishedResults, getQuizById, getStudentActiveSessions, deleteExamSession, getChapters, getCurrentAcademicYear } from '../services/storage';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
@@ -19,7 +19,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [results, setResults] = useState<Result[]>([]);
-  const gradeFilter = user.grade || '12';
+  const gradeFilter = user.grade || '10';
+  const currentAcademicYear = getCurrentAcademicYear();
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>(user.academicYear || currentAcademicYear);
   const [chapterFilter, setChapterFilter] = useState('all');
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
@@ -41,6 +43,13 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         ]);
         
         setChapters(allChapters);
+        const gradeChapters = (allChapters || []).filter((c: Chapter) => gradeFilter === 'all' || String(c.grade) === String(gradeFilter));
+        if (gradeChapters.length > 0) {
+            setChapterFilter(prev => {
+                const belongs = gradeChapters.some(c => c.name === prev);
+                return belongs ? prev : gradeChapters[0].name;
+            });
+        }
         // CHỈ HIỆN ĐỀ CÔNG KHAI (KHÔNG PHẢI UNLISTED) TRÊN DASHBOARD
         setQuizzes(allQuizzes.filter(q => q.isPublished && !q.isUnlisted));
 
@@ -364,6 +373,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return quizzes.filter((q: Quiz) => {
         const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
         const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
+        const matchYear = !academicYearFilter || academicYearFilter === 'all' || 
+            (academicYearFilter === 'none' ? !q.academicYear : (q.academicYear === academicYearFilter || (!q.academicYear && academicYearFilter === currentAcademicYear)));
         
         // Kiểm tra phân quyền giao đề theo Lớp
         let matchClass = true;
@@ -373,9 +384,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
           }
         }
 
-        return matchGrade && matchChapter && matchClass;
+        return matchGrade && matchChapter && matchClass && matchYear;
     });
-  }, [quizzes, gradeFilter, chapterFilter, user.classId]);
+  }, [quizzes, gradeFilter, chapterFilter, academicYearFilter, user.classId, currentAcademicYear]);
 
   if (activeQuiz) {
     return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
@@ -436,6 +447,18 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         </div>
         
         <div className="flex flex-wrap gap-3">
+          <select 
+            className="bg-amber-50 border-2 border-amber-300 text-amber-950 font-black px-4 py-2.5 rounded-2xl text-[10px] uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[180px]"
+            value={academicYearFilter}
+            onChange={(e) => setAcademicYearFilter(e.target.value)}
+          >
+            <option value="all">🗄️ TẤT CẢ NIÊN KHÓA</option>
+            <option value={currentAcademicYear}>⭐ NIÊN KHÓA {currentAcademicYear} (HIỆN HÀNH)</option>
+            {['2027-2028', '2026-2027', '2025-2026', '2024-2025'].filter(y => y !== currentAcademicYear).map(yr => (
+              <option key={yr} value={yr}>📅 NĂM HỌC {yr}</option>
+            ))}
+          </select>
+
           <select 
             className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[200px]"
             value={chapterFilter}
