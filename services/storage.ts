@@ -411,60 +411,35 @@ export const changePassword = async (userId: string, newPassword: string): Promi
 };
 
 // Định nghĩa các trường Metadata của Đề thi (chỉ lấy thông tin hiển thị, KHÔNG LẤY cột câu hỏi để giảm 98% băng thông)
-const QUIZ_METADATA_PROJECTION = `
-    id,
-    grade,
-    data->title,
-    data->description,
-    data->type,
-    data->academicYear,
-    data->category,
-    data->folderId,
-    data->folderName,
-    data->startTime,
-    data->endTime,
-    data->durationMinutes,
-    data->questionCount,
-    data->attemptCount,
-    data->createdAt,
-    data->isPublished,
-    data->isMonitored,
-    data->isUnlisted,
-    data->targetType,
-    data->assignedClassIds,
-    data->assignedClasses,
-    data->maxAttempts,
-    data->allowReview,
-    data->orderIndex
-`;
+const QUIZ_METADATA_PROJECTION = 'id,grade,data->title,data->description,data->type,data->academicYear,data->category,data->folderId,data->folderName,data->startTime,data->endTime,data->durationMinutes,data->questionCount,data->attemptCount,data->createdAt,data->isPublished,data->isMonitored,data->isUnlisted,data->targetType,data->assignedClassIds,data->assignedClasses,data->maxAttempts,data->allowReview,data->orderIndex';
 
 const mapRowToQuizMeta = (row: any): Quiz => {
     const d = (row && row.data && typeof row.data === 'object') ? row.data : (row || {});
     return {
         id: String(row.id || d.id || ''),
-        grade: String(d.grade || row.grade || '12') as Grade,
-        title: d.title || row.title || 'Đề thi',
-        description: d.description || row.description || '',
-        type: d.type || row.type || 'practice',
-        academicYear: d.academicYear || row.academicYear || '',
-        category: d.category || row.category || '',
-        folderId: d.folderId || row.folderId || undefined,
-        folderName: d.folderName || row.folderName || undefined,
-        startTime: d.startTime || row.startTime || '',
-        endTime: d.endTime || row.endTime || '',
-        durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : (parseInt(d.durationMinutes || row.durationMinutes) || 45),
-        questionCount: typeof d.questionCount === 'number' ? d.questionCount : (typeof row.questionCount === 'number' ? row.questionCount : (parseInt(d.questionCount || row.questionCount) || (Array.isArray(d.questions) ? d.questions.length : 0))),
-        attemptCount: typeof d.attemptCount === 'number' ? d.attemptCount : (parseInt(d.attemptCount || row.attemptCount) || 0),
-        createdAt: d.createdAt || row.createdAt || new Date().toISOString(),
-        isPublished: d.isPublished === true || d.isPublished === 'true' || row.isPublished === true || row.isPublished === 'true',
-        isMonitored: d.isMonitored === true || d.isMonitored === 'true' || row.isMonitored === true || row.isMonitored === 'true',
-        isUnlisted: d.isUnlisted === true || d.isUnlisted === 'true' || row.isUnlisted === true || row.isUnlisted === 'true',
-        targetType: d.targetType || row.targetType || 'all',
-        assignedClassIds: Array.isArray(d.assignedClassIds) ? d.assignedClassIds : (Array.isArray(row.assignedClassIds) ? row.assignedClassIds : []),
-        assignedClasses: Array.isArray(d.assignedClasses) ? d.assignedClasses : (Array.isArray(row.assignedClasses) ? row.assignedClasses : []),
-        maxAttempts: typeof d.maxAttempts === 'number' ? d.maxAttempts : (typeof row.maxAttempts === 'number' ? row.maxAttempts : 2),
-        allowReview: d.allowReview ?? row.allowReview ?? true,
-        orderIndex: typeof d.orderIndex === 'number' ? d.orderIndex : (typeof row.orderIndex === 'number' ? row.orderIndex : 0),
+        grade: String(row.grade || d.grade || '12') as Grade,
+        title: row.title || d.title || 'Đề thi',
+        description: row.description || d.description || '',
+        type: row.type || d.type || 'practice',
+        academicYear: row.academicYear || d.academicYear || '',
+        category: row.category || d.category || '',
+        folderId: row.folderId || d.folderId || undefined,
+        folderName: row.folderName || d.folderName || undefined,
+        startTime: row.startTime || d.startTime || '',
+        endTime: row.endTime || d.endTime || '',
+        durationMinutes: typeof row.durationMinutes === 'number' ? row.durationMinutes : (typeof d.durationMinutes === 'number' ? d.durationMinutes : (parseInt(row.durationMinutes || d.durationMinutes) || 45)),
+        questionCount: typeof row.questionCount === 'number' ? row.questionCount : (typeof d.questionCount === 'number' ? d.questionCount : (parseInt(row.questionCount || d.questionCount) || (Array.isArray(d.questions) ? d.questions.length : 0))),
+        attemptCount: typeof row.attemptCount === 'number' ? row.attemptCount : (typeof d.attemptCount === 'number' ? d.attemptCount : (parseInt(row.attemptCount || d.attemptCount) || 0)),
+        createdAt: row.createdAt || d.createdAt || new Date().toISOString(),
+        isPublished: row.isPublished === true || row.isPublished === 'true' || d.isPublished === true || d.isPublished === 'true',
+        isMonitored: row.isMonitored === true || row.isMonitored === 'true' || d.isMonitored === true || d.isMonitored === 'true',
+        isUnlisted: row.isUnlisted === true || row.isUnlisted === 'true' || d.isUnlisted === true || d.isUnlisted === 'true',
+        targetType: row.targetType || d.targetType || 'all',
+        assignedClassIds: Array.isArray(row.assignedClassIds) ? row.assignedClassIds : (Array.isArray(d.assignedClassIds) ? d.assignedClassIds : []),
+        assignedClasses: Array.isArray(row.assignedClasses) ? row.assignedClasses : (Array.isArray(d.assignedClasses) ? d.assignedClasses : []),
+        maxAttempts: typeof row.maxAttempts === 'number' ? row.maxAttempts : (typeof d.maxAttempts === 'number' ? d.maxAttempts : 2),
+        allowReview: row.allowReview ?? d.allowReview ?? true,
+        orderIndex: typeof row.orderIndex === 'number' ? row.orderIndex : (typeof d.orderIndex === 'number' ? d.orderIndex : 0),
         questions: [] // Tuyệt đối không tải mảng câu hỏi ở metadata để tiết kiệm bộ nhớ và băng thông
     };
 };
@@ -477,10 +452,14 @@ export const getQuizzesMetadataPage = async (page: number, pageSize: number = 20
     const to = from + pageSize - 1;
 
     let query = supabase.from('quizzes')
-      .select('*', { count: 'exact' })
+      .select(QUIZ_METADATA_PROJECTION, { count: 'exact' })
       .order('id', { ascending: false })
       .range(from, to);
     
+    if (grade && grade !== 'all') {
+      query = query.or(`grade.eq.${grade},grade.eq.all,grade.is.null,data->>grade.eq.${grade}`);
+    }
+
     const { data, count, error } = await query;
     if (error) throw error;
     
@@ -611,11 +590,11 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
 
     while (hasMore) {
         let query = supabase.from('quizzes')
-            .select('*')
+            .select(QUIZ_METADATA_PROJECTION)
             .range(from, from + step - 1);
             
         if (grade && grade !== 'all') {
-            query = query.or(`grade.eq.${grade},grade.eq.all,grade.is.null`);
+            query = query.or(`grade.eq.${grade},grade.eq.all,grade.is.null,data->>grade.eq.${grade}`);
         }
 
         try {
@@ -625,7 +604,7 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
         const { data, error } = await query;
         if (error) {
             console.warn("Lỗi query getQuizzesMetadata:", error);
-            const fallbackQuery = await supabase.from('quizzes').select('*');
+            const fallbackQuery = await supabase.from('quizzes').select(QUIZ_METADATA_PROJECTION);
             if (fallbackQuery.data && fallbackQuery.data.length > 0) {
               allQuizzes = fallbackQuery.data;
             }
