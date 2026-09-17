@@ -246,9 +246,15 @@ export default function QuizList({
         return false;
     };
 
-    // Đếm số đề trong từng thư mục (Đếm chính xác tuyệt đối, khớp với khi mở thư mục)
+    // Đếm số đề trong từng thư mục (Đếm chính xác tuyệt đối, khớp với khi mở thư mục & niên khóa)
     const getFolderQuizCount = (folder: QuizFolder) => {
-        return uniqueQuizzes.filter(q => isQuizInFolder(q, folder)).length;
+        return uniqueQuizzes.filter(q => {
+            const inFolder = isQuizInFolder(q, folder);
+            if (!inFolder) return false;
+            const matchYear = !qAcademicYearFilter || qAcademicYearFilter === 'all' || 
+              (qAcademicYearFilter === 'none' ? !q.academicYear : (q.academicYear === qAcademicYearFilter || (!q.academicYear && qAcademicYearFilter === currentAcademicYear)));
+            return matchYear;
+        }).length;
     };
 
     // Số đề chưa phân thư mục
@@ -258,9 +264,11 @@ export default function QuizList({
             if (!isUnassigned) return false;
             const matchGrade = qGradeFilter === 'all' || !q.grade || q.grade === 'all' || String(q.grade) === String(qGradeFilter);
             const matchChapter = qChapterFilter === 'all' || (q.category && q.category.trim().toLowerCase() === qChapterFilter.trim().toLowerCase());
-            return matchGrade && matchChapter;
+            const matchYear = !qAcademicYearFilter || qAcademicYearFilter === 'all' || 
+              (qAcademicYearFilter === 'none' ? !q.academicYear : (q.academicYear === qAcademicYearFilter || (!q.academicYear && qAcademicYearFilter === currentAcademicYear)));
+            return matchGrade && matchChapter && matchYear;
         });
-    }, [uniqueQuizzes, folders, qGradeFilter, qChapterFilter]);
+    }, [uniqueQuizzes, folders, qGradeFilter, qChapterFilter, qAcademicYearFilter, currentAcademicYear]);
 
     // Lọc danh sách đề thi tổng thể
     const filtered = useMemo(() => {
@@ -526,11 +534,10 @@ export default function QuizList({
                     >
                         <option value="all">🗄️ TẤT CẢ NIÊN KHÓA ({uniqueQuizzes.length} ĐỀ)</option>
                         <option value={currentAcademicYear}>⭐ NIÊN KHÓA {currentAcademicYear} (HIỆN HÀNH)</option>
-                        <option value="2026-2027">📅 NĂM HỌC 2026-2027</option>
-                        <option value="2025-2026">📅 NĂM HỌC 2025-2026</option>
-                        <option value="2024-2025">📅 NĂM HỌC 2024-2025</option>
-                        <option value="2027-2028">📅 NĂM HỌC 2027-2028</option>
-                        {availableYears.filter(y => ![currentAcademicYear, '2025-2026', '2024-2025', '2026-2027', '2027-2028'].includes(y)).map(yr => (
+                        {['2027-2028', '2026-2027', '2025-2026', '2024-2025'].filter(y => y !== currentAcademicYear).map(yr => (
+                            <option key={yr} value={yr}>📅 NĂM HỌC {yr}</option>
+                        ))}
+                        {availableYears.filter(y => ![currentAcademicYear, '2027-2028', '2026-2027', '2025-2026', '2024-2025'].includes(y)).map(yr => (
                             <option key={yr} value={yr}>📅 NĂM HỌC {yr}</option>
                         ))}
                         <option value="none">⚠️ CHƯA GẮN NĂM</option>
@@ -539,8 +546,10 @@ export default function QuizList({
                         className="flex-1 px-4 py-3 bg-white border rounded-xl text-[10px] font-black uppercase outline-none" 
                         value={qGradeFilter} 
                         onChange={e => { 
-                            setQGradeFilter(e.target.value as any); 
-                            setQChapterFilter('all'); 
+                            const newGrade = e.target.value as any;
+                            setQGradeFilter(newGrade); 
+                            const chapterOfNewGrade = chapters.find(c => newGrade === 'all' || String(c.grade) === String(newGrade))?.name || 'all';
+                            setQChapterFilter(chapterOfNewGrade); 
                             setActiveFolderId(null);
                         }}
                     >
