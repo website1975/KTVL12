@@ -548,6 +548,35 @@ export const updateQuizInCache = (updatedQuiz: Quiz) => {
   });
 };
 
+// Xóa sạch tất cả bộ nhớ đệm (Memory, localStorage, sessionStorage) để tải dữ liệu mới nhất 100% từ Server
+export const clearAllLocalCaches = () => {
+  for (const k of Object.keys(memoryCache)) {
+    delete memoryCache[k];
+  }
+  quizDetailCache.clear();
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('quizzes_') || k.startsWith('chapters_') || k.startsWith('quiz_folders_') || k.startsWith('eduquiz_admin_quiz_filters') || k.startsWith('results_') || k.startsWith('classes_') || k.startsWith('users_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.clear();
+    }
+  } catch (e) {}
+};
+
+// Chỉ xóa cache khi người dùng bấm nút "Xóa Cache & Đồng bộ"
+// try {
+//   clearAllLocalCaches();
+// } catch (e) {}
+
 // Xóa 1 đề thi khỏi Cache Memory trực tiếp
 export const removeQuizFromCache = (quizId: string) => {
   quizDetailCache.delete(quizId);
@@ -574,20 +603,6 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
     return memoryCache[cacheKey].data;
   }
 
-  // Kiểm tra localStorage / sessionStorage để khi load/F5 có dữ liệu hiển thị tức thì
-  try {
-    if (!forceRefresh && typeof localStorage !== 'undefined') {
-      const stored = localStorage.getItem(cacheKey) || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(cacheKey) : null);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
-          memoryCache[cacheKey] = parsed;
-          return parsed.data;
-        }
-      }
-    }
-  } catch (e) {}
-
   const fetchPromise = async (): Promise<Quiz[]> => {
     let allQuizzes: any[] = [];
     let from = 0;
@@ -599,6 +614,10 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
             .select('*')
             .range(from, from + step - 1);
             
+        if (grade && grade !== 'all') {
+            query = query.or(`grade.eq.${grade},grade.eq.all,grade.is.null`);
+        }
+
         try {
           query = query.order('id', { ascending: false });
         } catch {}
@@ -631,31 +650,11 @@ export const getQuizzesMetadata = async (grade?: Grade, forceRefresh: boolean = 
 
     const cachePayload = { data: mapped, expires: Date.now() + CACHE_TTL };
     memoryCache[cacheKey] = cachePayload;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(cacheKey, JSON.stringify(cachePayload));
-      }
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(cacheKey, JSON.stringify(cachePayload));
-      }
-    } catch (e) {}
-
     return mapped;
   };
 
-  // Lấy dữ liệu từ cache local sẵn có làm fallback nếu mạng quá chậm
-  let fallbackData: Quiz[] = [];
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem(cacheKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed?.data)) fallbackData = parsed.data;
-      }
-    }
-  } catch {}
-
-  return withTimeout(fetchPromise(), 6000, fallbackData);
+  const cached = memoryCache[cacheKey]?.data || [];
+  return withTimeout(fetchPromise(), 6000, cached);
 };
 
 export const getQuizzes = async (grade?: Grade, forceRefresh: boolean = false): Promise<Quiz[]> => {
@@ -759,11 +758,12 @@ export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
 };
 
 // Helper tính toán Niên khóa / Năm học hiện hành theo lịch Việt Nam (tháng 9 bắt đầu năm học mới)
-// Ví dụ: Từ 01/09/2026 đến 31/08/2027 => Niên khóa 2026-2027
-// Trước 01/09/2026 (ví dụ tháng 5/2026) => Niên khóa 2025-2026
+// Quy tắc: Từ 01/09 đến 31/08 năm sau:
+// - Từ 01/09/2025 đến 31/08/2026 => Niên học 2025-2026
+// - Qua ngày 01/09/2026 đến 31/08/2027 => Niên học 2026-2027
 export const getCurrentAcademicYear = (date: Date = new Date()): string => {
   const currentYear = date.getFullYear();
-  const currentMonth = date.getMonth() + 1; // 1-12
+  const currentMonth = date.getMonth() + 1; // 1 (Tháng 1) đến 12 (Tháng 12)
   if (currentMonth >= 9) {
     return `${currentYear}-${currentYear + 1}`;
   } else {
