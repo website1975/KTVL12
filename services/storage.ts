@@ -1457,20 +1457,21 @@ export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{
             }
         }
 
-        // 4. Gắn cờ isSyncedToBank: true cho các đề thi vừa được quét xong
+        // 4. Gắn cờ isSyncedToBank: true cho các đề thi vừa được quét xong (thực thi song song nhanh chóng)
         const nowIso = new Date().toISOString();
-        for (const row of pendingQuizRows) {
+        const updatePromises = pendingQuizRows.map((row: any) => {
             const quiz = row.data as Quiz;
             const updatedQuiz: Quiz = {
                 ...quiz,
                 isSyncedToBank: true,
                 syncedToBankAt: nowIso
             };
-            await supabase.from('quizzes').update({
+            return supabase!.from('quizzes').update({
                 data: updatedQuiz,
                 grade: row.grade || quiz.grade
             }).eq('id', row.id);
-        }
+        });
+        await Promise.all(updatePromises);
 
         return { 
             total: totalScanned, 
