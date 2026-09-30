@@ -4,6 +4,7 @@ import {
   X, Copy, Check, ExternalLink, Image as ImageIcon, Link2, 
   Layers, CheckSquare, Square, Eye, ImagePlus, ArrowRight, Sparkles
 } from 'lucide-react';
+import { getAllQuestionImages } from '../../services/imageUtils';
 
 export interface QuizImageItem {
   url: string;
@@ -37,7 +38,7 @@ export default function QuizImageGalleryModal({
   const [batchSourceUrl, setBatchSourceUrl] = useState<string | null>(null);
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
 
-  // Tổng hợp tất cả ảnh unique trong đề
+  // Tổng hợp tất cả ảnh unique trong đề (bao gồm imageUrl, context, text, solution)
   const uniqueImages: QuizImageItem[] = useMemo(() => {
     const map = new Map<string, { qIds: string[]; labels: string[] }>();
 
@@ -59,15 +60,17 @@ export default function QuizImageGalleryModal({
         label = `Câu ${shortCount} (P.III)`;
       }
 
-      if (q.imageUrl && q.imageUrl.trim()) {
-        const u = q.imageUrl.trim();
+      const qImages = getAllQuestionImages(q);
+      qImages.forEach(u => {
         if (!map.has(u)) {
           map.set(u, { qIds: [], labels: [] });
         }
         const item = map.get(u)!;
-        item.qIds.push(q.id);
-        item.labels.push(label);
-      }
+        if (!item.qIds.includes(q.id)) {
+          item.qIds.push(q.id);
+          item.labels.push(label);
+        }
+      });
     });
 
     const result: QuizImageItem[] = [];

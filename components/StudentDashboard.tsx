@@ -6,7 +6,7 @@ import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText } from 'lucide-react';
+import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes, differenceInMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -331,7 +331,34 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
   };
 
-  const now = new Date();
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  useEffect(() => {
+    // Cập nhật thời gian mỗi 30 giây để tự động ẩn các đề thi vừa kết thúc thời gian mở
+    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const now = currentTime;
+
+  // Hàm kiểm tra đề thi đã hết thời hạn mở đề / làm bài chưa
+  const isQuizExpired = useCallback((q: Quiz, time: Date = currentTime): boolean => {
+    const startX = q.startTime ? new Date(q.startTime) : null;
+    const endY = q.endTime ? new Date(q.endTime) : null;
+    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+
+    if (startX) {
+      if (isFlexibleWindow && endY) {
+        return isAfter(time, endY);
+      } else {
+        const globalDeadline = addMinutes(startX, q.durationMinutes);
+        return isAfter(time, globalDeadline);
+      }
+    }
+    if (endY) {
+      return isAfter(time, endY);
+    }
+    return false;
+  }, [currentTime]);
 
   // Logic kiểm tra lộ trình học tập (Prerequisite Path)
   const getQuizStatus = (q: Quiz) => {
@@ -351,7 +378,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             prev.category === q.category && 
             (prev.orderIndex ?? 0) > 0 && 
             (prev.orderIndex ?? 0) < qOrder &&
-            (!prev.endTime || isBefore(now, new Date(prev.endTime)))
+            !isQuizExpired(prev, currentTime)
         )
         .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0));
     
@@ -388,6 +415,45 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     });
   }, [quizzes, gradeFilter, chapterFilter, academicYearFilter, user.classId, currentAcademicYear]);
 
+  // Bộ lọc và hiển thị danh sách các đề đã làm ở phía dưới
+  const [resultsFilter, setResultsFilter] = useState<'all' | 'expired' | 'active'>('all');
+  const [resultsDisplayCount, setResultsDisplayCount] = useState(15);
+
+  const enrichedResults = useMemo(() => {
+    return results.map(r => {
+      const quiz = quizzes.find(q => q.id === r.quizId);
+      const isExpired = quiz ? isQuizExpired(quiz, currentTime) : true;
+      const sameQuizAttempts = results
+        .filter(item => item.quizId === r.quizId)
+        .sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+      const attemptIndex = sameQuizAttempts.findIndex(item => item.id === r.id);
+      const attemptNumber = attemptIndex >= 0 ? attemptIndex + 1 : 1;
+      const hasMultipleAttempts = sameQuizAttempts.length > 1;
+
+      return {
+        ...r,
+        quiz,
+        isExpired,
+        attemptNumber,
+        hasMultipleAttempts,
+        maxAttempts: quiz?.maxAttempts ?? (quiz?.type === 'practice' ? 99 : 2)
+      };
+    });
+  }, [results, quizzes, currentTime, isQuizExpired]);
+
+  const filteredResults = useMemo(() => {
+    if (resultsFilter === 'expired') {
+      return enrichedResults.filter(item => item.isExpired);
+    }
+    if (resultsFilter === 'active') {
+      return enrichedResults.filter(item => !item.isExpired);
+    }
+    return enrichedResults;
+  }, [enrichedResults, resultsFilter]);
+
+  const expiredResultsCount = useMemo(() => enrichedResults.filter(r => r.isExpired).length, [enrichedResults]);
+  const activeResultsCount = useMemo(() => enrichedResults.filter(r => !r.isExpired).length, [enrichedResults]);
+
   if (activeQuiz) {
     return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
   }
@@ -396,8 +462,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return <QuickPractice quiz={activePracticeQuiz} student={user} onExit={handleExitQuiz} />;
   }
 
-  const testQuizzes = filteredQuizzes.filter(q => q.type === 'test');
-  const practiceQuizzes = filteredQuizzes.filter(q => q.type === 'practice' && (!q.endTime || isBefore(now, new Date(q.endTime))));
+  // Tự động ẩn các đề đã hết hạn mở khỏi màn hình học sinh dạng thẻ (chỉ hiển thị những đề còn trong thời gian mở)
+  const testQuizzes = filteredQuizzes.filter(q => q.type === 'test' && !isQuizExpired(q, currentTime));
+  const practiceQuizzes = filteredQuizzes.filter(q => q.type === 'practice' && !isQuizExpired(q, currentTime));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20">
@@ -743,51 +810,214 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
           </div>
       </section>
 
-      <section className="pt-10">
-          <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2"><History size={20} className="text-blue-600"/> Lịch sử nộp bài gần đây</h2>
-              <div className="h-px flex-1 bg-slate-100"></div>
+      {/* Khi không có đề thi nào đang trong thời gian mở */}
+      {testQuizzes.length === 0 && practiceQuizzes.length === 0 && (
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-10 text-center shadow-sm">
+              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-3">
+                  <FileText size={24} />
+              </div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Không có đề thi hoặc bài luyện tập nào đang mở</h3>
+              <p className="text-xs text-slate-500 font-medium max-w-md mx-auto mt-1">
+                  Các đề thi trong mục này hiện đã kết thúc thời hạn mở hoặc chưa đến giờ làm bài. Học sinh có thể xem lại kết quả các bài đã làm ở danh sách phía dưới.
+              </p>
           </div>
+      )}
+
+      {/* Danh sách các đề đã làm & Lịch sử nộp bài (Bao gồm các đề đã hết hạn mở) */}
+      <section className="pt-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner shrink-0">
+                      <History size={20} />
+                  </div>
+                  <div>
+                      <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                          Danh sách các đề đã làm & Lịch sử nộp bài
+                          {results.length > 0 && (
+                              <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-black text-[9px] rounded-full uppercase">
+                                  {results.length} bài
+                              </span>
+                          )}
+                      </h2>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          Tất cả các đề đã hoàn thành (bao gồm đề đã hết hạn mở đề) và kết quả chi tiết
+                      </p>
+                  </div>
+              </div>
+
+              {/* Bộ lọc trạng thái đề đã làm */}
+              {results.length > 0 && (
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start md:self-auto">
+                      <button
+                          onClick={() => setResultsFilter('all')}
+                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${
+                              resultsFilter === 'all'
+                                  ? 'bg-white text-slate-800 shadow-sm'
+                                  : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                          Tất cả ({enrichedResults.length})
+                      </button>
+                      <button
+                          onClick={() => setResultsFilter('expired')}
+                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all flex items-center gap-1 ${
+                              resultsFilter === 'expired'
+                                  ? 'bg-white text-slate-800 shadow-sm'
+                                  : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                          <Lock size={10} className="text-slate-400" />
+                          Đã hết hạn ({expiredResultsCount})
+                      </button>
+                      <button
+                          onClick={() => setResultsFilter('active')}
+                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all flex items-center gap-1 ${
+                              resultsFilter === 'active'
+                                  ? 'bg-white text-slate-800 shadow-sm'
+                                  : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                          <Zap size={10} className="text-emerald-500" />
+                          Đang mở ({activeResultsCount})
+                      </button>
+                  </div>
+              )}
+          </div>
+
           <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
               <table className="w-full text-left">
                   <thead>
                       <tr className="bg-slate-50 border-b text-[9px] font-black uppercase tracking-widest text-slate-400">
-                          <th className="p-6">Tên đề thi</th>
+                          <th className="p-6">Tên đề thi & Trạng thái</th>
+                          <th className="p-6 text-center">Phân loại</th>
                           <th className="p-6 text-center">Thời điểm nộp</th>
                           <th className="p-6 text-center">Kết quả</th>
                           <th className="p-6 text-center">Hành động</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y">
-                      {results.slice(0, 10).map((r, idx) => {
-                          const quiz = quizzes.find(q => q.id === r.quizId);
-                          const sameQuizAttempts = results.filter(item => item.quizId === r.quizId).sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
-                          const attemptIndex = sameQuizAttempts.findIndex(item => item.id === r.id);
-                          const attemptNumber = attemptIndex >= 0 ? attemptIndex + 1 : null;
-                          const hasMultipleAttempts = sameQuizAttempts.length > 1;
-
+                      {filteredResults.slice(0, resultsDisplayCount).map((r) => {
+                          const quiz = r.quiz;
                           return (
-                              <tr key={r.id} className="hover:bg-slate-50 transition-colors group">
+                              <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
                                   <td className="p-6">
-                                      <div className="flex items-center gap-2">
-                                          <span className="font-black text-slate-800 uppercase text-xs leading-tight">{quiz?.title || 'Đề thi đã bị xóa'}</span>
-                                          {hasMultipleAttempts && attemptNumber && (
-                                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[8px] font-black uppercase shrink-0">
-                                                  Lần {attemptNumber}
+                                      <div className="space-y-1.5 max-w-md">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                              <span className="font-black text-slate-800 uppercase text-xs leading-snug">
+                                                  {quiz?.title || 'Đề thi đã lưu trữ'}
                                               </span>
-                                          )}
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                              {/* Huy hiệu tình trạng hết hạn của đề */}
+                                              {r.isExpired ? (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[8px] font-black uppercase">
+                                                      <Lock size={9} className="text-slate-400" /> Đã hết hạn mở
+                                                  </span>
+                                              ) : (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[8px] font-black uppercase">
+                                                      <Zap size={9} className="text-emerald-500" /> Đang mở
+                                                  </span>
+                                              )}
+
+                                              {/* Lần làm bài nếu có nhiều lần */}
+                                              {r.hasMultipleAttempts && (
+                                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[8px] font-black uppercase shrink-0">
+                                                      Lần {r.attemptNumber}/{r.maxAttempts}
+                                                  </span>
+                                              )}
+
+                                              {quiz?.category && (
+                                                  <span className="text-[9px] text-slate-400 font-medium truncate max-w-[200px]">
+                                                      • {quiz.category}
+                                                  </span>
+                                              )}
+                                          </div>
                                       </div>
                                   </td>
-                                  <td className="p-6 text-center text-xs font-bold text-slate-500">{format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}</td>
-                                  <td className="p-6 text-center"><span className={`text-sm font-black ${r.score >= 8 ? 'text-emerald-600' : r.score >= 5 ? 'text-blue-600' : 'text-orange-600'}`}>{r.score.toFixed(2)}</span></td>
-                                  <td className="p-6 text-center"><button onClick={() => handleViewResult(r)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm">Xem lại <ChevronRight size={14}/></button></td>
+                                  <td className="p-6 text-center">
+                                      <span className={`inline-block px-2.5 py-1 rounded-xl text-[8px] font-black uppercase border ${
+                                          quiz?.type === 'test' 
+                                              ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                                      }`}>
+                                          {quiz?.type === 'test' ? 'Đề thi định kỳ' : 'Luyện tập tự do'}
+                                      </span>
+                                  </td>
+                                  <td className="p-6 text-center">
+                                      <p className="text-xs font-bold text-slate-700">
+                                          {format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}
+                                      </p>
+                                      {r.durationSeconds ? (
+                                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">
+                                              Làm trong {Math.floor(r.durationSeconds / 60)} phút {r.durationSeconds % 60}s
+                                          </p>
+                                      ) : null}
+                                  </td>
+                                  <td className="p-6 text-center">
+                                      <span className={`inline-flex items-center justify-center min-w-[50px] px-3 py-1 rounded-xl text-sm font-black border ${
+                                          r.score >= 8 
+                                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                                              : r.score >= 5 
+                                              ? 'text-blue-700 bg-blue-50 border-blue-200' 
+                                              : 'text-orange-700 bg-orange-50 border-orange-200'
+                                      }`}>
+                                          {r.score.toFixed(2)}đ
+                                      </span>
+                                  </td>
+                                  <td className="p-6 text-center">
+                                      <button 
+                                          onClick={() => handleViewResult(r)} 
+                                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95"
+                                          title="Xem lại bài thi đã nộp, đáp án và lời giải"
+                                      >
+                                          <Eye size={12}/> Xem lại <ChevronRight size={12}/>
+                                      </button>
+                                  </td>
                               </tr>
                           );
                       })}
                   </tbody>
               </table>
-              {results.length === 0 && !isLoading && (
-                  <div className="p-20 text-center text-slate-300 font-black uppercase text-[10px] italic">Bạn chưa thực hiện bài thi nào</div>
+
+              {filteredResults.length === 0 && (
+                  <div className="p-16 text-center text-slate-400 font-black uppercase text-[10px] italic">
+                      {results.length === 0 ? 'Bạn chưa thực hiện bài thi nào' : 'Không có bài làm nào trong mục này'}
+                  </div>
+              )}
+
+              {/* Điều khiển phân trang / mở rộng danh sách */}
+              {filteredResults.length > 15 && (
+                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-500">
+                      <span>
+                          Đang hiển thị {Math.min(resultsDisplayCount, filteredResults.length)} / {filteredResults.length} bài
+                      </span>
+                      <div className="flex items-center gap-2">
+                          {filteredResults.length > resultsDisplayCount && (
+                              <>
+                                  <button
+                                      onClick={() => setResultsDisplayCount(prev => prev + 15)}
+                                      className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
+                                  >
+                                      Xem thêm (+15)
+                                  </button>
+                                  <button
+                                      onClick={() => setResultsDisplayCount(filteredResults.length)}
+                                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-blue-700 transition-colors shadow-sm"
+                                  >
+                                      Xem tất cả ({filteredResults.length})
+                                  </button>
+                              </>
+                          )}
+                          {resultsDisplayCount > 15 && (
+                              <button
+                                  onClick={() => setResultsDisplayCount(15)}
+                                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase text-slate-500 hover:text-slate-800 transition-colors"
+                              >
+                                  Thu gọn
+                              </button>
+                          )}
+                      </div>
+                  </div>
               )}
           </div>
       </section>

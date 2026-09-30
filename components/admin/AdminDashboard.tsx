@@ -44,6 +44,7 @@ import StudentDetailModal from './StudentDetailModal';
 import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
+import SyncBankModal from './SyncBankModal';
 
 type AdminTab = 'quizzes' | 'classes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
 
@@ -82,6 +83,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncBankModalOpen, setIsSyncBankModalOpen] = useState(false);
   const [isSavingInProgress, setIsSavingInProgress] = useState(false);
 
   // Filters state with session memory
@@ -485,25 +487,51 @@ export default function AdminDashboard() {
 
   const loadBankDataIfNeeded = useCallback(async (grade?: Grade | 'all', forceRefresh: boolean = false) => {
     if (!isDatabaseConnected()) return;
-    const targetGrade = grade || (bGradeFilter !== 'all' ? bGradeFilter : '10');
+    const targetGrade = grade || quizGrade || (bGradeFilter !== 'all' ? bGradeFilter : 'all');
     setIsBankLoading(true);
     try {
       const [b, c] = await Promise.all([
-        getBankQuestions(targetGrade, forceRefresh),
+        getBankQuestions(targetGrade === 'all' ? 'all' : targetGrade, forceRefresh),
         getChapters(forceRefresh)
       ]);
-      setBankQuestions(b);
+      setBankQuestions(prev => {
+        const map = new Map<string, Question>();
+        prev.forEach((item, idx) => map.set(item.id || `q_prev_${idx}`, item));
+        b.forEach((item, idx) => map.set(item.id || `q_new_${idx}`, item));
+        return Array.from(map.values());
+      });
       if (c && c.length > 0) setChapters(c);
     } catch (e) {
       console.error("Lỗi tải ngân hàng câu hỏi:", e);
     } finally {
       setIsBankLoading(false);
     }
-  }, [bGradeFilter]);
+  }, [bGradeFilter, quizGrade]);
 
   const allAvailableQuestions = useMemo(() => {
-    return bankQuestions;
-  }, [bankQuestions]);
+    const map = new Map<string, Question>();
+    // 1. Toàn bộ câu hỏi từ bảng ngân hàng bank_questions
+    bankQuestions.forEach((item, idx) => {
+      map.set(item.id || `bank_${idx}`, item);
+    });
+    // 2. Tự động hợp nhất toàn bộ câu hỏi từ tất cả các đề thi trong CSDL (>1000 câu)
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((q, idx) => {
+          const key = q.id || `quiz_${quiz.id}_${idx}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              ...q,
+              quizGrade: q.quizGrade || quiz.grade,
+              chapterName: q.chapterName || quiz.category,
+              quizTitle: q.quizTitle || quiz.title
+            });
+          }
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [bankQuestions, quizzes]);
 
   // Khi chuyển Khối trong Ngân hàng câu hỏi (hoặc mở modal từ màn hình soạn đề), tự động tải câu hỏi khối tương ứng (có cache)
   useEffect(() => {
@@ -630,27 +658,27 @@ export default function AdminDashboard() {
   };
 
   const handleSyncBank = async (forceAll: boolean = false) => {
-    const confirmMsg = forceAll 
-      ? "Hệ thống sẽ quét lại TOÀN BỘ đề thi (bất kể đã đồng bộ hay chưa) và đối chiếu khử trùng lặp vào Ngân hàng. Tiếp tục?" 
-      : "Hệ thống sẽ quét các đề thi MỚI CHƯA ĐỒNG BỘ, tự động khử trùng lặp và đẩy vào Ngân hàng câu hỏi. Tiếp tục?";
-    if (!confirm(confirmMsg)) return;
     setIsSyncing(true);
     try {
       const stats = await syncQuizzesToBank(forceAll);
-      if (stats.syncedQuizzesCount === 0) {
+      setIsSyncBankModalOpen(false);
+      
+      if (stats.syncedQuizzesCount === 0 && !forceAll) {
         showAlert(
           "Dữ liệu đã cập nhật",
-          `Tất cả đề thi (${stats.totalQuizzes} đề) đều đã được đồng bộ vào Ngân hàng từ trước. Không có đề thi mới nào cần quét.`,
+          `Tất cả đề thi (${stats.totalQuizzes} đề) đều đã được đồng bộ vào Ngân hàng từ trước. Không có đề thi mới/sửa đổi nào cần quét. Nếu muốn quét lại từ đầu, bạn có thể chọn "Lựa chọn 2: Quét toàn bộ tất cả đề".`,
           "info"
         );
       } else {
+        const modeTitle = forceAll ? "Đồng bộ Toàn bộ Đề thi" : "Đồng bộ Đề thi Mới & Đã Sửa";
         showAlert(
-          "Đồng bộ Ngân hàng thành công",
-          `Đã quét ${stats.syncedQuizzesCount} đề thi mới (${stats.total} câu hỏi):\n• Thêm mới vào Ngân hàng: ${stats.added} câu\n• Cập nhật thông tin: ${stats.updated} câu\n• Đã có sẵn (bỏ qua trùng lặp): ${stats.skipped} câu\n• Đã gắn cờ đồng bộ cho ${stats.syncedQuizzesCount} đề thi.`,
+          `${modeTitle} thành công`,
+          `Kết quả quét ${stats.syncedQuizzesCount} đề thi (${stats.total} câu hỏi):\n• Thêm mới vào Ngân hàng: ${stats.added} câu\n• Cập nhật thông tin (mức độ/lời giải): ${stats.updated} câu\n• Bỏ qua câu đã có (khử trùng lặp): ${stats.skipped} câu\n• Đã gắn cờ đồng bộ cho ${stats.syncedQuizzesCount} đề thi.`,
           "success"
         );
       }
       loadTabData('bank');
+      loadTabData('quizzes');
     } catch (e) {
       showAlert("Lỗi đồng bộ", "Có lỗi xảy ra khi đồng bộ ngân hàng câu hỏi.", "error");
     } finally {
@@ -919,7 +947,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfExtract = async (e: React.ChangeEvent<HTMLInputElement>, includeSolutions: boolean = true) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsAiLoading(true);
@@ -928,7 +956,7 @@ export default function AdminDashboard() {
       reader.onload = async () => {
         try {
           const base64 = (reader.result as string).split(',')[1];
-          const newQs = await parseQuestionsFromPDF(base64);
+          const newQs = await parseQuestionsFromPDF(base64, includeSolutions);
           setQuestions([...questions, ...newQs]);
         } catch (error: any) {
           alert("Lỗi bóc tách PDF: " + (error.message || 'Lỗi xử lý'));
@@ -940,11 +968,11 @@ export default function AdminDashboard() {
     } catch (error: any) { alert(error.message); setIsAiLoading(false); }
   };
 
-  const handleTextExtract = async (text: string) => {
+  const handleTextExtract = async (text: string, includeSolutions: boolean = true) => {
       if (!text.trim()) return;
       setIsAiLoading(true);
       try {
-          const newQs = await parseQuestionsFromText(text);
+          const newQs = await parseQuestionsFromText(text, includeSolutions);
           setQuestions([...questions, ...newQs]);
       } catch (error: any) {
           alert(error.message);
@@ -1536,7 +1564,7 @@ export default function AdminDashboard() {
                     grade={quizGrade} 
                     setGrade={setQuizGrade} 
                     chapters={chapters}
-                    bankQuestions={bankQuestions}
+                    bankQuestions={allAvailableQuestions}
                     isBankLoading={isBankLoading}
                     onLoadBank={loadBankDataIfNeeded}
                     onGenerate={handleAiGenerate}
@@ -1622,7 +1650,7 @@ export default function AdminDashboard() {
                      )}
                    </div>
                    <button 
-                      onClick={() => handleSyncBank(false)} 
+                      onClick={() => setIsSyncBankModalOpen(true)} 
                       disabled={isSyncing}
                       className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-200 text-blue-600 rounded-xl font-black uppercase text-[10px] shadow-sm hover:bg-blue-50 transition-all disabled:opacity-50"
                    >
@@ -1665,6 +1693,16 @@ export default function AdminDashboard() {
       {selectedResultDetail && <ResultDetailModal isOpen={true} result={selectedResultDetail.result} quiz={selectedResultDetail.quiz} onClose={() => setSelectedResultDetail(null)} />}
       {previewQuiz && <QuizPreviewModal quiz={previewQuiz} onClose={() => setPreviewQuiz(null)} />}
       
+      {isSyncBankModalOpen && (
+        <SyncBankModal 
+          isOpen={isSyncBankModalOpen} 
+          onClose={() => setIsSyncBankModalOpen(false)} 
+          onSync={handleSyncBank} 
+          isSyncing={isSyncing} 
+          quizzes={quizzes} 
+        />
+      )}
+      
       {isBankOpen && (
         <div className="fixed inset-0 bg-slate-900/40 z-[2000] flex items-stretch justify-end">
              <div className="bg-white w-full h-full flex flex-col overflow-hidden shadow-2xl">
@@ -1673,9 +1711,20 @@ export default function AdminDashboard() {
                         <Database size={16} className="text-blue-500"/>
                         <h3 className="text-[11px] font-black uppercase italic">Chọn từ Ngân hàng</h3>
                     </div>
-                    <button onClick={() => setIsBankOpen(false)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-red-600 text-[10px] font-black uppercase flex items-center gap-1">
-                        <span>Đóng</span> <X size={14}/>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setIsSyncBankModalOpen(true)} 
+                          disabled={isSyncing}
+                          className="px-2.5 py-1.5 bg-blue-600/90 hover:bg-blue-600 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 transition-all text-white disabled:opacity-50"
+                          title="Cập nhật câu hỏi từ đề thi vào Ngân hàng"
+                        >
+                          <RefreshCw size={12} className={isSyncing ? "animate-spin" : ""}/>
+                          <span>Cập nhật từ đề thi</span>
+                        </button>
+                        <button onClick={() => setIsBankOpen(false)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-red-600 text-[10px] font-black uppercase flex items-center gap-1">
+                            <span>Đóng</span> <X size={14}/>
+                        </button>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 custom-scrollbar">
                     {isBankLoading ? (

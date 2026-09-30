@@ -12,9 +12,14 @@ export function shuffleArray<T>(array: T[]): T[] {
   return result;
 }
 
+const normalizeContext = (c?: string): string => {
+  if (!c) return '';
+  return c.replace(/\r\n/g, '\n').trim();
+};
+
 /**
  * Gom nhóm các câu hỏi có chung ngữ cảnh/lời dẫn (context) để khi xáo trộn,
- * các câu hỏi trong cùng chùm dữ liệu vẫn đi liền với nhau.
+ * các câu hỏi trong cùng chùm dữ liệu BẮT BUỘC đi liền với nhau và GIỮ NGUYÊN thứ tự nội bộ.
  */
 export function groupQuestionsByContext(questions: Question[]): Question[][] {
   const groups: Question[][] = [];
@@ -22,7 +27,7 @@ export function groupQuestionsByContext(questions: Question[]): Question[][] {
   let currentContext: string | undefined = undefined;
 
   for (const q of questions) {
-    const ctx = (q.context || '').trim();
+    const ctx = normalizeContext(q.context);
     if (ctx && currentContext && ctx === currentContext) {
       currentGroup.push(q);
     } else {
@@ -41,9 +46,8 @@ export function groupQuestionsByContext(questions: Question[]): Question[][] {
 
 /**
  * Xáo trộn thứ tự các câu hỏi thông minh theo 3 phần riêng biệt:
- * - Phần 1: Xáo trộn nội bộ trong Phần 1 (Trắc nghiệm nhiều lựa chọn - MCQ)
- * - Phần 2: Xáo trộn nội bộ trong Phần 2 (Trắc nghiệm Đúng/Sai - Group TF)
- * - Phần 3: Xáo trộn nội bộ trong Phần 3 (Trắc nghiệm Trả lời ngắn - Short Answer)
+ * - Các câu hỏi có Lời dẫn / Dữ liệu dùng chung (context) sẽ GIỮ NGUYÊN VỊ TRÍ CỐ ĐỊNH, không bị xáo trộn.
+ * - Các câu hỏi đơn lập (không có context) sẽ được xáo trộn ngẫu nhiên vào các vị trí còn lại.
  */
 export function shuffleQuestionsByParts(questions: Question[]): Question[] {
   if (!questions || questions.length === 0) return [];
@@ -54,11 +58,32 @@ export function shuffleQuestionsByParts(questions: Question[]): Question[] {
 
   const shufflePart = (partQuestions: Question[]): Question[] => {
     if (partQuestions.length <= 1) return partQuestions;
-    // Gom nhóm các câu có cùng dữ liệu dẫn/context
-    const grouped = groupQuestionsByContext(partQuestions);
-    // Xáo trộn thứ tự các nhóm câu hỏi
-    const shuffledGroups = shuffleArray(grouped);
-    return shuffledGroups.flat();
+
+    const result: (Question | null)[] = new Array(partQuestions.length).fill(null);
+    const freeQuestions: Question[] = [];
+
+    // 1. Giữ nguyên vị trí cố định cho các câu hỏi có chứa lời dẫn chung (context)
+    partQuestions.forEach((q, index) => {
+      const ctx = normalizeContext(q.context);
+      if (ctx) {
+        result[index] = q; // Cố định vị trí
+      } else {
+        freeQuestions.push(q);
+      }
+    });
+
+    // 2. Xáo trộn ngẫu nhiên các câu hỏi đơn lập không có context
+    const shuffledFree = shuffleArray(freeQuestions);
+
+    // 3. Điền các câu hỏi đã xáo vào các ô trống còn lại
+    let freeIdx = 0;
+    for (let i = 0; i < result.length; i++) {
+      if (result[i] === null) {
+        result[i] = shuffledFree[freeIdx++];
+      }
+    }
+
+    return result as Question[];
   };
 
   const shuffledMcq = shufflePart(mcqQuestions);

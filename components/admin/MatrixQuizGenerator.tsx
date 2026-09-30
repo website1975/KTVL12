@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Grade, Chapter, Question, QuestionType } from '../../types';
+import { Grade, Chapter, Question, QuestionType } from '@/types';
 import { 
     Grid3X3, Sparkles, Database, LayoutTemplate, Loader2, AlertTriangle, 
     CheckCircle2, CheckSquare, RefreshCw, Zap, Sliders, FileText, ArrowRight, RotateCcw,
     Layers, Plus, Minus, Info, ChevronDown, ChevronUp, Filter, HelpCircle
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { generateMissingQuestionsForChapter } from '../../services/gemini';
+import { generateMissingQuestionsForChapter } from '@/services/gemini';
 
 interface MatrixQuizGeneratorProps {
     grade: Grade;
@@ -14,7 +14,7 @@ interface MatrixQuizGeneratorProps {
     chapters: Chapter[];
     bankQuestions: Question[];
     isBankLoading?: boolean;
-    onLoadBank?: () => Promise<void>;
+    onLoadBank?: (grade?: Grade | 'all') => Promise<void> | void;
     onGenerateSuccess: (
         createdQuestions: Question[], 
         quizTitle: string, 
@@ -89,6 +89,42 @@ const normalizeLevel = (lvl: any): 'B' | 'H' | 'VD' | 'VDC' | '' => {
     return '';
 };
 
+// Nhận diện mức độ thực tế của câu hỏi (nếu trong CSDL chưa gán level)
+export const getEffectiveQuestionLevel = (q: Question): 'B' | 'H' | 'VD' | 'VDC' => {
+    const raw = normalizeLevel(q.level);
+    if (raw) return raw;
+
+    const text = ((q.text || '') + ' ' + (q.solution || '')).toLowerCase();
+    const type = normalizeQuestionType(q.type);
+
+    const hasNumbers = /\d+([,.]\d+)?\s*(m|cm|mm|kg|g|s|hz|v|a|w|j|n|t|wb|k|°c|pa|atm|mol|mev|ev|u)\b/i.test(text);
+    const hasEquations = /(\$|\=|\+|\-|\*|\/|\^|\_)/.test(text);
+    const isCalculation = hasNumbers && hasEquations;
+
+    if (type === 'short') {
+        return isCalculation ? 'VD' : 'H';
+    }
+
+    if (type === 'group-tf') {
+        return isCalculation ? 'VD' : 'H';
+    }
+
+    // MCQ
+    if (isCalculation) {
+        const numbersCount = (text.match(/\d+([,.]\d+)?/g) || []).length;
+        if (numbersCount >= 4 || /đồ thị|bảng biến thiên|cực đại|cực tiểu|giá trị lớn nhất|hệ số công suất/i.test(text)) {
+            return 'VDC';
+        }
+        return 'VD';
+    }
+
+    if (/khái niệm|định nghĩa|đơn vị|công thức nào sau đây|ký hiệu|phát biểu nào sau đây đúng|đặc điểm nào/i.test(text)) {
+        return 'B';
+    }
+
+    return 'H';
+};
+
 // Chuẩn hóa dạng câu hỏi
 export const normalizeQuestionType = (t: any): QuestionType => {
     if (!t) return 'mcq';
@@ -98,21 +134,210 @@ export const normalizeQuestionType = (t: any): QuestionType => {
     return 'mcq';
 };
 
-// Kiểm tra câu hỏi có khớp với chương
-const matchQuestionChapter = (q: Question, chId: string, chName: string): boolean => {
-    if (q.chapterId && q.chapterId === chId) return true;
-    const qCh = (q.chapterName || q.quizCategory || '').toLowerCase().trim();
-    const target = chName.toLowerCase().trim();
-    if (qCh === target) return true;
-    
-    // So khớp theo đầu số chương (VD: "Chương 1" khớp "Chương 1: VẬT LÝ NHIỆT")
-    const matchPrefix = target.match(/chương\s*(\d+)/i);
-    if (matchPrefix) {
-        const num = matchPrefix[1];
-        if (qCh.startsWith(`chương ${num}:`) || qCh.startsWith(`chương ${num} `) || qCh === `chương ${num}`) {
-            return true;
+// Hàm xác định số thứ tự chương (1, 2, 3, 4...) từ tên chương hoặc chủ đề môn Vật lí
+export const getChapterNumberFromName = (name: string, grade: Grade): number => {
+    if (!name) return 0;
+    const clean = name.toLowerCase().trim();
+    const normalized = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+
+    // 1. Kiểm tra tiền tố số "Chương X" hoặc "Chương X:"
+    const m = clean.match(/ch[uư][oơ]ng\s*(\d+)/i);
+    if (m && m[1]) return parseInt(m[1], 10);
+
+    // 2. Theo môn Vật lí 12
+    if (String(grade) === '12') {
+        if (/nhiet/i.test(normalized)) return 1;
+        if (/khi/i.test(normalized)) return 2;
+        if (/\btu\b|tu\s*truong/i.test(normalized)) return 3;
+        if (/hat\s*nhan|phong\s*xa/i.test(normalized)) return 4;
+    }
+    // 3. Theo môn Vật lí 11
+    else if (String(grade) === '11') {
+        if (/dao\s*dong/i.test(normalized)) return 1;
+        if (/song/i.test(normalized)) return 2;
+        if (/dien\s*truong|dien\s*tich/i.test(normalized)) return 3;
+        if (/dong\s*dien/i.test(normalized)) return 4;
+    }
+    // 4. Theo môn Vật lí 10
+    else if (String(grade) === '10') {
+        if (/chuyen\s*dong/i.test(normalized)) return 1;
+        if (/\bluc\b|newton|niuton/i.test(normalized)) return 2;
+        if (/nang\s*luong|\bcong\b/i.test(normalized)) return 3;
+        if (/dong\s*luong/i.test(normalized)) return 4;
+        if (/tron|bien\s*dang|moment/i.test(normalized)) return 5;
+    }
+
+    return 0;
+};
+
+// Hàm kiểm tra xem tên có phải là bài thi/kiểm tra/dạng nhãn (KTTX, KTCK, KTGK, LTĐH, ôn tập...) chứ không phải tên chương
+export const isExamOrNonChapterName = (rawName: string): boolean => {
+    if (!rawName) return true;
+    const name = rawName.toLowerCase().trim();
+    if (!name) return true;
+
+    // Chuẩn hóa bỏ dấu để bắt chính xác các từ viết tắt tiếng Việt không dấu hoặc có dấu
+    const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+
+    // 1. Kiểm tra các từ viết tắt và cụm từ bài thi/kiểm tra/luyện thi/đại học
+    const examRegex = /(kttx|ktgk|ktck|ktdk|kttk|kt15p|kt45p|kt1t|kt_tx|kt_gk|kt_ck|ltdh|on\s*thi|luyen\s*thi|thi\s*thu|de\s*thi|kiem\s*tra|giua\s*ky|cuoi\s*ky|thuong\s*xuyen|dinh\s*ky|15\s*phut|45\s*phut|1\s*tiet|hk\s*[12]|hoc\s*ky\s*[12]|mo\s*dau|chua\s*phan\s*loai|tong\s*hop|mac\s*dinh|dgnl|dgtd|thpt)/i;
+
+    if (examRegex.test(normalized)) {
+        // Ngoại lệ: Nếu có chữ 'chương' VÀ chứa chủ đề môn học thực sự thì mới giữ lại
+        const hasChapterWord = /chuong\s*\d+/i.test(normalized);
+        const hasPhysicsTopic = /nhiet|khi|tu\s*truong|hat\s*nhan|dao\s*dong|song|dien|chuyen\s*dong|luc|nang\s*luong|dong\s*luong|quang/i.test(normalized);
+        if (hasChapterWord && hasPhysicsTopic) {
+            return false;
+        }
+        return true;
+    }
+
+    // 2. Bắt các dạng tx, gk, ck, dh đứng độc lập hoặc kèm số/năm (VD: 'tx1', 'gk 2', 'ck-1', 'dh 2027', 'dh-2026')
+    if (/(^|\s|[-_])(tx|gk|ck|dh|thpt)(\s*[-_]?\s*(\d+|[ivx]+))?($|\s|[-_])/i.test(normalized)) {
+        return true;
+    }
+
+    return false;
+};
+
+// Danh mục chương chuẩn môn Vật lí theo Chương trình GDPT 2018
+export const STANDARD_CHAPTERS: Record<Grade, { id: string; name: string; grade: Grade; order: number }[]> = {
+    '12': [
+        { id: 'ch_12_1', name: 'Chương 1: Vật lí nhiệt', grade: '12', order: 1 },
+        { id: 'ch_12_2', name: 'Chương 2: Khí lí tưởng', grade: '12', order: 2 },
+        { id: 'ch_12_3', name: 'Chương 3: Từ trường', grade: '12', order: 3 },
+        { id: 'ch_12_4', name: 'Chương 4: Hạt nhân nguyên tử', grade: '12', order: 4 },
+    ],
+    '11': [
+        { id: 'ch_11_1', name: 'Chương 1: Dao động', grade: '11', order: 1 },
+        { id: 'ch_11_2', name: 'Chương 2: Sóng', grade: '11', order: 2 },
+        { id: 'ch_11_3', name: 'Chương 3: Điện trường', grade: '11', order: 3 },
+        { id: 'ch_11_4', name: 'Chương 4: Dòng điện không đổi', grade: '11', order: 4 },
+    ],
+    '10': [
+        { id: 'ch_10_1', name: 'Chương 1: Mở đầu & Mô tả chuyển động', grade: '10', order: 1 },
+        { id: 'ch_10_2', name: 'Chương 2: Lực và chuyển động (Động lực học)', grade: '10', order: 2 },
+        { id: 'ch_10_3', name: 'Chương 3: Năng lượng, công, công suất', grade: '10', order: 3 },
+        { id: 'ch_10_4', name: 'Chương 4: Động lượng', grade: '10', order: 4 },
+        { id: 'ch_10_5', name: 'Chương 5: Chuyển động tròn & Biến dạng', grade: '10', order: 5 },
+    ],
+    'all': []
+};
+
+// Nhận diện số chương từ nội dung câu hỏi Vật lí
+export const getInferredChapterNumber = (q: Question, grade: Grade): number => {
+    const combinedText = `${q.chapterName || ''} ${q.quizCategory || ''} ${q.text || ''} ${q.solution || ''} ${Array.isArray(q.options) ? q.options.join(' ') : ''}`.toLowerCase();
+
+    if (String(grade) === '12') {
+        // Chương 1: Vật lí nhiệt
+        if (
+            /nhi[eệ]t\s*[đd][oộ]|nhi[eệ]t\s*dung|n[oó]ng\s*ch[aả]y|h[oó]a\s*h[oơ]i|nhi[eệ]t\s*l[ư][ợ]ng|n[oộ]i\s*n[aă]ng|kelvin|celsius|nhi[eệ]t\s*k[eế]|truy[eề]n\s*nhi[eệ]t|s[oô]i|bay\s*h[oơ]i|[đd][oộ]\s*c\b|cal\b|joule|nhi[eệ]t\s*n[oó]ng|chuy[eể]n\s*th[eể]|n[oó]ng\s*ch[aả]y\s*ri[eê]ng|h[oó]a\s*h[oơ]i\s*ri[eê]ng|nhi[eệ]t\s*giai|nhi[eệ]t\s*[đd][oộ]\s*tuy[eệ]t\s*[đd][oố]i|nhi[eệ]t\s*l[ư][ợ]ng\s*to[aả]|nhi[eệ]t\s*l[ư][ợ]ng\s*thu/i.test(combinedText)
+        ) {
+            return 1;
+        }
+        // Chương 2: Khí lí tưởng / Vật lý chất khí
+        if (
+            /kh[ií]\s*l[yýí]\s*t[uư][ở]ng|ch[aấ]t\s*kh[ií]|[đd][aẳ]ng\s*nhi[eệ]t|[đd][aẳ]ng\s*t[ií]ch|[đd][aẳ]ng\s*[aá]p|boyle|bo-i-l[oơ]|charles|s[aá]c-l[oơ]|clapeyron|[aá]p\s*su[aấ]t|mol\s*kh[ií]|avogadro|ph[aâ]n\s*t[ử]\s*kh[ií]|b[iì]nh\s*k[ií]n|p1v1|h[aă]ng\s*s[oố]\s*kh[ií]|[đd][oộ]ng\s*h[oọ]c\s*ph[aâ]n\s*t[ử]|[đd][oộ]\s*kh[oô]ng\s*tuy[eệ]t|[aá]p\s*k[eế]|\bmol\b|kh[ií]\s*th[ự]c|ph[ư][ơng]\s*tr[iì]nh\s*tr[aạ]ng\s*th[aái]/i.test(combinedText)
+        ) {
+            return 2;
+        }
+        // Chương 3: Từ trường
+        if (
+            /t[uừ]\s*tr[uư][oờ]ng|l[ự]c\s*t[uừ]|c[aả]m\s*[ứ]ng\s*t[uừ]|lorentz|lo-ren-x[oơ]|t[uừ]\s*th[oô]ng|c[aả]m\s*[ứ]ng\s*[đd]i[eệ]n\s*t[uừ]|su[aấ]t\s*[đd]i[eệ]n\s*[đd][oộ]ng\s*c[aả]m\s*[ứ]ng|faraday|fara-[đd][aâ]y|lenz|len-x[oơ]|tesla|weber|nam\s*ch[aâ]m|cu[oộ]n\s*d[aâ]y|[oố]ng\s*d[aâ]y|foucault|fu-c[oô]|t[uừ]\s*ph[oổ]|n[aắ]m\s*tay\s*ph[aả]i|b[aà]n\s*tay\s*tr[aá]i|d[aâ]y\s*d[a\~]n\s*th[a8]ng|v[oò]ng\s*d[aâ]y|v[oò]ng\s*tr[oò]n|d[oò]ng\s*[đd]i[eệ]n\s*ch[aạ]y\s*qua|t[aâ]m\s*c[ủủa]*\s*v[oò]ng|thanh\s*(nh[oô]m|kim\s*lo[aạ]i|d[a\~]n\s*[đd]i[eệ]n)|cyclotron|quang\s*ph[oổ]\s*kh[oố]i/i.test(combinedText)
+        ) {
+            return 3;
+        }
+        // Chương 4: Hạt nhân nguyên tử / Vật lý hạt nhân
+        if (
+            /h[aạ]t\s*nh[aâ]n|proton|pr[oô]t[oô]n|neutron|n[oơ]tr[oô]n|nuclon|nucl[oô]n|nucl[eê][oô]n|ph[oó]ng\s*x[aạ]|chu\s*k[yỳi]\s*b[aá]n\s*r[a\~]|n[aă]ng\s*l[ư][ợ]ng\s*li[eê]n\s*k[eế]t|[đd][oộ]\s*h[uụ]t\s*kh[oố]i|alpha|beta|gamma|ph[aâ]n\s*h[aạ]ch|nhi[eệ]t\s*h[aạ]ch|ph[aả]n\s*[ứ]ng\s*h[aạ]t\s*nh[aâ]n|[đd][oồ]ng\s*v[iị]|mev|đơn vị u\b|tia\s*ph[oó]ng\s*x[aạ]|h[aạ]t\s*nh[aâ]n\s*(con|m[eẹ])|tia\s*(an-pha|b[eê]-ta|gam-ma)|b[ả]o\s*to[aà]n\s*s[oố]\s*kh[oố]i/i.test(combinedText)
+        ) {
+            return 4;
+        }
+    } else if (String(grade) === '11') {
+        // Chương 1: Dao động
+        if (/dao\s*[đd][oộ]ng|[đd]i[eề]u\s*h[oò]a|con\s*l[aắ]c|bi[eê]n\s*[đd][oộ]|t[aầ]n\s*s[oố]|pha\s*dao\s*[đd][oộ]ng|li\s*[đd][oộ]|t[aắ]t\s*d[aầ]n|c[ư][ỡ]ng\s*b[ứ]c|c[oộ]ng\s*h[ư][ở]ng/i.test(combinedText)) {
+            return 1;
+        }
+        // Chương 2: Sóng
+        if (/s[oó]ng|b[ư][ớ]c\s*s[oó]ng|giao\s*thoa|s[oó]ng\s*d[ừ]ng|s[oó]ng\s*[aâ]m|h[oạ]a\s*[aâ]m|c[ư][ờ]ng\s*[đd][oộ]\s*[aâ]m|n[uú]t\s*s[oó]ng|b[uụ]ng\s*s[oó]ng/i.test(combinedText)) {
+            return 2;
+        }
+        // Chương 3: Điện trường
+        if (/[đd]i[eệ]n\s*tr[uư][oờ]ng|[đd]i[eệ]n\s*t[ií]ch|coulomb|cu-l[oô]ng|[đd]i[eệ]n\s*th[eế]|hi[eệ]u\s*[đd]i[eệ]n\s*th[eế]|t[uụ]\s*[đd]i[eệ]n|[đd]i[eệ]n\s*dung/i.test(combinedText)) {
+            return 3;
+        }
+        // Chương 4: Dòng điện không đổi
+        if (/[đd][oò]ng\s*[đd]i[eệ]n|c[ư][ờ]ng\s*[đd][oộ]\s*[đd][oò]ng\s*[đd]i[eệ]n|ohm|[oô]m|[đd]i[eệ]n\s*tr[ở]|ngu[oồ]n\s*[đd]i[eệ]n|su[aấ]t\s*[đd]i[eệ]n\s*[đd][oộ]ng|[đd]o[aả]n\s*m[aạ]ch|c[oô]ng\s*su[aấ]t\s*[đd]i[eệ]n|joule-lenz|jun-len-x[oơ]/i.test(combinedText)) {
+            return 4;
+        }
+    } else if (String(grade) === '10') {
+        // Chương 1: Mô tả chuyển động
+        if (/chuy[eể]n\s*[đd][oộ]ng|v[aậ]n\s*t[oố]c|t[oố]c\s*[đd][oộ]|qu[a\~]ng\s*[đd][ư][ờ]ng|[đd][oộ]\s*d[iị]ch\s*chuy[eể]n|gia\s*t[oố]c|r[ơ]i\s*t[ự]\s*do|n[eé]m\s*ngang|[đd][oồ]\s*th[iị]/i.test(combinedText)) {
+            return 1;
+        }
+        // Chương 2: Lực và chuyển động
+        if (/l[ự]c|newton|niu-t[oơ]n|qu[aá]n\s*t[ií]nh|ma\s*s[aá]t|tr[oọ]ng\s*l[ự]c|[đd][aà]n\s*h[oồ]i|h[ợ]p\s*l[ự]c|c[aâ]n\s*b[a8]ng|m[a8]t\s*ph[a3]ng\s*nghi[eê]ng/i.test(combinedText)) {
+            return 2;
+        }
+        // Chương 3: Năng lượng & Công
+        if (/c[oô]ng|c[oô]ng\s*su[aấ]t|[đd][oộ]ng\s*n[aă]ng|th[eế]\s*n[aă]ng|c[oơ]\s*n[aă]ng|b[aả]o\s*to[aà]n\s*c[oơ]\s*n[aă]ng|watt|o[aá]t|hi[eệ]u\s*su[aấ]t/i.test(combinedText)) {
+            return 3;
+        }
+        // Chương 4: Động lượng
+        if (/[đd][oộ]ng\s*l[ư][ợ]ng|xung\s*l[ư][ợ]ng|b[aả]o\s*to[aà]n\s*[đd][oộ]ng\s*l[ư][ợ]ng|va\s*ch[aạ]m|t[eê]n\s*l[ử]a/i.test(combinedText)) {
+            return 4;
+        }
+        // Chương 5: Chuyển động tròn & Biến dạng
+        if (/chuy[eể]n\s*[đd][oộ]ng\s*tr[oò]n|t[oố]c\s*[đd][oộ]\s*g[oó]c|h[ư][ớ]ng\s*t[aâ]m|bi[eê]n\s*d[aạ]ng|hooke|h[uú]c|m[oô]men/i.test(combinedText)) {
+            return 5;
         }
     }
+
+    return 0;
+};
+
+// Kiểm tra câu hỏi có khớp với chương
+export const matchQuestionChapter = (
+    q: Question, 
+    chId: string, 
+    chName: string, 
+    grade: Grade, 
+    allChapters: { id: string; name: string }[]
+): boolean => {
+    // 1. Khớp theo chapterId chính xác
+    if (q.chapterId && q.chapterId === chId) return true;
+
+    const targetNum = getChapterNumberFromName(chName, grade);
+
+    // 2. So khớp trực tiếp tên chương nếu q.chapterName là tên chương hợp lệ (không phải nhãn thi cử)
+    const qCh = (q.chapterName || '').trim();
+    if (qCh && !isExamOrNonChapterName(qCh)) {
+        const qNum = getChapterNumberFromName(qCh, grade);
+        if (qNum > 0 && targetNum > 0 && qNum === targetNum) {
+            return true;
+        }
+        if (qCh.toLowerCase() === chName.toLowerCase().trim()) return true;
+    }
+
+    // 3. Phân loại câu hỏi dựa theo nội dung & từ khóa môn học vào số chương
+    const inferredNum = getInferredChapterNumber(q, grade);
+    if (inferredNum > 0 && targetNum > 0) {
+        return inferredNum === targetNum;
+    }
+
+    // 4. Fallback: Nếu câu hỏi có nhãn thi cử như "kttx - ktgk 1" hay "ltdh" và không có từ khóa đặc thù
+    // Phân bổ đều câu hỏi vào các chương theo chuỗi hash của ID câu hỏi để không bỏ sót câu hỏi nào trong ngân hàng
+    if (targetNum > 0 && allChapters.length > 0) {
+        const qIdentifier = q.id || q.bankOriginId || q.text || '';
+        let hash = 0;
+        for (let i = 0; i < qIdentifier.length; i++) {
+            hash = ((hash << 5) - hash) + qIdentifier.charCodeAt(i);
+            hash |= 0;
+        }
+        const chapterIdx = Math.abs(hash) % allChapters.length;
+        return allChapters[chapterIdx]?.id === chId;
+    }
+
     return false;
 };
 
@@ -137,12 +362,12 @@ export default function MatrixQuizGenerator({
     hasQuestionsInEditor,
     onCancel
 }: MatrixQuizGeneratorProps) {
-    // Tự động tải ngân hàng nếu chưa có dữ liệu
+    // Tự động tải ngân hàng khi khối thay đổi hoặc chưa có dữ liệu
     useEffect(() => {
-        if (bankQuestions.length === 0 && onLoadBank) {
-            onLoadBank();
+        if (onLoadBank) {
+            onLoadBank(grade);
         }
-    }, [bankQuestions.length, onLoadBank]);
+    }, [grade, onLoadBank]);
 
     const [quizTitle, setQuizTitle] = useState(`ĐỀ KIỂM TRA MA TRẬN VẬT LÝ ${grade}`);
     const [durationMinutes, setDurationMinutes] = useState(50);
@@ -164,35 +389,68 @@ export default function MatrixQuizGenerator({
         setQuizTitle(`ĐỀ KIỂM TRA MA TRẬN VẬT LÝ ${grade}`);
     }, [grade]);
 
-    // Danh sách các chương của khối này
+    // Danh sách các chương chỉ hiển thị TÊN CHƯƠNG THỰC TẾ (loại bỏ tuyệt đối KTTX, KTCK, KTGK, LTĐH, ôn tập...)
+    // Đối với Khối 12: Đảm bảo chỉ xuất hiện 4 chương kiến thức: Vật Lý nhiệt, Khí lí tưởng, Từ trường, Hạt nhân
     const displayChapters = useMemo(() => {
-        let list = chapters.filter(c => String(c.grade) === String(grade));
-        // Lọc bỏ các mục nhãn tổng hợp chung nếu có chương chi tiết
-        const detailed = list.filter(c => {
-            const name = (c.name || '').toLowerCase();
-            return !name.includes('ôn thi tx') && !name.includes('ôn gk') && !name.includes('luyện thi đh');
+        // 1. Lọc các chương trong DB thuộc khối này: loại bỏ KTTX, KTCK, LTĐH và phải thuộc các chương Vật lí của khối
+        const dbList = chapters.filter(c => String(c.grade) === String(grade));
+        const validDbChapters = dbList.filter(c => {
+            const rawName = c.name || (c as any).title || '';
+            if (isExamOrNonChapterName(rawName)) return false;
+            return getChapterNumberFromName(rawName, grade) > 0;
         });
-        if (detailed.length > 0) list = detailed;
 
-        // Nếu bảng chapters chưa có chương nào, trích xuất các chương thực tế từ ngân hàng
-        if (list.length === 0) {
-            const extractedMap = new Map<string, string>();
-            bankQuestions.forEach(q => {
-                const qGrade = String(q.quizGrade || (q as any).grade || '12');
-                if (qGrade === String(grade) && q.chapterName) {
-                    extractedMap.set(q.chapterName, q.chapterId || q.chapterName);
-                }
+        // 2. Danh sách chương chuẩn GDPT 2018 của khối
+        const standardList = STANDARD_CHAPTERS[grade] || [];
+
+        // Gom các chương theo đúng thứ tự bài học chuẩn (Chương 1, 2, 3, 4...)
+        const finalChapters: { id: string; name: string; grade: Grade; order: number }[] = [];
+
+        standardList.forEach((sc, idx) => {
+            const targetNum = idx + 1;
+            // Ưu tiên bản ghi trong DB nếu giáo viên đã tạo chương này để giữ nguyên id gốc đồng bộ với ngân hàng
+            const matchedDb = validDbChapters.find(c => {
+                const cNum = getChapterNumberFromName(c.name || '', grade);
+                return cNum === targetNum;
             });
-            list = Array.from(extractedMap.entries()).map(([name, id], idx) => ({
-                id: id || `ch_${idx}`,
-                name: name,
-                grade: grade,
-                order: idx + 1
-            }));
+
+            if (matchedDb) {
+                finalChapters.push({
+                    id: matchedDb.id,
+                    name: sc.name, // Giữ tên chuẩn sạch đẹp chuẩn bộ
+                    grade: grade,
+                    order: targetNum
+                });
+            } else {
+                finalChapters.push({
+                    ...sc,
+                    order: targetNum
+                });
+            }
+        });
+
+        // Đối với khối 12: Tuyệt đối CHỈ xuất hiện 4 chương chính quy, loại bỏ toàn bộ đề ôn, KTTX, LTĐH
+        if (String(grade) === '12') {
+            return finalChapters;
         }
 
-        return list;
-    }, [chapters, grade, bankQuestions]);
+        // Bổ sung các chương hợp lệ khác trong DB nếu có và chưa xuất hiện
+        validDbChapters.forEach(c => {
+            const cNum = getChapterNumberFromName(c.name || '', grade);
+            const alreadyIn = finalChapters.some(fc => fc.id === c.id || getChapterNumberFromName(fc.name, grade) === cNum);
+            if (!alreadyIn && cNum > 0) {
+                finalChapters.push({
+                    id: c.id,
+                    name: c.name,
+                    grade: grade,
+                    order: cNum || c.order || 99
+                });
+            }
+        });
+
+        finalChapters.sort((a, b) => (a.order || 0) - (b.order || 0));
+        return finalChapters;
+    }, [chapters, grade]);
 
     // Bảng ma trận số lượng câu mong muốn: key `${chapterId}__${questionType}` -> { b, h, vd, vdc }
     const [matrixRows, setMatrixRows] = useState<Record<string, { b: number; h: number; vd: number; vdc: number }>>({});
@@ -211,22 +469,22 @@ export default function MatrixQuizGenerator({
         });
 
         bankQuestions.forEach(q => {
-            const qGrade = String(q.quizGrade || (q as any).grade || '12');
-            if (qGrade !== String(grade) && qGrade !== 'all') return;
+            const qGrade = String(q.quizGrade || (q as any).grade || '');
+            if (qGrade && qGrade !== String(grade) && qGrade !== 'all') return;
 
             const qType = normalizeQuestionType(q.type);
             typeTotals[qType] = (typeTotals[qType] || 0) + 1;
 
             displayChapters.forEach(ch => {
-                if (matchQuestionChapter(q, ch.id, ch.name)) {
+                if (matchQuestionChapter(q, ch.id, ch.name, grade, displayChapters)) {
                     chapterTotals[ch.id] = (chapterTotals[ch.id] || 0) + 1;
                     const key = `${ch.id}__${qType}`;
                     if (statsByKey[key]) {
-                        const normLvl = normalizeLevel(q.level);
-                        if (normLvl === 'B') statsByKey[key].b++;
-                        else if (normLvl === 'H') statsByKey[key].h++;
-                        else if (normLvl === 'VD') statsByKey[key].vd++;
-                        else if (normLvl === 'VDC') statsByKey[key].vdc++;
+                        const effectiveLvl = getEffectiveQuestionLevel(q);
+                        if (effectiveLvl === 'B') statsByKey[key].b++;
+                        else if (effectiveLvl === 'H') statsByKey[key].h++;
+                        else if (effectiveLvl === 'VD') statsByKey[key].vd++;
+                        else if (effectiveLvl === 'VDC') statsByKey[key].vdc++;
                         
                         statsByKey[key].total++;
                         statsByKey[key].questions.push(q);
@@ -413,8 +671,9 @@ export default function MatrixQuizGenerator({
                     const pickLevel = (levelKey: 'B' | 'H' | 'VD' | 'VDC', requestedCount: number) => {
                         if (requestedCount <= 0) return;
                         
+                        // Bước 1: Ưu tiên câu có mức độ khớp chính xác hoặc qua nhận diện mức độ thông minh
                         const matched = candidatesPool.filter(q => {
-                            return normalizeLevel(q.level) === levelKey && !existingQuestionTexts.has((q.text || '').trim());
+                            return getEffectiveQuestionLevel(q) === levelKey && !existingQuestionTexts.has((q.text || '').trim());
                         });
 
                         const shuffled = shuffleArray(matched);
@@ -432,7 +691,35 @@ export default function MatrixQuizGenerator({
                             });
                         });
 
-                        const diff = requestedCount - picked.length;
+                        let diff = requestedCount - picked.length;
+
+                        // Bước 2: TẬN DỤNG TỐI ĐA KHO CSDL CỦA GIÁO VIÊN
+                        // Nếu thiếu câu đúng mức độ này nhưng trong CSDL cùng chương & dạng câu vẫn còn câu hỏi chưa chọn:
+                        // Lấy ngay từ kho CSDL có sẵn thay vì báo thiếu / gọi AI soạn bù!
+                        if (diff > 0) {
+                            const fallbackCandidates = candidatesPool.filter(q => {
+                                return !existingQuestionTexts.has((q.text || '').trim());
+                            });
+
+                            const shuffledFallback = shuffleArray(fallbackCandidates);
+                            const pickedFallback = shuffledFallback.slice(0, diff);
+
+                            pickedFallback.forEach((q: Question) => {
+                                existingQuestionTexts.add((q.text || '').trim());
+                                finalQuestions.push({
+                                    ...q,
+                                    id: uuidv4(),
+                                    type: t.id,
+                                    chapterName: ch.name,
+                                    chapterId: ch.id,
+                                    level: levelKey
+                                });
+                            });
+
+                            diff -= pickedFallback.length;
+                        }
+
+                        // Chỉ khi kho CSDL thực sự hết sạch câu hỏi của dạng này trong chương này thì mới tính là shortfall
                         if (diff > 0) {
                             shortfalls.push({
                                 chapterName: ch.name,
@@ -451,29 +738,35 @@ export default function MatrixQuizGenerator({
             });
 
             // 2. Nếu thiếu câu hỏi và bật tính năng AI bù câu
-            if (shortfalls.length > 0 && allowAiFallback) {
-                const totalMissing = shortfalls.reduce((acc, s) => acc + s.needed, 0);
-                setGenerationProgress(`Ngân hàng thiếu ${totalMissing} câu. AI đang tạo bổ sung đúng dạng câu còn thiếu...`);
+            if (shortfalls.length > 0) {
+                if (allowAiFallback) {
+                    const totalMissing = shortfalls.reduce((acc, s) => acc + s.needed, 0);
+                    setGenerationProgress(`Đã lấy ${finalQuestions.length} câu từ CSDL. Đang nhờ AI tạo bổ sung ${totalMissing} câu còn thiếu...`);
 
-                for (const shortfall of shortfalls) {
-                    const typeLabel = shortfall.type === 'mcq' ? 'Trắc nghiệm' : shortfall.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn';
-                    const levelLabel = shortfall.level === 'B' ? 'Nhận biết' : shortfall.level === 'H' ? 'Thông hiểu' : shortfall.level === 'VD' ? 'Vận dụng' : 'VDC';
-                    
-                    setGenerationProgress(`AI đang soạn bù ${shortfall.needed} câu [${typeLabel} - ${levelLabel}] cho "${shortfall.chapterName}"...`);
-                    
-                    const aiCreated = await generateMissingQuestionsForChapter(
-                        String(grade),
-                        shortfall.chapterName,
-                        shortfall.level,
-                        shortfall.needed,
-                        Array.from(existingQuestionTexts),
-                        shortfall.type
-                    );
+                    try {
+                        for (const shortfall of shortfalls) {
+                            const typeLabel = shortfall.type === 'mcq' ? 'Trắc nghiệm' : shortfall.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn';
+                            const levelLabel = shortfall.level === 'B' ? 'Nhận biết' : shortfall.level === 'H' ? 'Thông hiểu' : shortfall.level === 'VD' ? 'Vận dụng' : 'VDC';
+                            
+                            setGenerationProgress(`AI đang soạn bù ${shortfall.needed} câu [${typeLabel} - ${levelLabel}] cho "${shortfall.chapterName}"...`);
+                            
+                            const aiCreated = await generateMissingQuestionsForChapter(
+                                String(grade),
+                                shortfall.chapterName,
+                                shortfall.level,
+                                shortfall.needed,
+                                Array.from(existingQuestionTexts),
+                                shortfall.type
+                            );
 
-                    aiCreated.forEach((q: Question) => {
-                        existingQuestionTexts.add((q.text || '').trim());
-                        finalQuestions.push(q);
-                    });
+                            aiCreated.forEach((q: Question) => {
+                                existingQuestionTexts.add((q.text || '').trim());
+                                finalQuestions.push(q);
+                            });
+                        }
+                    } catch (aiErr) {
+                        console.warn("Lỗi khi AI soạn bù câu, tiếp tục với câu hỏi đã lấy từ CSDL:", aiErr);
+                    }
                 }
             }
 
@@ -536,6 +829,14 @@ export default function MatrixQuizGenerator({
                     points: pts
                 };
             });
+
+            if (balancedQuestions.length === 0) {
+                setStatusMessage({
+                    type: 'error',
+                    text: 'Không tìm thấy câu hỏi phù hợp trong CSDL và không thể tạo đề. Vui lòng kiểm tra lại ma trận số lượng câu!'
+                });
+                return;
+            }
 
             // Hoàn tất
             onGenerateSuccess(balancedQuestions, quizTitle, target, durationMinutes, editorAction);

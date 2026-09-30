@@ -7,17 +7,21 @@ import {
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
   Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste,
-  FolderTree, AlertTriangle, ArrowLeft, RotateCcw
+  FolderTree, AlertTriangle, ArrowLeft, RotateCcw, ImagePlus
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
 import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI, autoClassifyLevelsWithAI, generateSolutionForQuestionWithAI, batchGenerateSolutionsWithAI } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
+import PdfImageExtractorModal from './PdfImageExtractorModal';
 import LatexHelperModal from './LatexHelperModal';
 import ImageStorageSettingsModal from './ImageStorageSettingsModal';
+import InsertImageModal from './InsertImageModal';
 import { extractTextFromDocx } from '../../services/docxExtractor';
 import { exportQuizToJson } from '../../services/quizExport';
-import { getImageStorageConfig, ImageStorageConfig } from '../../services/storage';
+import { getImageStorageConfig, ImageStorageConfig, uploadQuizImageWithResult } from '../../services/storage';
+import { buildImageTag } from '../../services/imageUtils';
+import { isExamOrNonChapterName, getChapterNumberFromName, STANDARD_CHAPTERS } from './MatrixQuizGenerator';
 
 interface QuizEditorProps {
     editingId: string | null;
@@ -65,8 +69,8 @@ interface QuizEditorProps {
     onOpenBank: (type: QuestionType) => void;
     orderIndex: number;
     setOrderIndex: React.Dispatch<React.SetStateAction<number>> | ((val: number) => void);
-    onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onTextExtract: (text: string) => void;
+    onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>, includeSolutions?: boolean) => void;
+    onTextExtract: (text: string, includeSolutions?: boolean) => void;
     onUploadImage: (qId: string, file: File) => void;
     uploadingId: string | null;
     isAiLoading?: boolean;
@@ -92,6 +96,7 @@ interface QuestionSectionProps {
     uploadingId: string | null;
     onOpenBank: (type: QuestionType) => void;
     onOpenGalleryForQuestion?: (qId: string) => void;
+    onOpenPdfExtractorForQuestion?: (qId: string) => void;
     onOpenBatchForImage?: (imageUrl: string) => void;
     uniqueImagesCount?: number;
     onOpenLatexHelper?: (qId: string, qLabel?: string) => void;
@@ -102,6 +107,7 @@ interface QuestionSectionProps {
     onBatchSolveSection?: () => void;
     solvingQId?: string | null;
     isSolvingBatch?: boolean;
+    onOpenInsertImageModal?: (qId: string, field: 'context' | 'text' | 'solution', label?: string) => void;
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -113,6 +119,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     uploadingId, 
     onOpenBank,
     onOpenGalleryForQuestion,
+    onOpenPdfExtractorForQuestion,
     onOpenBatchForImage,
     uniqueImagesCount = 0,
     onOpenLatexHelper,
@@ -122,7 +129,8 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onSolveQuestion,
     onBatchSolveSection,
     solvingQId,
-    isSolvingBatch
+    isSolvingBatch,
+    onOpenInsertImageModal
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
@@ -166,6 +174,75 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
         }
     };
 
+    // Chèn nhanh ảnh đính kèm hiện tại vào nội dung câu hỏi hoặc lời dẫn
+    const handleInsertExistingImageToField = (qId: string, field: 'context' | 'text', url: string) => {
+        const nl = [...questions];
+        const i = nl.findIndex(x => x.id === qId);
+        if (i !== -1) {
+            const tag = buildImageTag({ url, maxHeight: 260, align: 'center' });
+            const oldVal = nl[i][field] || '';
+            nl[i][field] = oldVal ? `${oldVal}\n${tag}` : tag;
+            setQuestions(nl);
+        }
+    };
+
+    // Xử lý dán ảnh trực tiếp từ Clipboard (Ctrl + V) khi con trỏ đang ở trong textarea Lời dẫn hoặc Câu hỏi
+    const handleTextareaImagePaste = async (
+        e: React.ClipboardEvent<HTMLTextAreaElement>,
+        qId: string,
+        field: 'context' | 'text'
+    ) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        let imageFile: File | null = null;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/')) {
+                imageFile = items[i].getAsFile();
+                break;
+            }
+        }
+        if (!imageFile) return; // Nếu là văn bản bình thường thì cho paste mặc định
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const textarea = e.currentTarget;
+        const start = textarea.selectionStart || 0;
+        const end = textarea.selectionEnd || 0;
+
+        const placeholder = `\n[⏳ Đang tải ảnh lên...]\n`;
+        const nl = [...questions];
+        const idx = nl.findIndex(x => x.id === qId);
+        if (idx === -1) return;
+
+        const currentVal = nl[idx][field] || '';
+        const textWithPlaceholder = currentVal.substring(0, start) + placeholder + currentVal.substring(end);
+        nl[idx][field] = textWithPlaceholder;
+        setQuestions([...nl]);
+
+        try {
+            const res = await uploadQuizImageWithResult(imageFile);
+            const tag = buildImageTag({ url: res.url, maxHeight: 260, align: 'center' });
+
+            const updated = [...questions];
+            const curIdx = updated.findIndex(x => x.id === qId);
+            if (curIdx !== -1) {
+                const val = updated[curIdx][field] || '';
+                updated[curIdx][field] = val.replace(placeholder, tag);
+                setQuestions(updated);
+            }
+        } catch (err: any) {
+            alert("Lỗi khi tải ảnh: " + (err?.message || 'Không xác định'));
+            const updated = [...questions];
+            const curIdx = updated.findIndex(x => x.id === qId);
+            if (curIdx !== -1) {
+                const val = updated[curIdx][field] || '';
+                updated[curIdx][field] = val.replace(placeholder, '');
+                setQuestions(updated);
+            }
+        }
+    };
+
     // Xử lý Dán ảnh trực tiếp từ Clipboard khi bấm nút
     const handlePasteClipboardImage = async (qId: string) => {
         try {
@@ -203,8 +280,11 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
         }
     };
 
-    // Bắt sự kiện Paste (Ctrl + V) trên toàn bộ khung câu hỏi
+    // Bắt sự kiện Paste (Ctrl + V) trên toàn bộ khung câu hỏi (chỉ khi không trỏ trong textarea)
     const handleQuestionPaste = (e: React.ClipboardEvent, qId: string) => {
+        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (tag === 'textarea' || tag === 'input') return;
+
         const items = e.clipboardData?.items;
         if (!items || items.length === 0) return;
 
@@ -378,7 +458,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 
                     {/* MỤC LỜI DẪN / DỮ LIỆU DÙNG CHUNG CHO CHÙM CÂU HỎI */}
                     <div className="mb-6 bg-amber-50/60 border-2 border-amber-200/80 rounded-[2rem] p-5">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
                                 <Bookmark size={15} className="text-amber-600 shrink-0"/>
                                 <label className="text-[11px] font-black text-amber-900 uppercase tracking-tight">
@@ -388,33 +468,47 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                     — Dùng khi có đoạn văn/bảng số liệu chung cho nhiều câu
                                 </span>
                             </div>
-                            {q.context && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const nl = [...questions];
-                                        const i = nl.findIndex(x => x.id === q.id);
-                                        nl[i].context = undefined;
-                                        setQuestions(nl);
-                                    }}
-                                    className="text-[9px] font-black text-amber-700 hover:text-red-600 uppercase px-2 py-0.5 rounded-lg hover:bg-amber-100/50 transition-colors"
-                                >
-                                    Xóa lời dẫn
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {onOpenInsertImageModal && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenInsertImageModal(q.id, 'context', `Lời dẫn Câu ${idx + 1}`)}
+                                        className="flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[10px] font-black uppercase shadow-xs transition-all active:scale-95"
+                                        title="Chèn 1 hoặc nhiều ảnh trực tiếp vào lời dẫn (tải từ máy tính, dán clipboard hoặc nhập link)"
+                                    >
+                                        <ImagePlus size={13} />
+                                        <span>+ Chèn ảnh vào lời dẫn</span>
+                                    </button>
+                                )}
+                                {q.context && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const nl = [...questions];
+                                            const i = nl.findIndex(x => x.id === q.id);
+                                            nl[i].context = undefined;
+                                            setQuestions(nl);
+                                        }}
+                                        className="text-[9px] font-black text-amber-700 hover:text-red-600 uppercase px-2 py-0.5 rounded-lg hover:bg-amber-100/50 transition-colors"
+                                    >
+                                        Xóa lời dẫn
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div>
                                 <textarea
                                     className="w-full p-4 bg-white border border-amber-200 rounded-2xl text-xs font-semibold text-slate-800 outline-none min-h-[60px] focus:border-amber-400 transition-colors"
                                     value={q.context || ''}
+                                    onPaste={(e) => handleTextareaImagePaste(e, q.id, 'context')}
                                     onChange={e => {
                                         const nl = [...questions];
                                         const i = nl.findIndex(x => x.id === q.id);
                                         nl[i].context = e.target.value || undefined;
                                         setQuestions(nl);
                                     }}
-                                    placeholder="VD: Dữ liệu dùng chung cho câu 3 và 4: Cho hàm số f(x) liên tục trên đoạn [-2; 4] có đồ thị như sau..."
+                                    placeholder="VD: Dữ liệu dùng chung cho câu 3 và 4: Cho đoạn mạch hoặc đồ thị... (Mẹo: Bấm '+ Chèn ảnh vào lời dẫn' hoặc ấn Ctrl+V trực tiếp vào đây để dán ảnh)"
                                 />
                             </div>
                             <div className="p-4 bg-amber-100/40 border border-amber-200/60 rounded-2xl text-xs min-h-[60px] overflow-auto">
@@ -432,20 +526,44 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                         <div className="space-y-2">
-                            <div className="flex items-center justify-between ml-2">
+                            <div className="flex items-center justify-between ml-2 flex-wrap gap-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Nội dung đề (LaTeX: $...$)</label>
-                                {onOpenLatexHelper && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onOpenLatexHelper(q.id, `Câu ${idx + 1}`)}
-                                        className="flex items-center gap-1 text-[10px] font-black text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 px-2 py-0.5 rounded-lg border border-blue-200 transition-all shadow-xs"
-                                        title="Mở bảng hỗ trợ chèn công thức Toán & ký hiệu LaTeX"
-                                    >
-                                        <Sparkles size={11} /> Hỗ trợ LaTeX
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {onOpenInsertImageModal && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenInsertImageModal(q.id, 'text', `Câu ${idx + 1}`)}
+                                            className="flex items-center gap-1 text-[10px] font-black text-indigo-700 hover:text-white bg-indigo-50 hover:bg-indigo-600 px-2.5 py-1 rounded-xl border border-indigo-200 transition-all shadow-xs active:scale-95"
+                                            title="Chèn 1 hoặc nhiều ảnh trực tiếp vào câu hỏi (Ví dụ: Hình 1, Hình 2...)"
+                                        >
+                                            <ImagePlus size={12} />
+                                            <span>+ Chèn ảnh vào câu</span>
+                                        </button>
+                                    )}
+                                    {onOpenLatexHelper && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenLatexHelper(q.id, `Câu ${idx + 1}`)}
+                                            className="flex items-center gap-1 text-[10px] font-black text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 px-2 py-1 rounded-xl border border-blue-200 transition-all shadow-xs"
+                                            title="Mở bảng hỗ trợ chèn công thức Toán & ký hiệu LaTeX"
+                                        >
+                                            <Sparkles size={11} /> Hỗ trợ LaTeX
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            <textarea className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-sm font-bold outline-none min-h-[120px] focus:border-blue-300 transition-colors" value={q.text} onChange={e => { const nl = [...questions]; const i = nl.findIndex(x => x.id === q.id); nl[i].text = e.target.value; setQuestions(nl); }} placeholder="VD: Tìm $x$ biết $x^2 = 4$..." />
+                            <textarea 
+                                className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-sm font-bold outline-none min-h-[120px] focus:border-blue-300 transition-colors" 
+                                value={q.text} 
+                                onPaste={(e) => handleTextareaImagePaste(e, q.id, 'text')}
+                                onChange={e => { 
+                                    const nl = [...questions]; 
+                                    const i = nl.findIndex(x => x.id === q.id); 
+                                    nl[i].text = e.target.value; 
+                                    setQuestions(nl); 
+                                }} 
+                                placeholder="VD: Tìm $x$ biết $x^2 = 4$... (Mẹo: Bấm '+ Chèn ảnh vào câu' hoặc nhấn Ctrl+V trực tiếp vào đây để dán ảnh)" 
+                            />
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-blue-500 uppercase ml-2">Xem trước hiển thị</label>
@@ -523,6 +641,17 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                     {uniqueImagesCount > 0 ? `CHỌN TỪ ĐỀ (${uniqueImagesCount}) / DÁN LINK` : 'DÁN LINK ẢNH'}
                                 </button>
 
+                                {/* Nút mở kho quét ảnh tự động từ file PDF */}
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenPdfExtractorForQuestion && onOpenPdfExtractorForQuestion(q.id)}
+                                    className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                    title="Quét toàn bộ ảnh từ file PDF và gán nhanh vào câu này"
+                                >
+                                    <Sparkles size={14} className="text-indigo-600" />
+                                    QUÉT ẢNH TỪ PDF
+                                </button>
+
                                 {/* Nếu câu đã có ảnh: Nút copy link ảnh */}
                                 {q.imageUrl && (
                                     <button 
@@ -537,6 +666,30 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                     >
                                         {copiedUrlQId === q.id ? <Check size={14} /> : <Copy size={14} />}
                                         {copiedUrlQId === q.id ? 'ĐÃ COPY LINK!' : 'COPY LINK ẢNH'}
+                                    </button>
+                                )}
+
+                                {/* Nút chèn ảnh đính kèm này trực tiếp vào nội dung câu hỏi */}
+                                {q.imageUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleInsertExistingImageToField(q.id, 'text', q.imageUrl!)}
+                                        className="px-4 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                        title="Chèn mã thẻ ảnh này trực tiếp vào nội dung câu hỏi"
+                                    >
+                                        <ImagePlus size={14} /> CHÈN VÀO CÂU
+                                    </button>
+                                )}
+
+                                {/* Nút chèn ảnh đính kèm này trực tiếp vào lời dẫn */}
+                                {q.imageUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleInsertExistingImageToField(q.id, 'context', q.imageUrl!)}
+                                        className="px-4 py-2.5 bg-amber-50 text-amber-800 hover:bg-amber-600 hover:text-white border border-amber-200 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                        title="Chèn mã thẻ ảnh này trực tiếp vào lời dẫn của câu hỏi"
+                                    >
+                                        <Bookmark size={14} /> CHÈN VÀO LỜI DẪN
                                     </button>
                                 )}
 
@@ -690,9 +843,13 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 
 export default function QuizEditor(props: QuizEditorProps) {
     const [isTextInputOpen, setIsTextInputOpen] = useState(false);
+    const [extractMode, setExtractMode] = useState<'fast' | 'full'>('fast');
     const [pastedText, setPastedText] = useState('');
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [galleryTargetQId, setGalleryTargetQId] = useState<string | null>(null);
+    const [isPdfExtractorOpen, setIsPdfExtractorOpen] = useState(false);
+    const [pdfExtractorTargetQId, setPdfExtractorTargetQId] = useState<string | null>(null);
+    const [currentPdfFile, setCurrentPdfFile] = useState<File | null>(null);
     const [isLatexHelperOpen, setIsLatexHelperOpen] = useState(false);
     const [latexTargetQId, setLatexTargetQId] = useState<string | null>(null);
     const [latexTargetLabel, setLatexTargetLabel] = useState<string | null>(null);
@@ -712,14 +869,16 @@ export default function QuizEditor(props: QuizEditorProps) {
         return list;
     }, [props.chapters, props.grade]);
 
-    // Danh sách chương chuyên môn gửi cho AI (ưu tiên các chương kiến thức cụ thể thay vì mục chung 'Ôn thi TX-CK')
+    // Danh sách chương chuyên môn gửi cho AI (loại bỏ hoàn toàn KTTX, KTCK, LTĐH...)
     const aiTargetChapters = useMemo(() => {
         const knowledgeOnly = relevantChapters.filter(c => {
-            const lower = (c.name || '').toLowerCase();
-            return !lower.includes('ôn thi tx') && !lower.includes('ôn gk') && !lower.includes('luyện thi');
+            const rawName = c.name || '';
+            if (isExamOrNonChapterName(rawName)) return false;
+            return getChapterNumberFromName(rawName, props.grade) > 0;
         });
-        return knowledgeOnly.length > 0 ? knowledgeOnly : relevantChapters;
-    }, [relevantChapters]);
+        if (knowledgeOnly.length > 0) return knowledgeOnly;
+        return (STANDARD_CHAPTERS[props.grade] || []).map(sc => ({ id: sc.id, name: sc.name, grade: sc.grade, order: sc.order }));
+    }, [relevantChapters, props.grade]);
 
     // Quản lý Chương học cho câu hỏi (Hỗ trợ đề KTTX, KTGK, Cuối kỳ)
     const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
@@ -977,6 +1136,28 @@ export default function QuizEditor(props: QuizEditorProps) {
         }
     };
 
+    const handleAssignImageFromPdf = (
+        qId: string, 
+        imageUrl: string, 
+        slot: 'question' | 'solution' | 'optA' | 'optB' | 'optC' | 'optD' = 'question'
+    ) => {
+        const nl = [...props.questions];
+        const i = nl.findIndex(x => x.id === qId);
+        if (i !== -1) {
+            if (slot === 'question') {
+                nl[i].imageUrl = imageUrl;
+            } else if (slot === 'solution') {
+                nl[i].solution = (nl[i].solution ? nl[i].solution + '\n' : '') + `![Lời giải](${imageUrl})`;
+            }
+            props.setQuestions(nl);
+        }
+    };
+
+    const handleOpenPdfExtractorForQuestion = (qId?: string) => {
+        setPdfExtractorTargetQId(qId || null);
+        setIsPdfExtractorOpen(true);
+    };
+
     const handleBatchApplyImage = (sourceImageUrl: string, targetQuestionIds: string[]) => {
         const targetSet = new Set(targetQuestionIds);
         const nl = props.questions.map(q => {
@@ -1010,6 +1191,29 @@ export default function QuizEditor(props: QuizEditorProps) {
         setIsLatexHelperOpen(true);
     };
 
+    // State & Handlers cho Modal Chèn hình ảnh vào Lời dẫn / Câu hỏi
+    const [isInsertImageModalOpen, setIsInsertImageModalOpen] = useState(false);
+    const [insertImageTargetQId, setInsertImageTargetQId] = useState<string | null>(null);
+    const [insertImageTargetField, setInsertImageTargetField] = useState<'context' | 'text' | 'solution'>('text');
+    const [insertImageTargetLabel, setInsertImageTargetLabel] = useState<string>('');
+
+    const handleOpenInsertImageModal = (qId: string, field: 'context' | 'text' | 'solution', label?: string) => {
+        setInsertImageTargetQId(qId);
+        setInsertImageTargetField(field);
+        setInsertImageTargetLabel(label || (field === 'context' ? 'Lời dẫn' : 'Câu hỏi'));
+        setIsInsertImageModalOpen(true);
+    };
+
+    const handleInsertImageToField = (qId: string, field: 'context' | 'text' | 'solution', insertedHtml: string) => {
+        const nl = [...props.questions];
+        const idx = nl.findIndex(x => x.id === qId);
+        if (idx !== -1) {
+            const currentVal = nl[idx][field] || '';
+            nl[idx][field] = currentVal ? `${currentVal}\n${insertedHtml}` : insertedHtml;
+            props.setQuestions(nl);
+        }
+    };
+
     const handleInsertLatexSnippet = (code: string) => {
         if (!latexTargetQId) return;
         const nl = [...props.questions];
@@ -1039,7 +1243,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                 console.warn("Thử parse JSON thất bại, tiếp tục bóc tách qua AI:", jsonErr);
             }
         }
-        props.onTextExtract(pastedText);
+        props.onTextExtract(pastedText, extractMode === 'full');
         setPastedText('');
         setIsTextInputOpen(false);
     };
@@ -1084,8 +1288,8 @@ export default function QuizEditor(props: QuizEditorProps) {
                         alert("Không thể đọc được văn bản trong file Word này. Vui lòng kiểm tra lại nội dung file.");
                         return;
                     }
-                    // Tự động chuyển văn bản vừa trích xuất từ DOCX cho AI bóc tách
-                    props.onTextExtract(extractedText);
+                    // Tự động chuyển văn bản vừa trích xuất từ DOCX cho AI bóc tách theo chế độ đã chọn
+                    props.onTextExtract(extractedText, extractMode === 'full');
                 } catch (err: any) {
                     alert("Lỗi khi đọc file Word (.docx): " + (err.message || "Định dạng không được hỗ trợ"));
                 }
@@ -1154,12 +1358,56 @@ export default function QuizEditor(props: QuizEditorProps) {
                             </div>
                             <button onClick={() => setIsTextInputOpen(false)} className="p-3 hover:bg-red-600 rounded-xl transition-colors"><X/></button>
                         </div>
-                        <div className="p-8 space-y-6">
+                        <div className="p-8 space-y-5">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
                                 Copy nội dung đề từ Word/Web dán vào đây (Nếu dán chuỗi JSON hệ thống sẽ tự động tách câu hỏi 0% AI, nếu dán văn bản thường AI sẽ bóc tách).
                             </p>
+
+                            {/* Tùy chọn 2 chế độ bóc tách */}
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                                    Chọn chế độ bóc tách của AI:
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setExtractMode('fast')}
+                                        className={`flex items-start gap-3 p-3.5 rounded-xl border-2 text-left transition-all ${extractMode === 'fast' ? 'bg-amber-50/80 border-amber-500 text-amber-950 shadow-xs ring-2 ring-amber-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${extractMode === 'fast' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
+                                            {extractMode === 'fast' && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-black uppercase flex items-center gap-1.5">
+                                                <Zap size={14} className="text-amber-500"/> 1. Chỉ điền đáp án (Siêu tốc & Ổn định)
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 font-medium mt-1 leading-snug">
+                                                Không giải chi tiết. Tốc độ vượt trội, bóc tách đầy đủ 100% tất cả các câu từ đầu đến cuối đề, không lo quá tải token.
+                                            </div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setExtractMode('full')}
+                                        className={`flex items-start gap-3 p-3.5 rounded-xl border-2 text-left transition-all ${extractMode === 'full' ? 'bg-blue-50/80 border-blue-500 text-blue-950 shadow-xs ring-2 ring-blue-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${extractMode === 'full' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'}`}>
+                                            {extractMode === 'full' && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-black uppercase flex items-center gap-1.5">
+                                                <Sparkles size={14} className="text-blue-500"/> 2. Có giải chi tiết
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 font-medium mt-1 leading-snug">
+                                                Bóc tách câu hỏi, đáp án và viết kèm lời giải chi tiết sư phạm cho từng câu.
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
                             <textarea 
-                                className="w-full h-80 p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none font-medium text-sm focus:border-blue-400 transition-all"
+                                className="w-full h-72 p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none font-medium text-sm focus:border-blue-400 transition-all"
                                 placeholder="Dán nội dung văn bản hoặc chuỗi JSON tại đây..."
                                 value={pastedText}
                                 onChange={e => setPastedText(e.target.value)}
@@ -1217,13 +1465,49 @@ export default function QuizEditor(props: QuizEditorProps) {
                 </div>
                 
                 {/* THANH CÔNG CỤ: KHO ẢNH, HỖ TRỢ LATEX & BÓC TÁCH NHẬP ĐỀ */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-5 pt-2">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            Công cụ nhập liệu & Hỗ trợ:
-                        </span>
+                <div className="flex flex-col gap-4 border-b-2 border-slate-100 pb-6 pt-2">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Công cụ nhập liệu & Hỗ trợ:
+                            </span>
+                        </div>
+
+                        {/* THANH CHỌN 2 CHẾ ĐỘ BÓC TÁCH AI */}
+                        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/90 shadow-2xs">
+                            <span className="text-[10px] font-black uppercase text-slate-500 px-2 flex items-center gap-1">
+                                <Sparkles size={12} className="text-amber-500"/> Chế độ AI bóc tách:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setExtractMode('fast')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all shadow-2xs ${
+                                    extractMode === 'fast'
+                                        ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300'
+                                        : 'bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                                title="Bóc tách câu hỏi và điền đáp án đúng, KHÔNG giải chi tiết. Khuyên dùng cho đề 28-50 câu, siêu tốc, bóc tách đủ 100% không lo lỗi/ngắt chuỗi"
+                            >
+                                <Zap size={13} className={extractMode === 'fast' ? 'text-white' : 'text-amber-500'} />
+                                <span>1. Chỉ điền đáp án (Siêu tốc & Ổn định)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setExtractMode('full')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all shadow-2xs ${
+                                    extractMode === 'full'
+                                        ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                                        : 'bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                                title="Bóc tách câu hỏi, đáp án và viết lời giải chi tiết sư phạm cho từng câu"
+                            >
+                                <Sparkles size={13} className={extractMode === 'full' ? 'text-white' : 'text-blue-500'} />
+                                <span>2. Có giải chi tiết</span>
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
+
+                    <div className="flex flex-wrap items-center gap-1.5 justify-start lg:justify-end">
                         {/* Nút mở Cấu hình Lưu trữ Ảnh (ImgBB / Supabase) */}
                         <button
                             type="button"
@@ -1277,19 +1561,39 @@ export default function QuizEditor(props: QuizEditorProps) {
                         >
                             <Zap size={13}/> Dọn nhãn
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => handleOpenPdfExtractorForQuestion()}
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-[10px] font-black uppercase transition-all shadow-md active:scale-95 whitespace-nowrap"
+                            title="Tự động quét toàn bộ ảnh từ file PDF và gán trực tiếp vào từng câu hỏi"
+                        >
+                            <Sparkles size={13} className="text-amber-300" />
+                            <span>Quét & Gán ảnh PDF</span>
+                        </button>
                         <button 
                             onClick={() => setIsTextInputOpen(true)}
                             className={`flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title={`Nhập văn bản với AI (Chế độ hiện tại: ${extractMode === 'fast' ? 'Chỉ đáp án' : 'Có lời giải'})`}
                         >
-                            <TypeIcon size={13}/> Nhập văn bản (AI)
+                            <TypeIcon size={13}/> Nhập văn bản ({extractMode === 'fast' ? '⚡ Chỉ Đ/A' : '✨ Có giải'})
                         </button>
-                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-blue-800 transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title="Nhập trực tiếp từ file Word (.docx)">
-                            <FileText size={13}/> Nhập DOCX (AI)
+                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-blue-800 transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title={`Nhập file Word (.docx) với AI (Chế độ hiện tại: ${extractMode === 'fast' ? 'Chỉ đáp án' : 'Có lời giải'})`}>
+                            <FileText size={13}/> Nhập DOCX ({extractMode === 'fast' ? '⚡ Chỉ Đ/A' : '✨ Có giải'})
                             <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" disabled={props.isAiLoading} onChange={handleDocxFileSelect}/>
                         </label>
-                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                            <FileUp size={13}/> Nhập PDF (AI)
-                            <input type="file" accept="application/pdf" className="hidden" disabled={props.isAiLoading} onChange={props.onPdfExtract}/>
+                        <label className={`flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-black transition-all shadow-xs active:scale-95 whitespace-nowrap ${props.isAiLoading ? 'opacity-50 cursor-not-allowed' : ''}`} title={`Nhập file PDF với AI (Chế độ hiện tại: ${extractMode === 'fast' ? 'Chỉ đáp án' : 'Có lời giải'})`}>
+                            <FileUp size={13}/> Nhập PDF ({extractMode === 'fast' ? '⚡ Chỉ Đ/A' : '✨ Có giải'})
+                            <input 
+                                type="file" 
+                                accept="application/pdf" 
+                                className="hidden" 
+                                disabled={props.isAiLoading} 
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) setCurrentPdfFile(file);
+                                    props.onPdfExtract(e, extractMode === 'full');
+                                }}
+                            />
                         </label>
                     </div>
                 </div>
@@ -2143,9 +2447,11 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uploadingId={props.uploadingId} 
                 onOpenBank={props.onOpenBank}
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenPdfExtractorForQuestion={handleOpenPdfExtractorForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                onOpenInsertImageModal={handleOpenInsertImageModal}
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
@@ -2163,9 +2469,11 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uploadingId={props.uploadingId} 
                 onOpenBank={props.onOpenBank}
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenPdfExtractorForQuestion={handleOpenPdfExtractorForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                onOpenInsertImageModal={handleOpenInsertImageModal}
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
@@ -2183,9 +2491,11 @@ export default function QuizEditor(props: QuizEditorProps) {
                 uploadingId={props.uploadingId} 
                 onOpenBank={props.onOpenBank}
                 onOpenGalleryForQuestion={handleOpenGalleryForQuestion}
+                onOpenPdfExtractorForQuestion={handleOpenPdfExtractorForQuestion}
                 onOpenBatchForImage={handleOpenBatchForImage}
                 uniqueImagesCount={uniqueImagesCount}
                 onOpenLatexHelper={handleOpenLatexHelper}
+                onOpenInsertImageModal={handleOpenInsertImageModal}
                 relevantChapters={relevantChapters}
                 onOpenImageStorageSettings={() => setIsImageStorageSettingsOpen(true)}
                 imageStorageConfig={imageStorageConfig}
@@ -2206,6 +2516,19 @@ export default function QuizEditor(props: QuizEditorProps) {
                 targetQuestionId={galleryTargetQId}
                 onSelectImageForQuestion={handleSelectImageForQuestion}
                 onBatchApplyImage={handleBatchApplyImage}
+            />
+
+            {/* Modal Tự động quét & gán ảnh từ file PDF */}
+            <PdfImageExtractorModal
+                isOpen={isPdfExtractorOpen}
+                onClose={() => {
+                    setIsPdfExtractorOpen(false);
+                    setPdfExtractorTargetQId(null);
+                }}
+                questions={props.questions}
+                targetQuestionId={pdfExtractorTargetQId}
+                onAssignImageToQuestion={handleAssignImageFromPdf}
+                currentPdfFile={currentPdfFile}
             />
 
             {/* Modal Hỗ trợ công thức Toán & Ký hiệu LaTeX */}
@@ -2232,6 +2555,20 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onConfigChanged={() => {
                     setImageStorageConfig(getImageStorageConfig());
                 }}
+            />
+
+            {/* Modal Chèn Hình Ảnh Trực Tiếp vào Lời dẫn / Câu hỏi (hỗ trợ 1 hoặc nhiều ảnh, xếp cạnh nhau) */}
+            <InsertImageModal
+                isOpen={isInsertImageModalOpen}
+                onClose={() => {
+                    setIsInsertImageModalOpen(false);
+                    setInsertImageTargetQId(null);
+                }}
+                targetField={insertImageTargetField}
+                targetQuestionId={insertImageTargetQId}
+                targetQuestionLabel={insertImageTargetLabel}
+                questions={props.questions}
+                onInsert={handleInsertImageToField}
             />
         </div>
     );

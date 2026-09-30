@@ -30,11 +30,18 @@ export async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<str
     const p = paragraphs[i];
     let paragraphText = '';
 
-    // Lấy tất cả các thẻ text chuẩn (w:t) và text công thức toán Office Math (m:t)
-    const textNodes = p.querySelectorAll('t, [name$="t"]');
-    if (textNodes.length > 0) {
-      textNodes.forEach(node => {
-        paragraphText += node.textContent || '';
+    // Lấy tất cả các thẻ text chuẩn (w:t), text công thức toán Office Math (m:t), tab (w:tab) và ngắt dòng (w:br, w:cr)
+    const allChildNodes = p.querySelectorAll('t, [name$="t"], tab, [name$="tab"], br, [name$="br"], cr, [name$="cr"]');
+    if (allChildNodes.length > 0) {
+      allChildNodes.forEach(node => {
+        const nodeName = (node.localName || node.nodeName || '').toLowerCase();
+        if (nodeName.endsWith('tab')) {
+          paragraphText += '   ';
+        } else if (nodeName.endsWith('br') || nodeName.endsWith('cr')) {
+          paragraphText += '\n';
+        } else {
+          paragraphText += node.textContent || '';
+        }
       });
     } else {
       // Fallback lấy toàn bộ textContent của đoạn nếu không tìm thấy thẻ t

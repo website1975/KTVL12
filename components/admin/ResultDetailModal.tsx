@@ -4,6 +4,7 @@ import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock, Bookmark } from 'luci
 import { Result, Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
 import { restoreQuestionsOrder } from '../../services/quizShuffler';
+import { getContextGroupInfo } from '../../services/vietnameseFixer';
 import { isAfter, addMinutes } from 'date-fns';
 
 interface ResultDetailModalProps {
@@ -60,6 +61,8 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
 
         const isPartial = (q as any)._isPartial;
 
+        const ctxInfo = getContextGroupInfo(orderedQuestions, idx);
+
         return (
             <div key={q.id} className={`bg-white p-10 rounded-[2.5rem] border-2 shadow-sm relative transition-all ${showDetailAnswers ? (isCorrect ? 'border-emerald-100' : (isPartial ? 'border-amber-100' : 'border-red-100')) : 'border-slate-100'}`}>
                 {showDetailAnswers && (
@@ -69,15 +72,15 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
                     </div>
                 )}
 
-                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
-                {q.context && (
+                {/* Lời dẫn / Dữ liệu dùng chung nếu có (chỉ hiện 1 lần ở câu đầu tiên của nhóm) */}
+                {q.context && ctxInfo.isFirstInGroup && (
                     <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
                         <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
                             <Bookmark size={16} className="text-amber-600" />
-                            <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                            <span>{ctxInfo.label || 'Lời dẫn / Dữ liệu dùng chung'}:</span>
                         </div>
                         <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
-                            <LatexText text={q.context} />
+                            <LatexText text={ctxInfo.cleanedContext || q.context} />
                         </div>
                     </div>
                 )}

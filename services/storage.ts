@@ -47,6 +47,37 @@ export const isDatabaseConnected = (): boolean => {
     return !!supabase;
 };
 
+/**
+ * Chuẩn hóa và làm sạch dữ liệu trước khi lưu vào Supabase JSONB / PostgreSQL
+ * Triệt tiêu hoàn toàn lỗi: "unsupported Unicode escape sequence"
+ * 1. Xóa ký tự null (\u0000, \0, \\u0000)
+ * 2. Xóa các ký tự điều khiển không in được (control characters 0x00-0x1F ngoại trừ tab, \n, \r)
+ * 3. Xóa các ký tự lone surrogates (\uD800 - \uDFFF) bị lỗi
+ */
+export function sanitizeForJsonB<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    return (obj as string)
+      .replace(/\0/g, '')
+      .replace(/\\u0000/g, '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF]/g, '') as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForJsonB(item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const cleanKey = typeof key === 'string'
+        ? key.replace(/\0/g, '').replace(/\\u0000/g, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF]/g, '')
+        : key;
+      cleaned[cleanKey] = sanitizeForJsonB(value);
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
+
 const handleSupabaseError = (error: any, context: string) => {
     if (error) {
         console.error(`LỖI SUPABASE [${context}]:`, error);
@@ -224,16 +255,21 @@ export const verifyResultExists = async (id: string): Promise<boolean> => {
 
 export const getResultById = async (id: string): Promise<Result | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase.from('results').select('data').eq('id', id).single();
-    if (error || !data) return null;
-    return data.data as Result;
+    try {
+      const { data, error } = await supabase.from('results').select('data').eq('id', id).limit(1);
+      if (error || !data || data.length === 0) return null;
+      return (data[0].data || data[0]) as Result;
+    } catch (e) {
+      return null;
+    }
 };
 
 export const saveResult = async (result: Result): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
   invalidateCache('student_results');
   invalidateCache('published_results');
-  const payload = { id: result.id, quiz_id: result.quizId, student_id: result.studentId, data: result };
+  const sanitizedResult = sanitizeForJsonB(result);
+  const payload = { id: sanitizedResult.id, quiz_id: sanitizedResult.quizId, student_id: sanitizedResult.studentId, data: sanitizedResult };
   const { error } = await supabase.from('results').insert(payload);
   handleSupabaseError(error, "Lưu kết quả thi");
 };
@@ -249,10 +285,14 @@ export const deleteResult = async (id: string): Promise<void> => {
 
 export const updateResultCode = async (id: string, code: string): Promise<void> => {
     if (!supabase) return;
-    const { data } = await supabase.from('results').select('data').eq('id', id).single();
-    if (!data) return;
-    const resData = { ...data.data, studentCode: code.trim().toUpperCase() };
-    await supabase.from('results').update({ data: resData }).eq('id', id);
+    try {
+      const { data } = await supabase.from('results').select('data').eq('id', id).limit(1);
+      if (!data || data.length === 0 || !data[0]?.data) return;
+      const resData = { ...data[0].data, studentCode: code.trim().toUpperCase() };
+      await supabase.from('results').update({ data: resData }).eq('id', id);
+    } catch (e) {
+      console.warn("Lỗi updateResultCode:", e);
+    }
 };
 
 // --- Users ---
@@ -340,35 +380,66 @@ export const saveUsersBatch = async (users: User[]): Promise<void> => {
 
 export const addPointsToUser = async (userId: string, points: number): Promise<void> => {
     if (!supabase) return;
-    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
-    if (data) {
-      const userData = { ...data.data, points: (data.data.points || 0) + points };
-      await supabase.from('users').update({ data: userData }).eq('id', userId);
+    try {
+      const { data } = await supabase.from('users').select('data').eq('id', userId).limit(1);
+      if (data && data.length > 0 && data[0]?.data) {
+        const userData = { ...data[0].data, points: (data[0].data.points || 0) + points };
+        await supabase.from('users').update({ data: userData }).eq('id', userId);
+      }
+    } catch (e) {
+      console.warn("Lỗi addPointsToUser:", e);
     }
 };
 
 export const findUserByStudentCode = async (code: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
-  console.log("Supabase: Đang tìm User qua mã HS:", code.trim().toUpperCase());
-  const { data, error } = await supabase.from('users').select('data').filter('data->>studentCode', 'eq', code.trim().toUpperCase()).maybeSingle();
-  if (error) {
-    console.error("Lỗi Supabase khi tìm mã HS:", error);
+  const cleanCode = code.trim();
+  const upperCode = cleanCode.toUpperCase();
+  console.log("Supabase: Đang tìm User qua mã HS:", upperCode);
+  try {
+    // Sử dụng limit(1) thay cho maybeSingle() để tránh lỗi PGRST116 nếu CSDL có nhiều bản ghi trùng mã
+    const { data, error } = await supabase
+      .from('users')
+      .select('data')
+      .or(`data->>studentCode.eq.${upperCode},data->>studentCode.eq.${cleanCode}`)
+      .limit(1);
+
+    if (error) {
+      console.error("Lỗi Supabase khi tìm mã HS:", error);
+      return undefined;
+    }
+    const user = (data && data.length > 0) ? (data[0].data as User) : undefined;
+    console.log("Kết quả tìm kiếm User:", user);
+    return user;
+  } catch (e) {
+    console.error("Lỗi ngoại lệ khi tìm mã HS:", e);
     return undefined;
   }
-  console.log("Kết quả tìm kiếm User:", data);
-  return data?.data as User;
 };
 
 export const findUser = async (username: string): Promise<User | undefined> => {
   if (!supabase) return undefined;
-  console.log("Supabase: Đang tìm User qua username:", username.trim().toLowerCase());
-  const { data, error } = await supabase.from('users').select('data').eq('username', username.trim().toLowerCase()).maybeSingle();
-  if (error) {
-    console.error("Lỗi Supabase khi tìm username:", error);
+  const cleanUser = username.trim().toLowerCase();
+  console.log("Supabase: Đang tìm User qua username:", cleanUser);
+  try {
+    // Sử dụng limit(1) thay cho maybeSingle() để an toàn và tối ưu
+    const { data, error } = await supabase
+      .from('users')
+      .select('data')
+      .eq('username', cleanUser)
+      .limit(1);
+
+    if (error) {
+      console.error("Lỗi Supabase khi tìm username:", error);
+      return undefined;
+    }
+    const user = (data && data.length > 0) ? (data[0].data as User) : undefined;
+    console.log("Kết quả tìm kiếm User:", user);
+    return user;
+  } catch (e) {
+    console.error("Lỗi ngoại lệ khi tìm username:", e);
     return undefined;
   }
-  console.log("Kết quả tìm kiếm User:", data);
-  return data?.data as User;
 };
 
 export const testSupabaseConnection = async (): Promise<{success: boolean, message: string}> => {
@@ -403,15 +474,19 @@ export const deleteUser = async (id: string): Promise<void> => {
 
 export const changePassword = async (userId: string, newPassword: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { data } = await supabase.from('users').select('data').eq('id', userId).single();
-    if (!data) return false;
-    const userData = { ...data.data, password: newPassword };
-    const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
-    return !error;
+    try {
+      const { data } = await supabase.from('users').select('data').eq('id', userId).limit(1);
+      if (!data || data.length === 0 || !data[0]?.data) return false;
+      const userData = { ...data[0].data, password: newPassword };
+      const { error } = await supabase.from('users').update({ data: userData }).eq('id', userId);
+      return !error;
+    } catch (e) {
+      return false;
+    }
 };
 
 // Định nghĩa các trường Metadata của Đề thi (chỉ lấy thông tin hiển thị, KHÔNG LẤY cột câu hỏi để giảm 98% băng thông)
-const QUIZ_METADATA_PROJECTION = 'id,grade,data->title,data->description,data->type,data->academicYear,data->category,data->folderId,data->folderName,data->startTime,data->endTime,data->durationMinutes,data->questionCount,data->attemptCount,data->createdAt,data->isPublished,data->isMonitored,data->isUnlisted,data->targetType,data->assignedClassIds,data->assignedClasses,data->maxAttempts,data->allowReview,data->orderIndex';
+const QUIZ_METADATA_PROJECTION = 'id,grade,data->title,data->description,data->type,data->academicYear,data->category,data->folderId,data->folderName,data->startTime,data->endTime,data->durationMinutes,data->questionCount,data->attemptCount,data->createdAt,data->isPublished,data->isMonitored,data->isUnlisted,data->targetType,data->assignedClassIds,data->assignedClasses,data->maxAttempts,data->allowReview,data->orderIndex,data->isSyncedToBank,data->syncedToBankAt';
 
 const mapRowToQuizMeta = (row: any): Quiz => {
     const d = (row && row.data && typeof row.data === 'object') ? row.data : (row || {});
@@ -440,6 +515,8 @@ const mapRowToQuizMeta = (row: any): Quiz => {
         maxAttempts: typeof row.maxAttempts === 'number' ? row.maxAttempts : (typeof d.maxAttempts === 'number' ? d.maxAttempts : 2),
         allowReview: row.allowReview ?? d.allowReview ?? true,
         orderIndex: typeof row.orderIndex === 'number' ? row.orderIndex : (typeof d.orderIndex === 'number' ? d.orderIndex : 0),
+        isSyncedToBank: row.isSyncedToBank === true || row.isSyncedToBank === 'true' || d.isSyncedToBank === true || d.isSyncedToBank === 'true',
+        syncedToBankAt: row.syncedToBankAt || d.syncedToBankAt || undefined,
         questions: [] // Tuyệt đối không tải mảng câu hỏi ở metadata để tiết kiệm bộ nhớ và băng thông
     };
 };
@@ -702,35 +779,45 @@ export const getQuizById = async (id: string, forceRefresh: boolean = false): Pr
         }
     } catch (e) {}
 
-    const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).single();
-    if (error || !data) return null;
-    const quiz = data.data as Quiz;
-    quizDetailCache.set(id, quiz);
-
     try {
-        if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.setItem(`quiz_detail_${id}`, JSON.stringify(quiz));
-        }
-    } catch (e) {}
+      const { data, error } = await supabase.from('quizzes').select('data').eq('id', id).limit(1);
+      if (error || !data || data.length === 0) return null;
+      const quiz = (data[0].data || data[0]) as Quiz;
+      quizDetailCache.set(id, quiz);
 
-    return quiz;
+      try {
+          if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem(`quiz_detail_${id}`, JSON.stringify(quiz));
+          }
+      } catch (e) {}
+
+      return quiz;
+    } catch (e) {
+      return null;
+    }
 };
 
 export const saveQuiz = async (quiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  const enrichedQuiz = { 
+  const enrichedQuiz = sanitizeForJsonB({ 
     ...quiz, 
     questionCount: quiz.questions.length,
     isSyncedToBank: quiz.isSyncedToBank ?? false 
-  };
+  });
   updateQuizInCache(enrichedQuiz);
-  const { error } = await supabase.from('quizzes').insert({ id: quiz.id, grade: quiz.grade, data: enrichedQuiz });
+  const { error } = await supabase.from('quizzes').insert({ id: enrichedQuiz.id, grade: enrichedQuiz.grade, data: enrichedQuiz });
   handleSupabaseError(error, "Lưu đề thi mới");
 };
 
 export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  const quiz = { ...enrichedQuiz, questionCount: enrichedQuiz.questions.length };
+  // Khi chỉnh sửa đề thi (thêm/sửa câu hỏi, đổi nội dung...), đặt lại cờ isSyncedToBank: false
+  // để tính năng quét đồng bộ nhận diện được đây là đề có thay đổi cần quét cập nhật vào Ngân hàng
+  const quiz = sanitizeForJsonB({ 
+    ...enrichedQuiz, 
+    questionCount: enrichedQuiz.questions.length,
+    isSyncedToBank: false 
+  });
   updateQuizInCache(quiz);
   const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
   handleSupabaseError(error, "Cập nhật đề thi");

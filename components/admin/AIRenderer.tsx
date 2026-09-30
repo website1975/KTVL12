@@ -9,7 +9,7 @@ interface AIRendererProps {
     chapters?: Chapter[];
     bankQuestions?: Question[];
     isBankLoading?: boolean;
-    onLoadBank?: () => Promise<void>;
+    onLoadBank?: (grade?: Grade | 'all') => Promise<void> | void;
     onGenerate: (config: {
         topic: string;
         p1: number;

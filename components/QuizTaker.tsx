@@ -6,6 +6,7 @@ import { shuffleQuestionsByParts, restoreQuestionsOrder } from '../services/quiz
 import { v4 as uuidv4 } from 'uuid';
 import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark, CheckCircle2 } from 'lucide-react';
 import LatexText from './LatexText';
+import { getContextGroupInfo } from '../services/vietnameseFixer';
 import { addMinutes, differenceInSeconds } from 'date-fns';
 
 interface QuizTakerProps {
@@ -449,6 +450,7 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             <div className="max-w-7xl w-full mx-auto space-y-10 pb-20 px-4">
                 {orderedQuestions.map((q, idx) => {
                     const isFirstOfPart = idx === 0 || orderedQuestions[idx - 1].type !== q.type;
+                    const ctxInfo = getContextGroupInfo(orderedQuestions, idx);
                     let partTitle = '';
                     let partSub = '';
                     if (isFirstOfPart) {
@@ -479,15 +481,15 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                             )}
 
                             <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm transition-all hover:border-blue-100">
-                                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
-                                {q.context && (
+                                {/* Lời dẫn / Dữ liệu dùng chung nếu có (chỉ hiện 1 lần ở câu đầu tiên của nhóm) */}
+                                {q.context && ctxInfo.isFirstInGroup && (
                                     <div className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 border-2 border-amber-200/80 rounded-2xl">
                                         <div className="flex items-center gap-2 mb-2 text-amber-800 font-black text-xs uppercase tracking-tight">
                                             <Bookmark size={16} className="text-amber-600" />
-                                            <span>Lời dẫn / Dữ liệu dùng chung:</span>
+                                            <span>{ctxInfo.label || 'Lời dẫn / Dữ liệu dùng chung'}:</span>
                                         </div>
                                         <div className="text-slate-800 text-base font-semibold leading-relaxed pl-1">
-                                            <LatexText text={q.context} />
+                                            <LatexText text={ctxInfo.cleanedContext || q.context} />
                                         </div>
                                     </div>
                                 )}
@@ -496,7 +498,9 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                                     <span className="text-blue-600 font-black italic underline uppercase shrink-0">Câu {idx + 1}.</span>
                                     <div className="text-slate-800 text-lg font-bold leading-relaxed"><LatexText text={q.text}/></div>
                                 </div>
-                                {q.imageUrl && <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>}
+                                {q.imageUrl && !q.text?.includes(q.imageUrl) && !(q.context && q.context.includes(q.imageUrl)) && (
+                                    <div className="mb-6 flex justify-center"><img src={q.imageUrl} className="max-h-80 rounded-2xl border border-slate-100 shadow-sm" alt="q" /></div>
+                                )}
                                 {q.type === 'mcq' && q.options && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 md:pl-10">
                                         {q.options.map((opt, oi) => (

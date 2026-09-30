@@ -4,6 +4,7 @@ import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../typ
 import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
+import { isExamOrNonChapterName, STANDARD_CHAPTERS, getChapterNumberFromName } from './MatrixQuizGenerator';
 
 interface QuestionBankProps {
     questions: Question[];
@@ -65,6 +66,12 @@ const getQuestionImageUrl = (q: any): string | null => {
         const mdMatch = q.text.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
         if (mdMatch) return mdMatch[1];
         const htmlMatch = q.text.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+        if (htmlMatch) return htmlMatch[1];
+    }
+    if (q.context && typeof q.context === 'string') {
+        const mdMatch = q.context.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
+        if (mdMatch) return mdMatch[1];
+        const htmlMatch = q.context.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
         if (htmlMatch) return htmlMatch[1];
     }
     if (Array.isArray(q.subQuestions)) {
@@ -213,9 +220,28 @@ export default function QuestionBank({
                         </select>
                         <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none max-w-[150px] focus:border-blue-500" value={bChapterFilter} onChange={e => setBChapterFilter(e.target.value)}>
                             <option value="all">Chương: Tất cả</option>
-                            {chapters.filter(c => bGradeFilter === 'all' || String(c.grade) === String(bGradeFilter)).map(c => (
-                                <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
-                            ))}
+                            {(() => {
+                                const validDb = chapters.filter(c => {
+                                    const rawName = c.name || (c as any).title || '';
+                                    if (isExamOrNonChapterName(rawName)) return false;
+                                    if (bGradeFilter !== 'all') {
+                                        return String(c.grade) === String(bGradeFilter) && getChapterNumberFromName(rawName, bGradeFilter as Grade) > 0;
+                                    }
+                                    const g = (c.grade || '12') as Grade;
+                                    return getChapterNumberFromName(rawName, g) > 0;
+                                });
+                                if (validDb.length > 0) {
+                                    return validDb.map(c => (
+                                        <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
+                                    ));
+                                }
+                                if (bGradeFilter !== 'all' && STANDARD_CHAPTERS[bGradeFilter as Grade]) {
+                                    return STANDARD_CHAPTERS[bGradeFilter as Grade].map(sc => (
+                                        <option key={sc.id} value={sc.name}>{sc.name}</option>
+                                    ));
+                                }
+                                return null;
+                            })()}
                         </select>
                         <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" value={bTypeFilter} onChange={e => setBTypeFilter(e.target.value as any)}>
                             <option value="all">Dạng: Tất cả</option>

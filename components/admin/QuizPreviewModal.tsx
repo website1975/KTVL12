@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Download, FileType, AlignLeft, Rows, FileCode, CheckCircle2, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import { Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
-import { normalizeFullText, repairVietnameseText } from '../../services/vietnameseFixer';
+import { normalizeFullText, repairVietnameseText, getContextGroupInfo } from '../../services/vietnameseFixer';
 import { exportQuizToJson } from '../../services/quizExport';
 import { convertLatexForWordExport } from '../../services/wordExport';
 import { generateNativeWordDocx } from '../../services/docxExporter';
@@ -572,7 +572,9 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                     </div>
                                     
                                     <div className="space-y-6">
-                                        {typeQs.map((q, idx) => (
+                                        {typeQs.map((q, idx) => {
+                                            const ctxInfo = getContextGroupInfo(typeQs, idx);
+                                            return (
                                             <div 
                                                 key={q.id} 
                                                 className="question-block" 
@@ -582,8 +584,8 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                     pageBreakInside: 'avoid' 
                                                 }}
                                             >
-                                                {/* Lời dẫn / Dữ liệu dùng chung nếu có */}
-                                                {q.context && (
+                                                {/* Lời dẫn / Dữ liệu dùng chung nếu có (CHỈ hiển thị 1 lần ở câu đầu tiên của nhóm) */}
+                                                {q.context && ctxInfo.isFirstInGroup && (
                                                     <div 
                                                         className="q-context-block" 
                                                         style={{ 
@@ -598,8 +600,8 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                             lineHeight: '1.3' 
                                                         }}
                                                     >
-                                                        <b style={{ fontStyle: 'normal', color: '#854d0e', marginRight: '4px' }}>Lời dẫn / Dữ liệu dùng chung:</b>
-                                                        <LatexText text={q.context}/>
+                                                        <b style={{ fontStyle: 'normal', color: '#854d0e', marginRight: '4px' }}>{ctxInfo.label || 'Lời dẫn / Dữ liệu dùng chung'}:</b>
+                                                        <LatexText text={ctxInfo.cleanedContext || q.context}/>
                                                     </div>
                                                 )}
 
@@ -640,8 +642,8 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                     <LatexText text={q.text}/>
                                                 </p>
 
-                                                {/* Ảnh đính kèm nếu có */}
-                                                {q.imageUrl && (
+                                                {/* Ảnh đính kèm nếu có (chỉ hiện khi chưa được chèn inline trong nội dung câu hoặc lời dẫn) */}
+                                                {q.imageUrl && !q.text?.includes(q.imageUrl) && !(q.context && q.context.includes(q.imageUrl)) && (
                                                     <div 
                                                         className="q-image-container" 
                                                         style={{ 
@@ -705,7 +707,8 @@ export default function QuizPreviewModal({ quiz, onClose, isAdmin = true }: Quiz
                                                     </p>
                                                 )}
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );

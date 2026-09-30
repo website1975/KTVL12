@@ -2,10 +2,146 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, Grade, QuestionLevel, SubQuestion, QuestionType } from "../types";
 import { v4 as uuidv4 } from 'uuid';
-import { normalizeFullText } from './vietnameseFixer';
+import { normalizeFullText, autoWrapLatex, cleanSharedContextBody } from './vietnameseFixer';
 
-const cleanJsonString = (str: string): string => {
-    return str.replace(/```json/gi, "").replace(/```/gi, "").trim();
+export const cleanJsonString = (str: string): string => {
+    if (!str) return "[]";
+    let text = str.trim();
+    // Gỡ bỏ markdown code fences
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    // Tìm vị trí mở mảng [ hoặc mở đối tượng {
+    const firstBracket = text.indexOf('[');
+    const firstBrace = text.indexOf('{');
+    let startIdx = -1;
+    let endIdx = -1;
+
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        startIdx = firstBracket;
+        endIdx = text.lastIndexOf(']');
+    } else if (firstBrace !== -1) {
+        startIdx = firstBrace;
+        endIdx = text.lastIndexOf('}');
+    }
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx >= startIdx) {
+        return text.substring(startIdx, endIdx + 1);
+    }
+
+    if (startIdx !== -1) {
+        return text.substring(startIdx);
+    }
+
+    return text;
+};
+
+export const safeJsonParse = (str: string, fallback: any = []): any => {
+    if (!str) return fallback;
+    const cleaned = cleanJsonString(str);
+    
+    // 1. Thử parse trực tiếp
+    try {
+        return JSON.parse(cleaned);
+    } catch (primaryErr) {}
+
+    // 2. Thử sửa lỗi Escape không hợp lệ (thường gặp trong công thức toán LaTeX \vec, \alpha, \frac...)
+    try {
+        // Thay thế các escape không hợp lệ (không phải \", \\, \/, \b, \f, \n, \r, \t, \uXXXX)
+        const sanitizedEscapes = cleaned.replace(/\\([^"\\\/bfnrtu]|u[0-9a-fA-F]{0,3}[^0-9a-fA-F])/g, (match, p1) => {
+            return '\\\\' + p1;
+        });
+        return JSON.parse(sanitizedEscapes);
+    } catch (escapeErr) {}
+
+    // 3. Sửa lỗi mảng JSON bị cắt ngang (Truncated JSON / Unterminated string ở cuối)
+    try {
+        if (cleaned.startsWith('[')) {
+            // Tìm dấu đóng ngoặc nhọn '}' cuối cùng của object hoàn chỉnh
+            let lastValidBrace = -1;
+            let inString = false;
+            let isEscaped = false;
+
+            for (let i = 0; i < cleaned.length; i++) {
+                const char = cleaned[i];
+                if (isEscaped) {
+                    isEscaped = false;
+                    continue;
+                }
+                if (char === '\\') {
+                    isEscaped = true;
+                    continue;
+                }
+                if (char === '"') {
+                    inString = !inString;
+                    continue;
+                }
+                if (!inString && char === '}') {
+                    lastValidBrace = i;
+                }
+            }
+
+            if (lastValidBrace !== -1) {
+                const repaired = cleaned.substring(0, lastValidBrace + 1) + ']';
+                return JSON.parse(repaired);
+            }
+        } else if (cleaned.startsWith('{')) {
+            const repaired = cleaned.replace(/,\s*$/, '') + '}';
+            return JSON.parse(repaired);
+        }
+    } catch (repairErr) {}
+
+    // 4. Fallback trích xuất từng object câu hỏi riêng lẻ { ... } bằng thuật toán quét token
+    try {
+        const extracted: any[] = [];
+        let depth = 0;
+        let startIdx = -1;
+        let inString = false;
+        let isEscaped = false;
+
+        for (let i = 0; i < cleaned.length; i++) {
+            const char = cleaned[i];
+            if (isEscaped) {
+                isEscaped = false;
+                continue;
+            }
+            if (char === '\\') {
+                isEscaped = true;
+                continue;
+            }
+            if (char === '"') {
+                inString = !inString;
+                continue;
+            }
+            if (!inString) {
+                if (char === '{') {
+                    if (depth === 0) startIdx = i;
+                    depth++;
+                } else if (char === '}') {
+                    depth--;
+                    if (depth === 0 && startIdx !== -1) {
+                        const objStr = cleaned.substring(startIdx, i + 1);
+                        try {
+                            extracted.push(JSON.parse(objStr));
+                        } catch {
+                            // Thử sanitize escapes cho từng object
+                            try {
+                                const sanitized = objStr.replace(/\\([^"\\\/bfnrtu]|u[0-9a-fA-F]{0,3}[^0-9a-fA-F])/g, '\\\\$1');
+                                extracted.push(JSON.parse(sanitized));
+                            } catch {}
+                        }
+                        startIdx = -1;
+                    }
+                }
+            }
+        }
+
+        if (extracted.length > 0) {
+            return extracted;
+        }
+    } catch (tokenErr) {}
+
+    console.warn("safeJsonParse: Không thể khôi phục JSON, trả về fallback");
+    return fallback;
 };
 
 const removeVietnameseAccents = (str: string): string => {
@@ -183,7 +319,27 @@ const stripOptionLabel = (text: string): string => {
 };
 
 const EXTRACTION_INSTRUCTION = `Bạn là chuyên gia trích xuất và phân loại đề thi THPT quốc gia Việt Nam (Toán, Lý, Hóa, Sinh,...).
-NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn theo cấu trúc phân loại mức độ nhận thức.
+NHIỆM VỤ: Chuyển đổi nội dung được cung cấp thành danh sách JSON chuẩn theo cấu trúc phân loại mức độ nhận thức và chùm dữ liệu dùng chung.
+
+⚠️ QUY TẮC SỐ LƯỢNG & TÍNH TOÀN VẸN (BẮT BUỘC 100% - KHÔNG ĐƯỢC BỎ SÓT):
+1. BẮT BUỘC TRÍCH XUẤT 100% TẤT CẢ CÁC CÂU HỎI TRONG ĐOẠN ĐƯỢC GIAO:
+   - Trong đoạn văn bản có bao nhiêu câu hỏi (Ví dụ: 10 câu, 28 câu, 40 câu) thì bạn BẮT BUỘC phải trích xuất đầy đủ bấy nhiêu câu từ câu đầu tiên đến câu cuối cùng.
+   - TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG TỰ Ý RÚT GỌN, KHÔNG DỪNG LẠI GIỮA CHỪNG.
+   - Trích xuất tuần tự toàn bộ các phần: Phần I (Trắc nghiệm nhiều lựa chọn), Phần II (Trắc nghiệm Đúng/Sai), Phần III (Trả lời ngắn).
+2. NỘI DUNG & ĐÁP ÁN:
+   - Giữ nguyên toàn bộ câu từ, số liệu, đơn vị, biểu thức.
+   - Với câu trắc nghiệm Đúng/Sai (group-tf): BẮT BUỘC trích xuất đủ cả 4 ý con (a, b, c, d), kèm theo đáp án Đúng/Sai và lời giải giải thích cho từng ý.
+   - Với câu trả lời ngắn (short): BẮT BUỘC trích xuất đáp số chính xác vào 'correctAnswer'.
+
+QUY TẮC BÓC TÁCH DỮ LIỆU DÙNG CHUNG / LỜI DẪN CHUNG (Trường 'context') - BẮT BUỘC & CỰC KỲ QUAN TRỌNG:
+1. Nhận diện chùm câu hỏi có dữ liệu dùng chung:
+   - Khi có một đoạn văn bản, đồ thị, bảng số liệu, bối cảnh thực nghiệm hoặc thông tin được dùng chung cho nhiều câu hỏi (Ví dụ: "Sử dụng dữ liệu sau để trả lời Câu 1, Câu 2", "Dựa vào bảng số liệu sau trả lời từ câu 3 đến câu 5", "Thông tin chung cho các câu 15-18", hoặc các đoạn dẫn đầu một chùm câu hỏi).
+   - AI BẮT BUỘC trích xuất nguyên vẹn toàn bộ đoạn thông tin/dữ liệu/lời dẫn dùng chung này và đưa vào trường 'context' của TẤT CẢ các câu hỏi thuộc chùm đó.
+2. Nội dung câu hỏi ('text'):
+   - Trường 'text' của từng câu hỏi CHỈ CHỨA nội dung yêu cầu riêng biệt của câu đó (ví dụ: "Tính gia tốc chuyển động của vật...", "Góc lệch cực đại của con lắc bằng bao nhiêu?").
+   - TUYỆT ĐỐI KHÔNG lặp lại đoạn dữ liệu dùng chung vào 'text'.
+3. Câu hỏi độc lập:
+   - Nếu câu hỏi đứng riêng rẽ, không có lời dẫn/dữ liệu dùng chung cho nhiều câu, để trường 'context': null hoặc không điền.
 
 QUY TẮC PHÂN LOẠI MỨC ĐỘ NHẬN THỨC (level: "B" | "H" | "VD" | "VDC") - BẮT BUỘC:
 Mỗi câu hỏi và mỗi ý con a, b, c, d của câu Đúng/Sai BẮT BUỘC phải có trường 'level' thuộc một trong 4 mức độ:
@@ -199,11 +355,13 @@ QUY TẮC TRÍCH XUẤT ĐẶC BIỆT:
 QUY TẮC CẤU TRÚC CHI TIẾT:
 1. MCQ (Trắc nghiệm 4 lựa chọn):
    - 'type': "mcq"
+   - 'context': Lời dẫn/dữ liệu dùng chung (nếu có) hoặc null
    - 'level': "B" | "H" | "VD" | "VDC"
    - 'options': Mảng 4 phương án đã làm sạch (xóa "A.", "B.", "C.", "D.").
    - 'correctAnswer': BẮT BUỘC điền nội dung của phương án đúng (không kèm nhãn A, B, C, D).
 2. GROUP-TF (Trắc nghiệm Đúng/Sai):
    - 'type': "group-tf"
+   - 'context': Lời dẫn/dữ liệu dùng chung (nếu có) hoặc null
    - 'level': Mức độ chung của câu ("B" | "H" | "VD" | "VDC").
    - 'subQuestions': Mảng 4 ý (a, b, c, d), mỗi ý có:
      + 'text': Nội dung ý (đã xóa nhãn "a)", "b)").
@@ -212,23 +370,36 @@ QUY TẮC CẤU TRÚC CHI TIẾT:
    - 'solution': Lời giải chi tiết giải thích cho cả 4 ý: a) Đúng vì... b) Sai vì...
 3. SHORT (Trả lời ngắn):
    - 'type': "short"
+   - 'context': Lời dẫn/dữ liệu dùng chung (nếu có) hoặc null
    - 'level': "B" | "H" | "VD" | "VDC" (thường là "VD" hoặc "VDC")
-   - 'correctAnswer': Giá trị số hoặc biểu thức ngắn (VD: "12.5", "-4")
+   - 'correctAnswer': Giá trị số hoặc biểu thức ngắn (VD: "12.5", "-4", "$12{,}5$", "$2\\pi$")
    - 'options': null
-4. LaTeX & Công thức: Mọi ký hiệu, công thức toán/lý/hóa BẮT BUỘC bọc trong cặp dấu $...$ (VD: $x^2 + y^2 = 4$).
+4. LaTeX & Công thức (QUAN TRỌNG):
+   - MỌI công thức toán/lý/hóa, phương trình, số mũ, chỉ số dưới, phân số (\frac), căn (\sqrt), hằng số/đại lượng (\alpha, \pi, \Omega, \Delta), số đo kèm đơn vị (VD: $12{,}5\\text{ m/s}$, $x = 4\\cos(10\\pi t)$, $\\frac{1}{2}$, $\\sqrt{3}$) BẮT BUỘC PHẢI BAO TRONG CẶP DẤU $...$.
+   - Tuyệt đối không để sót công thức/phân số/ký hiệu toán trần mà không có cặp dấu $.
 `;
 
 const processAIQuestions = (rawData: any[]): Question[] => {
     return rawData.map((item: any) => {
         const type = item.type?.toLowerCase() || 'mcq';
-        const strippedOptions = item.options ? item.options.map((opt: string) => stripOptionLabel(opt)) : (type === 'mcq' ? [] : undefined);
-        let finalCorrectAnswer = item.correctAnswer;
+        const strippedOptions = item.options ? item.options.map((opt: string) => autoWrapLatex(stripOptionLabel(opt))) : (type === 'mcq' ? [] : undefined);
+        let finalCorrectAnswer = item.correctAnswer ? autoWrapLatex(String(item.correctAnswer)) : item.correctAnswer;
 
         // Xử lý trích xuất level từ mọi trường hoặc từ text câu hỏi
         const rawLevel = item.level ?? item.muc_do ?? item.mucdo ?? item.mucDo ?? item.do_kho ?? item.dokho ?? item.doKho ?? item.difficulty ?? item.bloom ?? item.bloomLevel ?? item.level_code ?? item.cognitiveLevel ?? item.cognitive_level ?? item.rank ?? item.phan_loai;
         let extractedMain = extractLevelFromText(item.text || "");
         let finalLevel = normalizeLevel(rawLevel) || extractedMain.level;
-        let cleanedText = extractedMain.cleanText;
+        let cleanedText = autoWrapLatex(extractedMain.cleanText);
+
+        // Xử lý dữ liệu dùng chung / lời dẫn chung
+        const rawContext = item.context ?? item.loi_dan ?? item.dan_nhap ?? item.doan_van ?? item.bai_doc ?? item.common_data ?? item.shared_context ?? item.shared_text ?? item.sharedContext;
+        let finalContext: string | undefined = undefined;
+        if (typeof rawContext === 'string') {
+            const trimmed = rawContext.trim();
+            if (trimmed && trimmed.toLowerCase() !== 'null' && trimmed.toLowerCase() !== 'undefined') {
+                finalContext = autoWrapLatex(trimmed.replace(/\\\(|\\\)/g, '$').replace(/\\\[|\\\]/g, '$$'));
+            }
+        }
 
         if (type === 'mcq' && item.correctAnswer && item.options) {
             let ansText = item.correctAnswer.trim();
@@ -238,10 +409,10 @@ const processAIQuestions = (rawData: any[]): Question[] => {
                 const label = matchLabel[1].toUpperCase();
                 const index = label.charCodeAt(0) - 65;
                 if (item.options[index]) {
-                    finalCorrectAnswer = stripOptionLabel(item.options[index]);
+                    finalCorrectAnswer = autoWrapLatex(stripOptionLabel(item.options[index]));
                 }
             } else {
-                finalCorrectAnswer = stripOptionLabel(ansText);
+                finalCorrectAnswer = autoWrapLatex(stripOptionLabel(ansText));
             }
         }
 
@@ -261,7 +432,7 @@ const processAIQuestions = (rawData: any[]): Question[] => {
         }
 
         if (type === 'short') {
-            finalCorrectAnswer = item.correctAnswer?.toString().trim() || "";
+            finalCorrectAnswer = autoWrapLatex(item.correctAnswer?.toString().trim() || "");
         }
 
         return {
@@ -270,19 +441,20 @@ const processAIQuestions = (rawData: any[]): Question[] => {
             id: item.id || uuidv4(),
             chapterName: item.chapterName ? String(item.chapterName).trim() : undefined,
             chapterId: item.chapterId ? String(item.chapterId).trim() : undefined,
-            context: item.context ? String(item.context).trim() : undefined,
+            context: finalContext,
             text: cleanedText,
             level: finalLevel,
             points: item.points || (type === 'mcq' ? 0.25 : type === 'group-tf' ? 1.0 : 0.5),
             options: strippedOptions,
             correctAnswer: finalCorrectAnswer,
+            solution: item.solution ? autoWrapLatex(String(item.solution)) : undefined,
             subQuestions: item.subQuestions ? item.subQuestions.map((sq: any) => {
                 const sqRawLevel = sq.level ?? sq.muc_do ?? sq.mucdo ?? sq.mucDo ?? sq.do_kho ?? sq.dokho ?? sq.doKho ?? sq.difficulty ?? sq.bloom ?? sq.bloomLevel ?? sq.level_code ?? sq.cognitiveLevel;
                 const sqExtract = extractLevelFromText(sq.text || "");
                 return { 
                     ...sq, 
                     id: uuidv4(),
-                    text: stripOptionLabel(sqExtract.cleanText),
+                    text: autoWrapLatex(stripOptionLabel(sqExtract.cleanText)),
                     level: normalizeLevel(sqRawLevel) || sqExtract.level,
                     correctAnswer: (sq.correctAnswer === 'True' || sq.correctAnswer === 'Đúng' || sq.correctAnswer === 'Đ' || sq.correctAnswer === 'T' || sq.correctAnswer === 'true' || sq.correctAnswer === '1') ? 'True' : 'False'
                 };
@@ -327,10 +499,10 @@ export const getAIKey = (): string => {
 };
 
 export const FALLBACK_MODELS = [
-    'gemini-3.1-flash-lite',
     'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-3-flash-preview'
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview'
 ];
 
 export const formatAIError = (error: any): string => {
@@ -433,6 +605,7 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
                             properties: {
                                 type: { type: Type.STRING },
                                 text: { type: Type.STRING },
+                                context: { type: Type.STRING, nullable: true },
                                 level: { type: Type.STRING, nullable: true },
                                 points: { type: Type.NUMBER },
                                 options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
@@ -460,17 +633,21 @@ QUY TẮC KỸ THUẬT BẮT BUỘC:
         );
 
         const textOutput = response.text || "[]";
-        const rawData = JSON.parse(cleanJsonString(textOutput));
+        const rawData = safeJsonParse(textOutput, []);
         
-        return processAIQuestions(rawData);
+        return processAIQuestions(Array.isArray(rawData) ? rawData : []);
     } catch (error: any) {
         throw new Error("AI không thể tạo đề: " + formatAIError(error));
     }
 };
 
-export const parseQuestionsFromPDF = async (base64Data: string): Promise<Question[]> => {
+export const parseQuestionsFromPDF = async (base64Data: string, includeSolutions: boolean = true): Promise<Question[]> => {
   const ai = getAIClient();
   
+  const modeInstruction = includeSolutions 
+    ? `YÊU CẦU BÓC TÁCH ĐẦY ĐỦ (KÈM LỜI GIẢI CHI TIẾT):\n- Quét kỹ TOÀN BỘ tất cả các trang của tài liệu PDF từ trang đầu đến trang cuối cùng.\n- BẮT BUỘC TRÍCH XUẤT 100% ĐẦY ĐỦ TẤT CẢ các câu hỏi có trong tài liệu (ví dụ có 28 câu, 40 câu hay 50 câu thì phải trả về đủ 100% trong mảng JSON, tuyệt đối không được dừng lại giữa chừng hay chỉ bóc tách 8-9 câu).\n- Viết lời giải chi tiết, rõ ràng cho từng câu hỏi / từng ý Đúng-Sai.`
+    : `YÊU CẦU BÓC TÁCH NHANH (CHỈ ĐÁP ÁN - KHÔNG GIẢI CHI TIẾT):\n- Quét kỹ TOÀN BỘ tất cả các trang của tài liệu PDF từ trang đầu đến trang cuối cùng.\n- BẮT BUỘC TRÍCH XUẤT 100% ĐẦY ĐỦ TẤT CẢ các câu hỏi có trong tài liệu (ví dụ 28, 40 hay 50 câu tuyệt đối không bỏ sót câu nào).\n- BẮT BUỘC ĐỂ TRƯỜNG 'solution': "" (để chuỗi rỗng), KHÔNG viết lời giải chi tiết để tiết kiệm tối đa dung lượng token và bóc tách siêu tốc trọn vẹn 100% đề thi.`;
+
   try {
     const response = await callAIWithFallback((model) => 
       ai.models.generateContent({
@@ -478,11 +655,12 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
         contents: {
             parts: [
                 { inlineData: { mimeType: "application/pdf", data: base64Data } },
-                { text: EXTRACTION_INSTRUCTION }
+                { text: `${EXTRACTION_INSTRUCTION}\n\n${modeInstruction}` }
             ]
         },
         config: { 
           responseMimeType: "application/json",
+          maxOutputTokens: 8192,
           responseSchema: {
               type: Type.ARRAY,
               items: {
@@ -490,6 +668,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                   properties: {
                       type: { type: Type.STRING },
                       text: { type: Type.STRING },
+                      context: { type: Type.STRING, nullable: true },
                       level: { type: Type.STRING, nullable: true },
                       points: { type: Type.NUMBER },
                       options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
@@ -509,7 +688,7 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
                           }
                       }
                   },
-                  required: ["type", "text", "solution"]
+                  required: ["type", "text"]
               }
           }
         }
@@ -517,9 +696,9 @@ export const parseQuestionsFromPDF = async (base64Data: string): Promise<Questio
     );
 
     const textOutput = response.text || "[]";
-    const rawData = JSON.parse(cleanJsonString(textOutput));
+    const rawData = safeJsonParse(textOutput, []);
     
-    return processAIQuestions(rawData);
+    return processAIQuestions(Array.isArray(rawData) ? rawData : []);
   } catch (error: any) {
     throw new Error("Lỗi đọc PDF: " + formatAIError(error));
   }
@@ -529,8 +708,10 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
     let parsed: any;
     if (typeof input === 'string') {
         try {
-            const cleanStr = cleanJsonString(input);
-            parsed = JSON.parse(cleanStr);
+            parsed = safeJsonParse(input, null);
+            if (!parsed) {
+                throw new Error("Dữ liệu JSON không hợp lệ");
+            }
         } catch (e: any) {
             throw new Error("Cấu trúc file hoặc chuỗi JSON không hợp lệ. Vui lòng kiểm tra lại cú pháp JSON!");
         }
@@ -751,53 +932,187 @@ export const parseQuestionsFromJSON = (input: string | any): { questions: Questi
     };
 };
 
-export const parseQuestionsFromText = async (rawText: string): Promise<Question[]> => {
+/**
+ * Tách văn bản đề thi thành các lô (batch) câu hỏi hợp lý (mỗi lô 12-15 câu)
+ * để AI xử lý tối ưu, không bị quá tải token, tránh rate limit và KHÔNG BAO GIỜ bỏ sót câu hỏi.
+ */
+export const splitTextIntoBatches = (rawText: string, targetBatchSize: number = 14): string[] => {
+    const text = rawText.trim();
+    if (!text) return [];
+
+    // 1. Kiểm tra cấu trúc các PHẦN (PHẦN I, PHẦN II, PHẦN III hoặc Phần 1, Phần 2, Phần 3)
+    const partPattern = /(?:^|\n)(?=(?:PHẦN|Phần|PART|Part|CHỦ ĐỀ|Chủ đề)\s+(?:[I|V|X\d]+|\d+)[:.\s])/;
+    const rawParts = text.split(partPattern).map(p => p.trim()).filter(Boolean);
+
+    if (rawParts.length >= 2 && rawParts.length <= 10) {
+        const allBatches: string[] = [];
+        for (const part of rawParts) {
+            const subBatches = splitSingleSectionByQuestions(part, targetBatchSize);
+            allBatches.push(...subBatches);
+        }
+        if (allBatches.length > 0) return allBatches;
+    }
+
+    return splitSingleSectionByQuestions(text, targetBatchSize);
+};
+
+const splitSingleSectionByQuestions = (sectionText: string, targetBatchSize: number = 14): string[] => {
+    const text = sectionText.trim();
+    if (!text) return [];
+
+    // Nhận diện ranh giới câu hỏi: "Câu 1:", "Câu 1.", "Bài 1:", "Question 1:"
+    const qBoundaryRegex = /(?:^|\n)(?=(?:Câu|CÂU|Bài|BÀI|Question|QUESTION)\s*\d+[\.\:\-\/\s])/;
+    const rawItems = text.split(qBoundaryRegex).map(item => item.trim()).filter(Boolean);
+
+    // Nếu nhận diện được từ 3 câu hỏi trở lên
+    if (rawItems.length >= 3) {
+        const batches: string[] = [];
+        for (let i = 0; i < rawItems.length; i += targetBatchSize) {
+            const batchQuestions = rawItems.slice(i, i + targetBatchSize);
+            batches.push(batchQuestions.join('\n\n'));
+        }
+        return batches;
+    }
+
+    // Thử tách theo mẫu số thứ tự: 1., 2., 3. ở đầu dòng
+    const numBoundaryRegex = /(?:^|\n)(?=\d+[\.\:\)]\s+[A-ZÀ-Ỹa-z])/;
+    const numItems = text.split(numBoundaryRegex).map(item => item.trim()).filter(Boolean);
+    if (numItems.length >= 4) {
+        const batches: string[] = [];
+        for (let i = 0; i < numItems.length; i += targetBatchSize) {
+            const batchQuestions = numItems.slice(i, i + targetBatchSize);
+            batches.push(batchQuestions.join('\n\n'));
+        }
+        return batches;
+    }
+
+    // Nếu văn bản dài mà không có đánh số rõ ràng (> 4500 ký tự), chia theo đoạn
+    if (text.length > 4500) {
+        const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+        const batches: string[] = [];
+        let current = '';
+        for (const p of paragraphs) {
+            if (current.length + p.length > 3000 && current.length > 0) {
+                batches.push(current);
+                current = p;
+            } else {
+                current = current ? current + '\n\n' + p : p;
+            }
+        }
+        if (current) batches.push(current);
+        return batches.length > 0 ? batches : [text];
+    }
+
+    return [text];
+};
+
+export const parseQuestionsFromText = async (rawText: string, includeSolutions: boolean = true): Promise<Question[]> => {
     const ai = getAIClient();
-    
-    try {
-        const response = await callAIWithFallback((model) => 
-            ai.models.generateContent({
-                model,
-                contents: `${EXTRACTION_INSTRUCTION}\n\nNỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT VÀ PHÂN LOẠI MỨC ĐỘ:\n${rawText}`,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                type: { type: Type.STRING },
-                                text: { type: Type.STRING },
-                                level: { type: Type.STRING, nullable: true },
-                                points: { type: Type.NUMBER },
-                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                                correctAnswer: { type: Type.STRING, nullable: true },
-                                solution: { type: Type.STRING },
-                                subQuestions: {
-                                    type: Type.ARRAY,
-                                    nullable: true,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            text: { type: Type.STRING },
-                                            correctAnswer: { type: Type.STRING },
-                                            level: { type: Type.STRING, nullable: true }
-                                        },
-                                        required: ["text", "correctAnswer"]
-                                    }
-                                }
-                            },
-                            required: ["type", "text", "solution"]
-                        }
+    const batchSize = includeSolutions ? 14 : 18;
+    const batches = splitTextIntoBatches(rawText, batchSize);
+
+    // Schema chung cho từng lô bóc tách
+    const batchSchema = {
+        type: Type.ARRAY,
+        items: {
+            type: Type.OBJECT,
+            properties: {
+                type: { type: Type.STRING },
+                text: { type: Type.STRING },
+                context: { type: Type.STRING, nullable: true },
+                level: { type: Type.STRING, nullable: true },
+                points: { type: Type.NUMBER },
+                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                correctAnswer: { type: Type.STRING, nullable: true },
+                solution: { type: Type.STRING },
+                subQuestions: {
+                    type: Type.ARRAY,
+                    nullable: true,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            text: { type: Type.STRING },
+                            correctAnswer: { type: Type.STRING },
+                            level: { type: Type.STRING, nullable: true }
+                        },
+                        required: ["text", "correctAnswer"]
                     }
                 }
-            })
-        );
+            },
+            required: ["type", "text"]
+        }
+    };
 
-        const textOutput = response.text || "[]";
-        const rawData = JSON.parse(cleanJsonString(textOutput));
-        
-        return processAIQuestions(rawData);
+    const modeInstruction = includeSolutions 
+        ? `BẮT BUỘC TRÍCH XUẤT 100% TẤT CẢ CÁC CÂU HỎI KÈM LỜI GIẢI CHI TIẾT (solution).`
+        : `CHẾ ĐỘ BÓC TÁCH NHANH (CHỈ ĐÁP ÁN - KHÔNG GIẢI CHI TIẾT): BẮT BUỘC TRÍCH XUẤT 100% TẤT CẢ CÁC CÂU HỎI. Để trường 'solution': "" (chuỗi rỗng), KHÔNG cần giải chi tiết để tăng tốc độ tối đa.`;
+
+    const processSingleBatchWithRetry = async (batchText: string, batchIndex: number, totalBatches: number): Promise<any[]> => {
+        const prompt = `${EXTRACTION_INSTRUCTION}
+
+${modeInstruction}
+
+${totalBatches > 1 ? `[ĐOẠN TRÍCH XUẤT ${batchIndex + 1}/${totalBatches}] - BẮT BUỘC TRÍCH XUẤT 100% TẤT CẢ CÁC CÂU HỎI TRONG ĐOẠN NÀY, KHÔNG ĐƯỢC BỎ SÓT CÂU NÀO:\n` : 'NỘI DUNG VĂN BẢN CẦN TRÍCH XUẤT VÀ PHÂN LOẠI MỨC ĐỘ:\n'}${batchText}`;
+
+        let lastErr: any = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const response = await callAIWithFallback((model) => 
+                    ai.models.generateContent({
+                        model,
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            maxOutputTokens: 8192,
+                            responseSchema: batchSchema
+                        }
+                    })
+                );
+
+                const textOutput = response.text || "[]";
+                const parsed = safeJsonParse(textOutput, []);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (err: any) {
+                lastErr = err;
+                console.warn(`Lô ${batchIndex + 1} thử lần ${attempt} thất bại:`, err);
+                if (attempt < 2) {
+                    await new Promise(res => setTimeout(res, 800));
+                }
+            }
+        }
+        throw lastErr;
+    };
+
+    try {
+        if (batches.length <= 1) {
+            const rawData = await processSingleBatchWithRetry(batches[0] || rawText, 0, 1);
+            return processAIQuestions(rawData);
+        }
+
+        // Xử lý tuần tự có khoảng nghỉ 250ms để ngăn chặn triệt để 429 Rate Limit
+        const allRawItems: any[] = [];
+        for (let i = 0; i < batches.length; i++) {
+            if (i > 0) {
+                await new Promise(res => setTimeout(res, 250));
+            }
+            try {
+                const res = await processSingleBatchWithRetry(batches[i], i, batches.length);
+                if (Array.isArray(res)) {
+                    allRawItems.push(...res);
+                }
+            } catch (batchErr: any) {
+                console.error(`Lỗi lô ${i + 1}/${batches.length}:`, batchErr);
+                if (allRawItems.length === 0 && i === batches.length - 1) {
+                    throw batchErr;
+                }
+            }
+        }
+
+        if (allRawItems.length === 0) {
+            throw new Error("Không thể bóc tách câu hỏi từ văn bản. Vui lòng kiểm tra lại văn bản đầu vào.");
+        }
+
+        return processAIQuestions(allRawItems);
     } catch (error: any) {
         throw new Error("Lỗi bóc tách văn bản: " + formatAIError(error));
     }
@@ -872,7 +1187,7 @@ NHIỆM VỤ:
         );
 
         const textOutput = response.text || "[]";
-        const result = JSON.parse(cleanJsonString(textOutput));
+        const result = safeJsonParse(textOutput, []);
         return Array.isArray(result) ? result : [];
     };
 
@@ -984,8 +1299,8 @@ ${jsonFormatDesc}`;
         );
 
         const textOutput = response.text || "[]";
-        const rawData = JSON.parse(cleanJsonString(textOutput));
-        const processed = processAIQuestions(rawData);
+        const rawData = safeJsonParse(textOutput, []);
+        const processed = processAIQuestions(Array.isArray(rawData) ? rawData : []);
         return processed.map(q => ({
             ...q,
             type: questionType,
@@ -1087,7 +1402,7 @@ TRẢ VỀ MẢNG JSON THUẦN TÚY:
         );
 
         const textOutput = response.text || "[]";
-        const result = JSON.parse(cleanJsonString(textOutput));
+        const result = safeJsonParse(textOutput, []);
         return Array.isArray(result) ? result.map((item: any) => ({
             id: item.id,
             level: normalizeLevel(item.level) || 'H',
