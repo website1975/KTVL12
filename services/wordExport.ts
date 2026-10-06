@@ -138,7 +138,12 @@ export function latexToWordHtml(latex: string): string {
     .replace(/\\\{;\s*\\\}/g, ';')
     .replace(/\{,\s*\}/g, ',')
     .replace(/\{;\s*\}/g, ';')
-    .replace(/\{\.\s*\}/g, '.');
+    .replace(/\{\.\s*\}/g, '.')
+    .replace(/\\cdot(?:\{\})?\s*/g, '·')
+    .replace(/\\times(?:\{\})?\s*/g, '×')
+    .replace(/\\pm(?:\{\})?\s*/g, '±')
+    .replace(/\\mp(?:\{\})?\s*/g, '∓')
+    .replace(/\\approx(?:\{\})?\s*/g, '≈');
 
   // Xóa các lệnh font
   clean = clean.replace(/\\mathrm\{([^}]+)\}/g, '$1');
