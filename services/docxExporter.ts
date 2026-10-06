@@ -199,6 +199,16 @@ export function replaceLatexMacros(str: string): string {
     .replace(/\\quad/g, '   ')
     .replace(/\\qquad/g, '    ');
 
+  // Chuẩn hóa dấu chấm nhân \cdot và các phép toán cơ bản
+  s = s
+    .replace(/\\cdot(?:\{\})?/g, '·')
+    .replace(/\\times(?:\{\})?/g, '×')
+    .replace(/\\pm(?:\{\})?/g, '±')
+    .replace(/\\mp(?:\{\})?/g, '∓')
+    .replace(/\\approx(?:\{\})?/g, '≈')
+    .replace(/\\degree(?:\{\})?/g, '°')
+    .replace(/\\circ(?:\{\})?/g, '°');
+
   // Chuẩn hóa dấu phẩy / chấm thập phân LaTeX dạng {,}, {.}, {;} (Ví dụ: 0{,}5 -> 0,5)
   s = s
     .replace(/\\\{,\s*\\\}/g, ',')
@@ -383,6 +393,13 @@ export function parseLatexToDocxMath(latex: string): MathComponent[] {
   clean = clean.replace(/\{,\s*\}/g, ',');
   clean = clean.replace(/\{;\s*\}/g, ';');
   clean = clean.replace(/\{\.\s*\}/g, '.');
+
+  // Chuẩn hóa dấu chấm nhân \cdot và các phép toán cơ bản
+  clean = clean.replace(/\\cdot(?:\{\})?/g, '·');
+  clean = clean.replace(/\\times(?:\{\})?/g, '×');
+  clean = clean.replace(/\\pm(?:\{\})?/g, '±');
+  clean = clean.replace(/\\mp(?:\{\})?/g, '∓');
+  clean = clean.replace(/\\approx(?:\{\})?/g, '≈');
 
   // Tiền xử lý độ / góc / nhiệt độ: 6^\circ, 30^\circ, 6^{\circ}, 6^\circ\text{C}, 6^\circ C -> 6° / 6°C
   clean = clean.replace(/\^\{\\circ\}/g, '°');
@@ -846,13 +863,17 @@ export function parseTextWithMath(
 ): (TextRun | DocxMath)[] {
   if (!text) return [];
 
-  // Chuẩn hóa dấu phẩy thập phân LaTeX dạng 0{,}5 -> 0,5 trước khi tách chuỗi
+  // Chuẩn hóa dấu phẩy thập phân LaTeX dạng 0{,}5 -> 0,5 và dấu chấm nhân \cdot trước khi tách chuỗi
   const sanitized = text
     .replace(/\\\{,\s*\\\}/g, ',')
     .replace(/\\\{;\s*\\\}/g, ';')
     .replace(/\{,\s*\}/g, ',')
     .replace(/\{;\s*\}/g, ';')
-    .replace(/\{\.\s*\}/g, '.');
+    .replace(/\{\.\s*\}/g, '.')
+    .replace(/\\cdot(?:\{\})?/g, '·')
+    .replace(/\\times(?:\{\})?/g, '×')
+    .replace(/\\pm(?:\{\})?/g, '±')
+    .replace(/\\approx(?:\{\})?/g, '≈');
 
   const repaired = repairVietnameseText(sanitized);
   const parts = repaired.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
@@ -869,12 +890,16 @@ export function parseTextWithMath(
         })
       );
     } else {
-      const cleanPart = part
+      const cleanPart = replaceLatexMacros(part)
         .replace(/\\\{,\s*\\\}/g, ',')
         .replace(/\\\{;\s*\\\}/g, ';')
         .replace(/\{,\s*\}/g, ',')
         .replace(/\{;\s*\}/g, ';')
-        .replace(/\{\.\s*\}/g, '.');
+        .replace(/\{\.\s*\}/g, '.')
+        .replace(/\\cdot(?:\{\})?/g, '·')
+        .replace(/\\times(?:\{\})?/g, '×')
+        .replace(/\\pm(?:\{\})?/g, '±')
+        .replace(/\\approx(?:\{\})?/g, '≈');
 
       runs.push(
         new TextRun({
