@@ -5,8 +5,25 @@ import {
   ArrowRight, CheckSquare, Square, UserPlus, UserMinus,
   Check, ChevronRight, X, ArrowUpRight, BarChart3, Award,
   Clock, TrendingUp, AlertCircle, Copy, CheckCheck, BookOpen, 
-  Star, Filter, ArrowLeft, Lightbulb, CheckCircle2, XCircle
+  Star, Filter, ArrowLeft, Lightbulb, CheckCircle2, XCircle,
+  BarChart2, LineChart as LineChartIcon, Sparkles, Trophy
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+  Cell
+} from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 
@@ -82,6 +99,11 @@ export default function ClassManager({
   // Tab 3: Progress & Evaluation state
   const [progressSearch, setProgressSearch] = useState<string>('');
   const [inspectingStudent, setInspectingStudent] = useState<User | null>(null);
+  const [inspectingChartType, setInspectingChartType] = useState<'timeline' | 'distribution'>('timeline');
+  const [classProgressChartType, setClassProgressChartType] = useState<'timeline' | 'distribution'>('timeline');
+  const [classProgressChartScope, setClassProgressChartScope] = useState<'all' | 'test' | 'practice'>('all');
+  const [classProgressChartLimit, setClassProgressChartLimit] = useState<number>(15);
+  const [selectedStudentForComparison, setSelectedStudentForComparison] = useState<string>('all');
 
   // Unique academic years
   const academicYears = useMemo(() => {
@@ -288,11 +310,28 @@ export default function ClassManager({
     const completedQuizzesCount = classAssignedQuizzes.filter(q => completedQuizIds.has(q.id)).length;
     const totalAssignedCount = classAssignedQuizzes.length;
     const completionRate = totalAssignedCount > 0 ? (completedQuizzesCount / totalAssignedCount) * 100 : 0;
+    const uncompletedQuizzes = classAssignedQuizzes.filter(q => !completedQuizIds.has(q.id));
+    const uncompletedCount = uncompletedQuizzes.length;
 
-    // Average score across quizzes
-    const avgScore = studentResults.length > 0 
-      ? studentResults.reduce((acc, r) => acc + r.score, 0) / studentResults.length 
+    // Điểm cao nhất của từng đề đã nộp
+    const quizScoreMap = new Map<string, number>();
+    studentResults.forEach(r => {
+      const cur = quizScoreMap.get(r.quizId) ?? 0;
+      if (r.score > cur) quizScoreMap.set(r.quizId, r.score);
+    });
+
+    const sumSubmittedScores = Array.from(quizScoreMap.values()).reduce((a, b) => a + b, 0);
+
+    // ĐTB thực tế các bài đã làm
+    const avgSubmittedScore = quizScoreMap.size > 0 
+      ? sumSubmittedScores / quizScoreMap.size 
       : 0;
+
+    // ĐTB TỔNG KẾT (Quy tắc công bằng: Các đề được giao nhưng KHÔNG LÀM sẽ tính 0.00 điểm)
+    // ĐTB Tổng kết = (Tổng điểm các đề đã nộp + 0 * Số đề chưa làm) / Tổng số đề được giao
+    const finalOfficialScore = totalAssignedCount > 0 
+      ? sumSubmittedScores / totalAssignedCount 
+      : avgSubmittedScore;
 
     // Progression analysis (compare older results with recent results)
     const sortedChronological = [...studentResults].sort((a, b) => 
@@ -303,7 +342,19 @@ export default function ClassManager({
     let progressFeedback = '';
     const recommendedChapters: string[] = [];
 
-    if (sortedChronological.length >= 3) {
+    // Phân tích tiến độ và phản hồi công bằng (Có xét việc bỏ bài = 0đ)
+    if (totalAssignedCount > 0 && completionRate < 50) {
+      progressStatus = 'needs_effort';
+      progressFeedback = `Chưa hoàn thành đủ số bài được giao (Mới làm ${completedQuizzesCount}/${totalAssignedCount} đề - Bị tính 0đ cho ${uncompletedCount} đề chưa nộp). ĐTB tổng kết hiện tại: ${finalOfficialScore.toFixed(1)}đ. Cần khẩn trương nộp bù các đề còn thiếu để đảm bảo điểm số.`;
+    } else if (totalAssignedCount > 0 && completionRate < 80) {
+      if (avgSubmittedScore >= 8.0) {
+        progressStatus = 'steady';
+        progressFeedback = `Chất lượng bài làm khá tốt (Điểm TB bài đã nộp ${avgSubmittedScore.toFixed(1)}đ), tuy nhiên còn ${uncompletedCount} đề chưa hoàn thành (bị tính 0đ làm ĐTB tổng kết giảm còn ${finalOfficialScore.toFixed(1)}đ). Cần làm đủ 100% bài giao để đạt danh hiệu Giỏi/Xuất sắc.`;
+      } else {
+        progressStatus = 'needs_effort';
+        progressFeedback = `ĐTB tổng kết đạt ${finalOfficialScore.toFixed(1)}đ (còn ${uncompletedCount} đề chưa nộp tính 0đ). Cần tăng cường thời lượng rèn luyện và làm đầy đủ bài tập.`;
+      }
+    } else if (sortedChronological.length >= 3) {
       const firstHalf = sortedChronological.slice(0, Math.floor(sortedChronological.length / 2));
       const secondHalf = sortedChronological.slice(Math.floor(sortedChronological.length / 2));
 
@@ -318,26 +369,29 @@ export default function ClassManager({
         }
       });
 
-      if (secondAvg - firstAvg >= 1.0 || (secondAvg >= 8.5 && totalSeconds > 7200)) {
+      if (finalOfficialScore >= 8.0 && (secondAvg - firstAvg >= 0.5 || secondAvg >= 8.5)) {
         progressStatus = 'excellent';
-        progressFeedback = `Học sinh có tiến bộ vượt bậc! Điểm trung bình các bài gần đây đạt ${secondAvg.toFixed(1)}đ (tăng ${(secondAvg - firstAvg).toFixed(1)}đ so với giai đoạn đầu). Ý thức tự học và rèn luyện rất tích cực.`;
-      } else if (secondAvg >= firstAvg || secondAvg >= 7.0) {
+        progressFeedback = `Học sinh có ý thức và phong độ xuất sắc! Hoàn thành tốt các đề giao, ĐTB tổng kết đạt ${finalOfficialScore.toFixed(1)}đ (Điểm các bài gần đây: ${secondAvg.toFixed(1)}đ). Phát huy rất tốt!`;
+      } else if (finalOfficialScore >= 6.5) {
         progressStatus = 'steady';
-        progressFeedback = `Học sinh duy trì phong độ học tập ổn định (Điểm trung bình ${secondAvg.toFixed(1)}đ). Cần tiếp tục phát huy và luyện tập thêm các câu hỏi phân hóa.`;
+        progressFeedback = `Học sinh duy trì phong độ học tập ổn định (ĐTB tổng kết ${finalOfficialScore.toFixed(1)}đ). Cần tiếp tục phát huy và luyện tập thêm các câu hỏi nâng cao.`;
       } else {
         progressStatus = 'needs_effort';
-        progressFeedback = `Chưa có sự tiến bộ rõ rệt (Điểm trung bình ${secondAvg.toFixed(1)}đ). Học sinh cần tăng thời lượng rèn luyện và chú ý làm lại các bài thi chưa đạt.`;
+        progressFeedback = `ĐTB tổng kết đạt ${finalOfficialScore.toFixed(1)}đ. Học sinh cần tăng thời lượng rèn luyện và chú ý làm lại các bài thi chưa đạt.`;
       }
     } else if (sortedChronological.length > 0) {
-      if (avgScore >= 8.0) {
+      if (finalOfficialScore >= 8.0 && completionRate >= 80) {
         progressStatus = 'excellent';
-        progressFeedback = `Kết quả ban đầu rất khả quan (Điểm TB ${avgScore.toFixed(1)}đ). Cần duy trì giải đều các đề mới được giao.`;
+        progressFeedback = `Kết quả ban đầu rất khả quan (ĐTB tổng kết ${finalOfficialScore.toFixed(1)}đ). Cần tiếp tục duy trì làm đều các đề mới được giao.`;
+      } else if (finalOfficialScore >= 5.0) {
+        progressStatus = 'steady';
+        progressFeedback = `Đã hoàn thành ${completedQuizzesCount}/${totalAssignedCount} đề (ĐTB tổng kết ${finalOfficialScore.toFixed(1)}đ). Cần tiếp tục làm thêm các bài còn lại.`;
       } else {
         progressStatus = 'needs_effort';
-        progressFeedback = `Mới hoàn thành ${studentResults.length} bài thi. Cần rèn luyện thêm nhiều đề để hệ thống có đủ dữ liệu đánh giá tiến bộ.`;
+        progressFeedback = `Mới hoàn thành ${completedQuizzesCount}/${totalAssignedCount} đề (ĐTB tổng kết ${finalOfficialScore.toFixed(1)}đ - gồm ${uncompletedCount} đề chưa nộp tính 0đ). Cần hoàn thành đủ bài để cải thiện kết quả.`;
       }
     } else {
-      progressFeedback = 'Chưa tham gia làm bài thi nào. Cần đôn đốc học sinh đăng nhập và làm các đề thi được giao.';
+      progressFeedback = 'Chưa tham gia làm bài thi nào (Tất cả đề giao đang tính 0đ). Cần đôn đốc học sinh đăng nhập và làm các đề thi được giao.';
     }
 
     return {
@@ -348,14 +402,177 @@ export default function ClassManager({
       completedQuizzesCount,
       totalAssignedCount,
       completionRate,
-      avgScore,
+      uncompletedCount,
+      avgScore: finalOfficialScore, // ĐTB Tổng kết (chuẩn hóa 0đ bài chưa nộp)
+      avgSubmittedScore, // ĐTB thực tế các bài đã làm
+      finalOfficialScore,
       progressStatus,
       progressFeedback,
       recommendedChapters,
       studentResults,
-      uncompletedQuizzes: classAssignedQuizzes.filter(q => !completedQuizIds.has(q.id))
+      uncompletedQuizzes
     };
   };
+
+  // Tab 3 Class-level Progress & Analytics Data (Including 0 points for uncompleted quizzes)
+  const classProgressData = useMemo(() => {
+    if (!selectedClass || classStudents.length === 0) {
+      return {
+        timelineData: [],
+        distributionData: [],
+        classOfficialAvg: 0,
+        classSubmittedAvg: 0,
+        totalAssignedSlots: 0,
+        totalCompletedSlots: 0,
+        classCompletionRate: 0,
+        excellentStudentsCount: 0,
+        effortNeededStudentsCount: 0,
+        selectedStudentObj: null
+      };
+    }
+
+    // Filter assigned quizzes by scope
+    let assignedList = [...classAssignedQuizzes];
+    if (classProgressChartScope !== 'all') {
+      assignedList = assignedList.filter(q => q.type === classProgressChartScope);
+    }
+    // Sort oldest to newest for chronological progress line
+    assignedList.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+    if (classProgressChartLimit > 0 && assignedList.length > classProgressChartLimit) {
+      assignedList = assignedList.slice(assignedList.length - classProgressChartLimit);
+    }
+
+    const selectedStudentObj = selectedStudentForComparison !== 'all'
+      ? classStudents.find(s => s.id === selectedStudentForComparison) || null
+      : null;
+
+    // Build timeline points per quiz
+    const timelineData = assignedList.map((quiz, idx) => {
+      let totalAssignedScoreOnQuiz = 0;
+      let totalSubmittedScoreOnQuiz = 0;
+      let submittedCountOnQuiz = 0;
+      let studentScoreVal: number | null = null;
+      let selectedStudentSubmitted = false;
+
+      classStudents.forEach(student => {
+        const studentResults = results.filter(r => 
+          r.quizId === quiz.id && 
+          (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
+        );
+
+        if (studentResults.length > 0) {
+          const best = Math.max(...studentResults.map(r => r.score));
+          totalAssignedScoreOnQuiz += best;
+          totalSubmittedScoreOnQuiz += best;
+          submittedCountOnQuiz++;
+
+          if (selectedStudentObj && student.id === selectedStudentObj.id) {
+            studentScoreVal = Number(best.toFixed(2));
+            selectedStudentSubmitted = true;
+          }
+        } else {
+          // Uncompleted student gets 0.00 points
+          totalAssignedScoreOnQuiz += 0;
+          if (selectedStudentObj && student.id === selectedStudentObj.id) {
+            studentScoreVal = 0.00;
+            selectedStudentSubmitted = false;
+          }
+        }
+      });
+
+      const unsubmittedCountOnQuiz = Math.max(0, classStudents.length - submittedCountOnQuiz);
+      const classAvgOfficial = classStudents.length > 0 ? totalAssignedScoreOnQuiz / classStudents.length : 0;
+      const classAvgSubmitted = submittedCountOnQuiz > 0 ? totalSubmittedScoreOnQuiz / submittedCountOnQuiz : 0;
+      const quizDate = quiz.createdAt ? new Date(quiz.createdAt) : new Date();
+
+      return {
+        id: quiz.id,
+        attemptNumber: idx + 1,
+        quizTitle: quiz.title,
+        shortTitle: quiz.title.length > 18 ? quiz.title.slice(0, 16) + '...' : quiz.title,
+        date: format(quizDate, 'dd/MM/yyyy'),
+        shortDate: format(quizDate, 'dd/MM'),
+        classAvgOfficial: Number(classAvgOfficial.toFixed(2)),
+        classAvgSubmitted: Number(classAvgSubmitted.toFixed(2)),
+        submittedCount: submittedCountOnQuiz,
+        unsubmittedCount: unsubmittedCountOnQuiz,
+        totalStudents: classStudents.length,
+        completionRate: classStudents.length > 0 ? Math.round((submittedCountOnQuiz / classStudents.length) * 100) : 0,
+        selectedStudentScore: (studentScoreVal as (number | null)),
+        selectedStudentSubmitted,
+        quizType: quiz.type || 'test'
+      };
+    });
+
+    // Score distribution across all assigned slots (student x assignedQuizzes)
+    // Every uncompleted slot is counted as 0.00 points
+    const distGroups = [
+      { key: 'zero', name: '0.00đ (Bỏ thi / Chưa làm)', shortName: '0.0đ (Bỏ thi)', count: 0, color: '#f43f5e' },
+      { key: 'under5', name: '< 5.0đ (Chưa đạt)', shortName: '< 5.0đ', count: 0, color: '#fb7185' },
+      { key: '5to65', name: '5.0 - 6.4đ (Trung bình)', shortName: '5.0 - 6.4đ', count: 0, color: '#f59e0b' },
+      { key: '65to8', name: '6.5 - 7.9đ (Khá)', shortName: '6.5 - 7.9đ', count: 0, color: '#3b82f6' },
+      { key: '8to10', name: '8.0 - 10.0đ (Giỏi / Xuất sắc)', shortName: '8.0 - 10.0đ', count: 0, color: '#10b981' }
+    ];
+
+    let grandTotalAssignedScore = 0;
+    let grandTotalSubmittedScore = 0;
+    let grandTotalSubmittedCount = 0;
+    let excellentCount = 0;
+    let effortNeededCount = 0;
+
+    classStudents.forEach(student => {
+      const training = getStudentTrainingData(student);
+      if (training.finalOfficialScore >= 8.0) excellentCount++;
+      if (training.finalOfficialScore < 5.0 || training.completionRate < 60) effortNeededCount++;
+
+      classAssignedQuizzes.forEach(quiz => {
+        const studentResults = results.filter(r => 
+          r.quizId === quiz.id && 
+          (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
+        );
+
+        if (studentResults.length > 0) {
+          const best = Math.max(...studentResults.map(r => r.score));
+          grandTotalAssignedScore += best;
+          grandTotalSubmittedScore += best;
+          grandTotalSubmittedCount++;
+
+          if (best === 0) distGroups[0].count++;
+          else if (best < 5) distGroups[1].count++;
+          else if (best < 6.5) distGroups[2].count++;
+          else if (best < 8) distGroups[3].count++;
+          else distGroups[4].count++;
+        } else {
+          // Uncompleted counts as 0.00 points
+          distGroups[0].count++;
+        }
+      });
+    });
+
+    const totalSlots = (classStudents.length * classAssignedQuizzes.length) || 1;
+    const distributionData = distGroups.map(g => ({
+      ...g,
+      percentage: totalSlots > 0 ? Math.round((g.count / totalSlots) * 100) : 0
+    }));
+
+    const classOfficialAvg = totalSlots > 0 ? (grandTotalAssignedScore / totalSlots) : 0;
+    const classSubmittedAvg = grandTotalSubmittedCount > 0 ? (grandTotalSubmittedScore / grandTotalSubmittedCount) : 0;
+    const classCompletionRate = totalSlots > 0 ? Math.round((grandTotalSubmittedCount / totalSlots) * 100) : 0;
+
+    return {
+      timelineData,
+      distributionData,
+      classOfficialAvg,
+      classSubmittedAvg,
+      totalAssignedSlots: totalSlots,
+      totalCompletedSlots: grandTotalSubmittedCount,
+      classCompletionRate,
+      excellentStudentsCount: excellentCount,
+      effortNeededStudentsCount: effortNeededCount,
+      selectedStudentObj
+    };
+  }, [selectedClass, classStudents, classAssignedQuizzes, results, classProgressChartScope, classProgressChartLimit, selectedStudentForComparison]);
 
   // Helper time formatter
   const formatStudyTime = (seconds: number) => {
@@ -1353,15 +1570,15 @@ export default function ClassManager({
           {/* ========================================================================= */}
           {activeTab === 'progress' && (
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-fade-in">
-              {/* Toolbar & Filter */}
+              {/* Toolbar & Filter Header */}
               <div className="flex flex-col md:flex-row justify-between items-center gap-3 border-b pb-4">
                 <div>
                   <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
                     <TrendingUp size={16} className="text-indigo-600" />
-                    Theo Dõi Tiến Bộ & Kết Quả Rèn Luyện Học Viên
+                    Theo Dõi Tiến Bộ & Kết Quả Rèn Luyện Toàn Lớp
                   </h3>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    Bấm vào từng học sinh để xem lịch sử làm bài, nhận xét tiến bộ và gợi ý học tập
+                    Đánh giá công bằng: các bài thi giao nhưng học sinh chưa làm hoặc bỏ thi sẽ tính <strong>0.00 điểm</strong>
                   </p>
                 </div>
 
@@ -1376,6 +1593,417 @@ export default function ClassManager({
                 </div>
               </div>
 
+              {/* 4 Overview Metric Cards for Class */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${
+                    classProgressData.classOfficialAvg >= 8 ? 'bg-emerald-50 text-emerald-600' : classProgressData.classOfficialAvg >= 5 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
+                  }`}>
+                    <Trophy size={24} />
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-[9px] font-black uppercase">ĐTB Tổng Kết Lớp</p>
+                    <h4 className={`text-xl font-black ${
+                      classProgressData.classOfficialAvg >= 8 ? 'text-emerald-600' : classProgressData.classOfficialAvg >= 5 ? 'text-blue-600' : 'text-rose-600'
+                    }`}>
+                      {classProgressData.classOfficialAvg.toFixed(2)}đ
+                    </h4>
+                    <span className="text-[9px] text-slate-400 font-bold block">
+                      ĐTB bài đã nộp: <strong className="text-indigo-600">{classProgressData.classSubmittedAvg.toFixed(2)}đ</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner">
+                    <CheckSquare size={24} />
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-[9px] font-black uppercase">Tỷ Lệ Nộp Bài Giao</p>
+                    <h4 className="text-xl font-black text-slate-800">
+                      {classProgressData.totalCompletedSlots}/{classProgressData.totalAssignedSlots} lượt
+                    </h4>
+                    <span className={`text-[9px] font-bold block ${
+                      classProgressData.classCompletionRate >= 80 ? 'text-emerald-600' : classProgressData.classCompletionRate >= 50 ? 'text-amber-600' : 'text-rose-600'
+                    }`}>
+                      Tỷ lệ hoàn thành: <strong>{classProgressData.classCompletionRate}%</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner">
+                    <Award size={24} />
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-[9px] font-black uppercase">HS Rèn Luyện Tốt</p>
+                    <h4 className="text-xl font-black text-emerald-600">
+                      {classProgressData.excellentStudentsCount} / {classStudents.length} HS
+                    </h4>
+                    <span className="text-[9px] text-slate-400 font-bold block">
+                      ĐTB tổng kết ≥ 8.0 điểm
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner">
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-[9px] font-black uppercase">Cần Đôn Đốc / Nhắc Nhở</p>
+                    <h4 className="text-xl font-black text-rose-600">
+                      {classProgressData.effortNeededStudentsCount} HS
+                    </h4>
+                    <span className="text-[9px] text-slate-400 font-bold block">
+                      Chưa đạt chuẩn / Bỏ nhiều bài
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recharts Biểu đồ Thống kê Tiến trình & Kết Quả Rèn Luyện Toàn Lớp */}
+              <div className="bg-slate-50/70 p-5 sm:p-6 rounded-[2rem] border border-slate-200 shadow-xs space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-200/80">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0">
+                      <BarChart3 size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                          Đồ Thị Tiến Trình & Kết Quả Rèn Luyện Toàn Lớp
+                        </h4>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 font-black text-[9px] rounded-md uppercase hidden sm:inline-flex items-center gap-1">
+                          <Sparkles size={10} /> Tính 0đ bài bỏ thi
+                        </span>
+                      </div>
+                      <p className="text-slate-400 font-medium text-[11px] mt-0.5">
+                        Theo dõi mức độ tiến bộ qua từng đề thi được giao và so sánh trực tiếp phong độ học viên
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Filter & Chart Options */}
+                  <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                    {/* Switch Timeline vs Distribution */}
+                    <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                      <button
+                        onClick={() => setClassProgressChartType('timeline')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                          classProgressChartType === 'timeline'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <LineChartIcon size={12} />
+                        <span>Tiến trình điểm</span>
+                      </button>
+                      <button
+                        onClick={() => setClassProgressChartType('distribution')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                          classProgressChartType === 'distribution'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <BarChart2 size={12} />
+                        <span>Phổ điểm lớp</span>
+                      </button>
+                    </div>
+
+                    {/* Scope Selector */}
+                    <select
+                      value={classProgressChartScope}
+                      onChange={(e) => setClassProgressChartScope(e.target.value as any)}
+                      className="bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-xs"
+                    >
+                      <option value="all">Tất cả bài giao ({classAssignedQuizzes.length})</option>
+                      <option value="test">Chỉ đề kiểm tra</option>
+                      <option value="practice">Chỉ bài luyện tập</option>
+                    </select>
+
+                    {/* Timeline Limit Selector */}
+                    {classProgressChartType === 'timeline' && (
+                      <select
+                        value={classProgressChartLimit}
+                        onChange={(e) => setClassProgressChartLimit(Number(e.target.value))}
+                        className="bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-xs"
+                      >
+                        <option value={10}>10 đề gần nhất</option>
+                        <option value={15}>15 đề gần nhất</option>
+                        <option value={30}>30 đề gần nhất</option>
+                        <option value={0}>Tất cả các đề</option>
+                      </select>
+                    )}
+
+                    {/* Student Comparison Selector */}
+                    {classProgressChartType === 'timeline' && classStudents.length > 0 && (
+                      <select
+                        value={selectedStudentForComparison}
+                        onChange={(e) => setSelectedStudentForComparison(e.target.value)}
+                        className="bg-white border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-xs max-w-[180px]"
+                      >
+                        <option value="all">📊 ĐTB Chung Cả Lớp</option>
+                        {classStudents.map(s => (
+                          <option key={s.id} value={s.id}>
+                            👤 {s.fullName} ({s.studentCode || 'HS'})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                {/* Main Recharts Area / Bar Chart */}
+                {classProgressData.timelineData.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 text-xs font-medium bg-white rounded-2xl border border-dashed">
+                    Chưa có dữ liệu đề thi được giao cho lớp này
+                  </div>
+                ) : classProgressChartType === 'timeline' ? (
+                  <div className="space-y-2">
+                    <div className="w-full h-64 pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart
+                          data={classProgressData.timelineData}
+                          margin={{ top: 15, right: 20, left: -20, bottom: 25 }}
+                        >
+                          <defs>
+                            <linearGradient id="adminClassAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.35} />
+                              <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis
+                            dataKey="shortDate"
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            dy={8}
+                          />
+                          <YAxis
+                            domain={[0, 10]}
+                            ticks={[0, 2, 4, 6, 8, 10]}
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700 max-w-xs text-xs z-50 space-y-2">
+                                    <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-800">
+                                      <span className="text-[9px] font-bold text-slate-400">{data.date}</span>
+                                      <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[8px] font-black uppercase">
+                                        {data.quizType === 'test' ? 'Đề kiểm tra' : 'Bài luyện tập'}
+                                      </span>
+                                    </div>
+                                    <p className="font-bold text-slate-100 text-xs line-clamp-2">{data.quizTitle}</p>
+                                    
+                                    <div className="space-y-1.5 bg-slate-800/80 p-2.5 rounded-xl">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-slate-400 text-[10px] font-bold">ĐTB Lớp (0đ bài bỏ):</span>
+                                        <span className={`font-black text-xs ${
+                                          data.classAvgOfficial >= 8 ? 'text-emerald-400' : data.classAvgOfficial >= 5 ? 'text-blue-400' : 'text-rose-400'
+                                        }`}>
+                                          {data.classAvgOfficial.toFixed(2)}đ
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-slate-400 text-[10px] font-bold">ĐTB bài đã nộp:</span>
+                                        <span className="text-slate-200 font-bold text-[11px]">{data.classAvgSubmitted.toFixed(2)}đ</span>
+                                      </div>
+                                      <div className="flex items-center justify-between pt-1 border-t border-slate-700/60">
+                                        <span className="text-slate-400 text-[10px]">Đã nộp / Chưa làm:</span>
+                                        <span className="text-emerald-400 font-bold text-[10px]">
+                                          {data.submittedCount}/{data.totalStudents} HS ({data.completionRate}%)
+                                        </span>
+                                      </div>
+
+                                      {classProgressData.selectedStudentObj && (
+                                        <div className="mt-2 pt-2 border-t border-indigo-500/40 flex items-center justify-between bg-indigo-950/60 p-1.5 rounded-lg">
+                                          <span className="text-amber-300 font-bold text-[10px]">
+                                            {classProgressData.selectedStudentObj.fullName}:
+                                          </span>
+                                          <span className={`font-black text-xs ${
+                                            (data.selectedStudentScore ?? 0) >= 8 ? 'text-emerald-400' : (data.selectedStudentScore ?? 0) >= 5 ? 'text-amber-400' : 'text-rose-400'
+                                          }`}>
+                                            {data.selectedStudentScore !== null ? `${data.selectedStudentScore.toFixed(2)}đ` : 'Chưa thi (0đ)'}
+                                            {!data.selectedStudentSubmitted && ' (0đ)'}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <ReferenceLine
+                            y={8}
+                            stroke="#10b981"
+                            strokeDasharray="3 3"
+                            label={{ value: 'Chuẩn Giỏi (8.0)', position: 'insideTopRight', fill: '#10b981', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <ReferenceLine
+                            y={5}
+                            stroke="#f59e0b"
+                            strokeDasharray="3 3"
+                            label={{ value: 'Chuẩn Đạt (5.0)', position: 'insideBottomRight', fill: '#f59e0b', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <ReferenceLine
+                            y={Number(classProgressData.classOfficialAvg.toFixed(2))}
+                            stroke="#6366f1"
+                            strokeWidth={1.5}
+                            label={{ value: `ĐTB Lớp (${classProgressData.classOfficialAvg.toFixed(2)})`, position: 'insideLeft', fill: '#6366f1', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="classAvgOfficial"
+                            name="ĐTB Lớp (0đ bài bỏ)"
+                            stroke="#4f46e5"
+                            strokeWidth={2.5}
+                            fill="url(#adminClassAreaGrad)"
+                            activeDot={{ r: 6, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2 }}
+                            dot={(props: any) => {
+                              const { cx, cy, payload } = props;
+                              const isLow = payload.classAvgOfficial < 5;
+                              const isHigh = payload.classAvgOfficial >= 8;
+                              const fillColor = isLow ? '#f43f5e' : isHigh ? '#10b981' : '#4f46e5';
+                              return (
+                                <circle
+                                  key={`dot-${payload.id}`}
+                                  cx={cx}
+                                  cy={cy}
+                                  r={4}
+                                  fill={fillColor}
+                                  stroke="#ffffff"
+                                  strokeWidth={1.5}
+                                />
+                              );
+                            }}
+                          />
+
+                          {/* Overlay Line for Selected Student Comparison */}
+                          {classProgressData.selectedStudentObj && (
+                            <Line
+                              type="monotone"
+                              dataKey="selectedStudentScore"
+                              name={classProgressData.selectedStudentObj.fullName}
+                              stroke="#f59e0b"
+                              strokeWidth={2.5}
+                              strokeDasharray="4 4"
+                              dot={(props: any) => {
+                                const { cx, cy, payload } = props;
+                                if (payload.selectedStudentScore === null) return <></>;
+                                const isZero = !payload.selectedStudentSubmitted;
+                                return (
+                                  <circle
+                                    key={`student-dot-${payload.id}`}
+                                    cx={cx}
+                                    cy={cy}
+                                    r={isZero ? 5 : 4}
+                                    fill={isZero ? '#f43f5e' : '#f59e0b'}
+                                    stroke="#ffffff"
+                                    strokeWidth={2}
+                                  />
+                                );
+                              }}
+                            />
+                          )}
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Chart Legend & Explanation */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 text-[10px] font-bold text-slate-500">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-full bg-indigo-600 inline-block"></span>
+                          <span>ĐTB Tổng kết Lớp (Tính 0đ các bài bỏ)</span>
+                        </div>
+                        {classProgressData.selectedStudentObj && (
+                          <div className="flex items-center gap-1.5 text-amber-700">
+                            <span className="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                            <span>Học sinh: {classProgressData.selectedStudentObj.fullName}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                          <span>Bài chưa nộp / Điểm liệt (0.00đ)</span>
+                        </div>
+                      </div>
+                      <span className="italic text-slate-400">
+                        Hiển thị {classProgressData.timelineData.length} đề thi
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="w-full h-64 pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={classProgressData.distributionData}
+                          margin={{ top: 15, right: 20, left: -20, bottom: 25 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis
+                            dataKey="shortName"
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            dy={8}
+                          />
+                          <YAxis
+                            allowDecimals={false}
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50">
+                                    <p className="font-bold text-slate-200 text-[11px] mb-1">{data.name}</p>
+                                    <p className="font-bold text-white">
+                                      Số lượt: <span className="text-emerald-400 font-black">{data.count}</span> lượt ({data.percentage}%)
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="count" name="Số lượt" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                            {classProgressData.distributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-200">
+                      {classProgressData.distributionData.map(group => (
+                        <div key={group.key} className="bg-white p-2.5 rounded-xl border text-center shadow-xs">
+                          <span className="text-[9px] font-bold text-slate-500 block truncate">{group.shortName}</span>
+                          <span className="text-sm font-black text-slate-900 block leading-tight mt-0.5">{group.count} lượt</span>
+                          <span className="text-[9px] font-bold text-slate-400">{group.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Students Progress Table */}
               {classStudents.length > 0 ? (
                 <div className="overflow-x-auto border rounded-2xl">
@@ -1385,7 +2013,9 @@ export default function ClassManager({
                         <th className="p-3.5 w-12 text-center">STT</th>
                         <th className="p-3.5">Học sinh</th>
                         <th className="p-3.5 text-center">Mã số (MAHS)</th>
-                        <th className="p-3.5 text-center">Đề đã làm / Được giao</th>
+                        <th className="p-3.5 text-center">Đề đã làm / Giao</th>
+                        <th className="p-3.5 text-center">ĐTB Tổng kết (0đ bài bỏ)</th>
+                        <th className="p-3.5 text-center">ĐTB Đã nộp</th>
                         <th className="p-3.5 text-center">Tổng TG rèn luyện</th>
                         <th className="p-3.5 text-center">Điểm tích lũy</th>
                         <th className="p-3.5 text-center">Đánh giá tiến bộ</th>
@@ -1408,9 +2038,23 @@ export default function ClassManager({
                               <td className="p-3.5 font-black text-slate-800 uppercase">{s.fullName}</td>
                               <td className="p-3.5 text-center font-mono text-blue-600 font-bold">{s.studentCode || 'N/A'}</td>
                               <td className="p-3.5 text-center">
-                                <span className="font-bold text-slate-700">
+                                <span className={`font-bold px-2 py-0.5 rounded-md text-[11px] ${training.completionRate >= 80 ? 'bg-emerald-50 text-emerald-700' : training.completionRate >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
                                   {training.completedQuizzesCount}/{training.totalAssignedCount} đề ({training.completionRate.toFixed(0)}%)
                                 </span>
+                              </td>
+                              <td className="p-3.5 text-center">
+                                <span className={`font-black px-2.5 py-1 rounded-lg text-xs ${
+                                  training.finalOfficialScore >= 8.0 
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                    : training.finalOfficialScore >= 5.0 
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-300' 
+                                    : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                }`}>
+                                  {training.finalOfficialScore.toFixed(2)}đ
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-center text-slate-600 font-bold text-[11px]">
+                                {training.avgSubmittedScore > 0 ? `${training.avgSubmittedScore.toFixed(2)}đ` : '-'}
                               </td>
                               <td className="p-3.5 text-center font-bold text-slate-700">
                                 <Clock size={12} className="inline mr-1 text-slate-400" />
@@ -1473,9 +2117,101 @@ export default function ClassManager({
       {inspectingStudent && selectedClass && (() => {
         const training = getStudentTrainingData(inspectingStudent);
 
+        // Chuẩn bị dữ liệu biểu đồ cho học sinh bao gồm các bài chưa làm (0.00đ)
+        const studentTimelineData: any[] = [];
+        const studentResultsMap = new Map<string, Result[]>();
+        training.studentResults.forEach(r => {
+          const list = studentResultsMap.get(r.quizId) || [];
+          list.push(r);
+          studentResultsMap.set(r.quizId, list);
+        });
+
+        // 1. Duyệt qua tất cả các đề được giao cho lớp
+        classAssignedQuizzes.forEach((q) => {
+          const subs = studentResultsMap.get(q.id);
+          if (subs && subs.length > 0) {
+            const bestSub = [...subs].sort((a, b) => b.score - a.score)[0];
+            const subDate = new Date(bestSub.submittedAt);
+            studentTimelineData.push({
+              id: bestSub.id,
+              quizId: q.id,
+              quizTitle: q.title,
+              shortTitle: q.title.length > 18 ? q.title.slice(0, 16) + '...' : q.title,
+              score: Number(bestSub.score.toFixed(2)),
+              isSubmitted: true,
+              date: format(subDate, 'dd/MM/yyyy HH:mm'),
+              shortDate: format(subDate, 'dd/MM'),
+              durationMinutes: Math.max(1, Math.round((bestSub.durationSeconds || 0) / 60)),
+              timestamp: subDate.getTime(),
+              status: 'Đã nộp'
+            });
+          } else {
+            const createDate = q.createdAt ? new Date(q.createdAt) : new Date();
+            studentTimelineData.push({
+              id: `uncompleted-${q.id}`,
+              quizId: q.id,
+              quizTitle: q.title,
+              shortTitle: q.title.length > 18 ? q.title.slice(0, 16) + '...' : q.title,
+              score: 0.00,
+              isSubmitted: false,
+              date: q.createdAt ? format(new Date(q.createdAt), 'dd/MM/yyyy') : 'Chưa làm',
+              shortDate: q.createdAt ? format(new Date(q.createdAt), 'dd/MM') : '0đ',
+              durationMinutes: 0,
+              timestamp: createDate.getTime(),
+              status: 'Chưa làm (0.00đ)'
+            });
+          }
+        });
+
+        // 2. Bổ sung các bài nộp khác của học sinh (nếu có đề ngoài lớp)
+        training.studentResults.forEach(r => {
+          if (!classAssignedQuizzes.some(q => q.id === r.quizId) && !studentTimelineData.some(item => item.quizId === r.quizId)) {
+            const q = quizzes.find(item => item.id === r.quizId);
+            const subDate = new Date(r.submittedAt);
+            studentTimelineData.push({
+              id: r.id,
+              quizId: r.quizId,
+              quizTitle: q?.title || 'Đề tự do',
+              shortTitle: (q?.title || 'Đề tự do').slice(0, 16),
+              score: Number(r.score.toFixed(2)),
+              isSubmitted: true,
+              date: format(subDate, 'dd/MM/yyyy HH:mm'),
+              shortDate: format(subDate, 'dd/MM'),
+              durationMinutes: Math.max(1, Math.round((r.durationSeconds || 0) / 60)),
+              timestamp: subDate.getTime(),
+              status: 'Đã nộp'
+            });
+          }
+        });
+
+        studentTimelineData.sort((a, b) => a.timestamp - b.timestamp);
+
+        // Phổ điểm (Distribution data)
+        const totalItems = studentTimelineData.length || 1;
+        const distGroups = [
+          { key: 'zero', name: '0.00đ (Bỏ thi / Chưa làm)', shortName: '0.0đ (Bỏ thi)', count: 0, color: '#f43f5e' },
+          { key: 'under5', name: '< 5.0đ (Chưa đạt)', shortName: '< 5.0đ', count: 0, color: '#fb7185' },
+          { key: '5to65', name: '5.0 - 6.4đ (Trung bình)', shortName: '5.0 - 6.4đ', count: 0, color: '#f59e0b' },
+          { key: '65to8', name: '6.5 - 7.9đ (Khá)', shortName: '6.5 - 7.9đ', count: 0, color: '#3b82f6' },
+          { key: '8to10', name: '8.0 - 10.0đ (Giỏi / Xuất sắc)', shortName: '8.0 - 10.0đ', count: 0, color: '#10b981' }
+        ];
+
+        studentTimelineData.forEach(item => {
+          if (!item.isSubmitted || item.score === 0) distGroups[0].count++;
+          else if (item.score < 5) distGroups[1].count++;
+          else if (item.score < 6.5) distGroups[2].count++;
+          else if (item.score < 8) distGroups[3].count++;
+          else distGroups[4].count++;
+        });
+
+        const studentDistributionData = distGroups.map(g => ({
+          ...g,
+          percentage: studentTimelineData.length > 0 ? Math.round((g.count / totalItems) * 100) : 0
+        }));
+
         return (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-3xl overflow-hidden border shadow-2xl animate-scale-up flex flex-col max-h-[90vh]">
+            <div className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden border shadow-2xl animate-scale-up flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-3">
@@ -1501,23 +2237,28 @@ export default function ClassManager({
 
               {/* Modal Body */}
               <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
-                {/* 4 Stat Boxes */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* 5 Stat Boxes */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div className="bg-slate-50 border p-3 rounded-2xl text-center">
-                    <span className="text-[9px] font-black text-slate-400 uppercase block">Tổng thời gian</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase block">Thời gian</span>
                     <span className="text-base font-black text-slate-900">{formatStudyTime(training.totalSeconds)}</span>
                   </div>
-                  <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-2xl text-center">
-                    <span className="text-[9px] font-black text-yellow-600 uppercase block">Điểm tích lũy</span>
-                    <span className="text-base font-black text-yellow-700">{training.accumulatedPoints.toFixed(2)}</span>
-                  </div>
                   <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-2xl text-center">
-                    <span className="text-[9px] font-black text-indigo-600 uppercase block">Đã hoàn thành</span>
+                    <span className="text-[9px] font-black text-indigo-600 uppercase block">Đã nộp / Giao</span>
                     <span className="text-base font-black text-indigo-700">{training.completedQuizzesCount}/{training.totalAssignedCount} đề</span>
                   </div>
-                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl text-center">
-                    <span className="text-[9px] font-black text-emerald-600 uppercase block">Điểm TB các đề</span>
-                    <span className="text-base font-black text-emerald-700">{training.avgScore.toFixed(1)}đ</span>
+                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl text-center">
+                    <span className="text-[9px] font-black text-blue-600 uppercase block">ĐTB bài đã nộp</span>
+                    <span className="text-base font-black text-blue-700">{training.avgSubmittedScore > 0 ? `${training.avgSubmittedScore.toFixed(2)}đ` : '-'}</span>
+                  </div>
+                  <div className={`border p-3 rounded-2xl text-center ${training.finalOfficialScore >= 8 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : training.finalOfficialScore >= 5 ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                    <span className="text-[9px] font-black uppercase block">ĐTB Tổng kết</span>
+                    <span className="text-lg font-black block leading-none mt-1">{training.finalOfficialScore.toFixed(2)}đ</span>
+                    <span className="text-[8px] font-medium opacity-80">(0đ bài bỏ)</span>
+                  </div>
+                  <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-2xl text-center col-span-2 sm:col-span-1">
+                    <span className="text-[9px] font-black text-yellow-600 uppercase block">Điểm tích lũy</span>
+                    <span className="text-base font-black text-yellow-700">⭐ {training.accumulatedPoints.toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -1525,7 +2266,7 @@ export default function ClassManager({
                 <div className="bg-gradient-to-r from-indigo-50 via-slate-50 to-indigo-50 border border-indigo-200 p-4 rounded-2xl space-y-2">
                   <div className="flex items-center gap-2 text-indigo-900 font-black uppercase text-[11px]">
                     <Lightbulb size={16} className="text-amber-500" />
-                    Đánh Giá Tiến Bộ & Gợi Ý Học Tập
+                    Đánh Giá Năng Lực & Kỷ Luật Học Tập (Nguyên tắc 0đ bài chưa nộp)
                   </div>
                   <p className="text-slate-700 font-medium leading-relaxed">
                     {training.progressFeedback}
@@ -1539,6 +2280,213 @@ export default function ClassManager({
                           {ch}
                         </span>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Biểu đồ Recharts thống kê tiến trình điểm số & phổ điểm */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                        <BarChart3 size={16} />
+                      </div>
+                      <div>
+                        <h4 className="font-black uppercase text-slate-800 text-xs">
+                          Biểu Đồ Tiến Trình & Lịch Sử Điểm (Tính 0đ các bài bỏ thi)
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-bold">
+                          Đã làm {training.completedQuizzesCount}/{training.totalAssignedCount} đề • {training.uncompletedCount} đề chưa nộp (tính 0.00đ)
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                      <button
+                        onClick={() => setInspectingChartType('timeline')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                          inspectingChartType === 'timeline'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Tiến trình điểm
+                      </button>
+                      <button
+                        onClick={() => setInspectingChartType('distribution')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                          inspectingChartType === 'distribution'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Phổ điểm
+                      </button>
+                    </div>
+                  </div>
+
+                  {studentTimelineData.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      Chưa có dữ liệu đề thi được giao
+                    </div>
+                  ) : inspectingChartType === 'timeline' ? (
+                    <div className="w-full h-56 pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart
+                          data={studentTimelineData}
+                          margin={{ top: 15, right: 15, left: -20, bottom: 20 }}
+                        >
+                          <defs>
+                            <linearGradient id="adminStudentAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.35} />
+                              <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis
+                            dataKey="shortDate"
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            dy={5}
+                          />
+                          <YAxis
+                            domain={[0, 10]}
+                            ticks={[0, 2, 4, 6, 8, 10]}
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 max-w-xs text-xs z-50">
+                                    <div className="flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-slate-800">
+                                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
+                                        data.isSubmitted ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                                      }`}>
+                                        {data.status}
+                                      </span>
+                                      <span className="text-slate-400 text-[9px]">{data.date}</span>
+                                    </div>
+                                    <p className="font-bold text-slate-100 text-xs mb-1.5 line-clamp-2">{data.quizTitle}</p>
+                                    <div className="flex items-center justify-between bg-slate-800/80 p-2 rounded-lg">
+                                      <div>
+                                        <p className="text-[8px] uppercase text-slate-400 font-bold">Điểm số</p>
+                                        <p className={`text-sm font-black ${
+                                          data.score >= 8 ? 'text-emerald-400' : data.score >= 5 ? 'text-blue-400' : 'text-rose-400'
+                                        }`}>
+                                          {data.score.toFixed(2)} / 10
+                                        </p>
+                                      </div>
+                                      {data.isSubmitted && (
+                                        <div className="text-right">
+                                          <p className="text-[8px] uppercase text-slate-400 font-bold">Thời gian</p>
+                                          <p className="text-slate-300 font-bold text-xs">{data.durationMinutes}p</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <ReferenceLine
+                            y={8}
+                            stroke="#10b981"
+                            strokeDasharray="3 3"
+                            label={{ value: 'Giỏi (8.0)', position: 'insideTopRight', fill: '#10b981', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <ReferenceLine
+                            y={5}
+                            stroke="#f59e0b"
+                            strokeDasharray="3 3"
+                            label={{ value: 'Đạt (5.0)', position: 'insideBottomRight', fill: '#f59e0b', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <ReferenceLine
+                            y={Number(training.finalOfficialScore.toFixed(2))}
+                            stroke="#6366f1"
+                            strokeWidth={1.5}
+                            label={{ value: `ĐTB (${training.finalOfficialScore.toFixed(2)})`, position: 'insideLeft', fill: '#6366f1', fontSize: 9, fontWeight: 700 }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="score"
+                            name="Điểm số"
+                            stroke="#4f46e5"
+                            strokeWidth={2.5}
+                            fill="url(#adminStudentAreaGrad)"
+                            activeDot={{ r: 6, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2 }}
+                            dot={(props: any) => {
+                              const { cx, cy, payload } = props;
+                              const isZero = !payload.isSubmitted || payload.score === 0;
+                              const isGood = payload.score >= 8;
+                              const fillColor = isZero ? '#f43f5e' : isGood ? '#10b981' : '#4f46e5';
+                              return (
+                                <circle
+                                  key={`dot-${payload.id}`}
+                                  cx={cx}
+                                  cy={cy}
+                                  r={isZero ? 4.5 : 3.5}
+                                  fill={fillColor}
+                                  stroke="#ffffff"
+                                  strokeWidth={1.5}
+                                />
+                              );
+                            }}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="w-full h-56 pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={studentDistributionData}
+                          margin={{ top: 15, right: 15, left: -20, bottom: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis
+                            dataKey="shortName"
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            dy={5}
+                          />
+                          <YAxis
+                            allowDecimals={false}
+                            stroke="#94a3b8"
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50">
+                                    <p className="font-bold text-slate-200 text-[11px] mb-1">{data.name}</p>
+                                    <p className="font-bold text-white">
+                                      Số lượng: <span className="text-emerald-400 font-black">{data.count}</span> đề ({data.percentage}%)
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="count" name="Số đề" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                            {studentDistributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   )}
                 </div>
@@ -1572,7 +2520,7 @@ export default function ClassManager({
                                 </td>
                                 <td className="p-2.5 text-center">
                                   <span className={`font-black px-2 py-0.5 rounded-md text-[11px] ${r.score >= 8 ? 'bg-emerald-50 text-emerald-700' : r.score >= 5 ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700'}`}>
-                                    {r.score.toFixed(1)}đ
+                                    {r.score.toFixed(2)}đ
                                   </span>
                                 </td>
                                 <td className="p-2.5 text-center font-medium text-slate-600">
@@ -1596,15 +2544,15 @@ export default function ClassManager({
                   {/* List of remaining assigned quizzes */}
                   {training.uncompletedQuizzes.length > 0 && (
                     <div className="pt-3">
-                      <h4 className="font-black uppercase text-amber-800 text-xs mb-2 flex items-center gap-1.5">
-                        <AlertCircle size={14} /> Các Đề Được Giao Chưa Làm ({training.uncompletedQuizzes.length} đề):
+                      <h4 className="font-black uppercase text-rose-800 text-xs mb-2 flex items-center gap-1.5">
+                        <AlertCircle size={14} className="text-rose-600" /> Các Đề Được Giao Chưa Hoàn Thành ({training.uncompletedQuizzes.length} đề — Tính 0.00 điểm):
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {training.uncompletedQuizzes.map(q => (
-                          <div key={q.id} className="p-2.5 bg-amber-50/60 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
-                            <span className="font-bold text-amber-900">{q.title}</span>
-                            <span className="text-[10px] font-black text-amber-600 uppercase bg-white px-2 py-0.5 rounded-md border border-amber-200">
-                              Chưa làm
+                          <div key={q.id} className="p-2.5 bg-rose-50/70 border border-rose-200 rounded-xl flex items-center justify-between text-xs">
+                            <span className="font-bold text-rose-950 truncate max-w-[70%]">{q.title}</span>
+                            <span className="text-[10px] font-black text-rose-700 uppercase bg-white px-2 py-0.5 rounded-md border border-rose-300 shadow-xs">
+                              0.00đ (Bỏ thi)
                             </span>
                           </div>
                         ))}
