@@ -199,6 +199,14 @@ export function replaceLatexMacros(str: string): string {
     .replace(/\\quad/g, '   ')
     .replace(/\\qquad/g, '    ');
 
+  // Chuẩn hóa dấu phẩy / chấm thập phân LaTeX dạng {,}, {.}, {;} (Ví dụ: 0{,}5 -> 0,5)
+  s = s
+    .replace(/\\\{,\s*\\\}/g, ',')
+    .replace(/\\\{;\s*\\\}/g, ';')
+    .replace(/\{,\s*\}/g, ',')
+    .replace(/\{;\s*\}/g, ';')
+    .replace(/\{\.\s*\}/g, '.');
+
   // Khớp chính xác tên lệnh chữ cái đầy đủ (\\alpha, \\leftrightarrow, \\le...)
   return s.replace(/\\[a-zA-Z]+/g, (match) => {
     return GREEK_AND_MATH_SYMBOLS[match] !== undefined ? GREEK_AND_MATH_SYMBOLS[match] : match;
@@ -368,6 +376,13 @@ export function parseLatexToDocxMath(latex: string): MathComponent[] {
   } else if (clean.startsWith('$') && clean.endsWith('$')) {
     clean = clean.slice(1, -1).trim();
   }
+
+  // Tiền xử lý dấu phẩy / chấm / chấm phẩy thập phân LaTeX dạng {,} {.} {;} (Ví dụ: 0{,}5 -> 0,5 ; 12{,}75 -> 12,75)
+  clean = clean.replace(/\\\{,\s*\\\}/g, ',');
+  clean = clean.replace(/\\\{;\s*\\\}/g, ';');
+  clean = clean.replace(/\{,\s*\}/g, ',');
+  clean = clean.replace(/\{;\s*\}/g, ';');
+  clean = clean.replace(/\{\.\s*\}/g, '.');
 
   // Tiền xử lý độ / góc / nhiệt độ: 6^\circ, 30^\circ, 6^{\circ}, 6^\circ\text{C}, 6^\circ C -> 6° / 6°C
   clean = clean.replace(/\^\{\\circ\}/g, '°');
@@ -831,7 +846,15 @@ export function parseTextWithMath(
 ): (TextRun | DocxMath)[] {
   if (!text) return [];
 
-  const repaired = repairVietnameseText(text);
+  // Chuẩn hóa dấu phẩy thập phân LaTeX dạng 0{,}5 -> 0,5 trước khi tách chuỗi
+  const sanitized = text
+    .replace(/\\\{,\s*\\\}/g, ',')
+    .replace(/\\\{;\s*\\\}/g, ';')
+    .replace(/\{,\s*\}/g, ',')
+    .replace(/\{;\s*\}/g, ';')
+    .replace(/\{\.\s*\}/g, '.');
+
+  const repaired = repairVietnameseText(sanitized);
   const parts = repaired.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
   const runs: (TextRun | DocxMath)[] = [];
 
@@ -846,9 +869,16 @@ export function parseTextWithMath(
         })
       );
     } else {
+      const cleanPart = part
+        .replace(/\\\{,\s*\\\}/g, ',')
+        .replace(/\\\{;\s*\\\}/g, ';')
+        .replace(/\{,\s*\}/g, ',')
+        .replace(/\{;\s*\}/g, ';')
+        .replace(/\{\.\s*\}/g, '.');
+
       runs.push(
         new TextRun({
-          text: part,
+          text: cleanPart,
           font: 'Times New Roman',
           size: options?.size || 23, // 11.5pt
           bold: options?.bold || false,
@@ -1962,7 +1992,12 @@ export async function generateNativeWordDocx(
                     alignment: AlignmentType.CENTER,
                     children: [
                       new TextRun({
-                        text: String(q.correctAnswer || 'N/A'),
+                        text: String(q.correctAnswer || 'N/A')
+                          .replace(/\\\{,\s*\\\}/g, ',')
+                          .replace(/\\\{;\s*\\\}/g, ';')
+                          .replace(/\{,\s*\}/g, ',')
+                          .replace(/\{;\s*\}/g, ';')
+                          .replace(/\{\.\s*\}/g, '.'),
                         font: 'Times New Roman',
                         size: 20,
                         bold: true,
