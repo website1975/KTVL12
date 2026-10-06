@@ -6,7 +6,28 @@ import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
-import { Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { 
+  Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, 
+  Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp,
+  TrendingUp, TrendingDown, Activity, Sparkles, Target, BarChart2, LineChart as LineChartIcon, 
+  BarChart3, CheckCircle, ArrowUpRight
+} from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+  Cell
+} from 'recharts';
 import { format, isBefore, isAfter, addMinutes, differenceInMinutes } from 'date-fns';
 import LatexText from './LatexText';
 
@@ -287,9 +308,55 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     }
   }, [targetQuizId]);
 
+  // Danh sách đề thi được phân công cho học sinh (Khối, Lớp, Công khai)
+  const assignedQuizzes = useMemo(() => {
+    return quizzes.filter((q: Quiz) => {
+      const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
+      let matchClass = true;
+      if (q.targetType === 'classes') {
+        if (q.assignedClassIds && q.assignedClassIds.length > 0) {
+          matchClass = Boolean(user.classId && q.assignedClassIds.includes(user.classId));
+        }
+      }
+      return matchGrade && matchClass && q.isPublished && !q.isUnlisted;
+    });
+  }, [quizzes, gradeFilter, user.classId]);
+
+  const completedQuizIds = useMemo(() => new Set(results.map(r => r.quizId)), [results]);
+  const completedAssignedCount = useMemo(() => assignedQuizzes.filter(q => completedQuizIds.has(q.id)).length, [assignedQuizzes, completedQuizIds]);
+  const uncompletedAssignedCount = useMemo(() => Math.max(0, assignedQuizzes.length - completedAssignedCount), [assignedQuizzes, completedAssignedCount]);
+
+  // Điểm cao nhất của từng đề đã nộp
+  const bestScorePerQuiz = useMemo(() => {
+    const map = new Map<string, number>();
+    results.forEach(r => {
+      const cur = map.get(r.quizId) ?? 0;
+      if (r.score > cur) map.set(r.quizId, r.score);
+    });
+    return map;
+  }, [results]);
+
+  const totalAssignedScore = useMemo(() => {
+    let sum = 0;
+    assignedQuizzes.forEach(q => {
+      sum += (bestScorePerQuiz.get(q.id) ?? 0); // Đề chưa làm tính 0.00 điểm
+    });
+    return sum;
+  }, [assignedQuizzes, bestScorePerQuiz]);
+
+  const avgSubmittedScore = useMemo(() => {
+    return results.length > 0 ? (results.reduce((acc, r) => acc + r.score, 0) / results.length) : 0;
+  }, [results]);
+
+  // ĐTB TỔNG KẾT (Quy tắc công bằng: Các đề được giao nhưng không làm sẽ tính 0.00 điểm)
+  const officialAvgScore = useMemo(() => {
+    if (assignedQuizzes.length === 0) return avgSubmittedScore;
+    return totalAssignedScore / assignedQuizzes.length;
+  }, [assignedQuizzes.length, totalAssignedScore, avgSubmittedScore]);
+
   const stats = useMemo(() => {
     const totalQuizzes = results.length;
-    const avgScore = totalQuizzes > 0 ? (results.reduce((acc, r) => acc + r.score, 0) / totalQuizzes) : 0;
+    const avgScore = officialAvgScore;
     const totalSeconds = results.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
     const effortPoints = totalSeconds / 2700; 
 
@@ -304,11 +371,124 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
     return {
         totalQuizzes,
-        avgScore,
+        avgScore: officialAvgScore,
+        avgSubmittedScore,
+        completedAssignedCount,
+        totalAssignedCount: assignedQuizzes.length,
+        uncompletedAssignedCount,
         totalSeconds,
         effortPoints,
         bonusPoints,
         accumulatedPoints: effortPoints + bonusPoints
+    };
+  }, [results, officialAvgScore, avgSubmittedScore, completedAssignedCount, assignedQuizzes.length, uncompletedAssignedCount]);
+
+  // Recharts Chart State & Computations
+  const [chartType, setChartType] = useState<'timeline' | 'distribution'>('timeline');
+  const [chartScope, setChartScope] = useState<'all' | 'test' | 'practice'>('all');
+  const [chartLimit, setChartLimit] = useState<number>(15);
+
+  // Chronological score data for Recharts (Sorted oldest to newest for progression line)
+  const scoreHistoryData = useMemo(() => {
+    let sorted = [...results].sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+    
+    if (chartScope !== 'all') {
+      sorted = sorted.filter(r => {
+        const q = quizzes.find(item => item.id === r.quizId);
+        return q ? q.type === chartScope : true;
+      });
+    }
+
+    if (chartLimit > 0 && sorted.length > chartLimit) {
+      sorted = sorted.slice(sorted.length - chartLimit);
+    }
+
+    return sorted.map((r, idx) => {
+      const q = quizzes.find(item => item.id === r.quizId);
+      const subDate = new Date(r.submittedAt);
+      const quizTitle = q?.title || 'Bài thi';
+      const shortTitle = quizTitle.length > 22 ? quizTitle.slice(0, 20) + '...' : quizTitle;
+      const durationMin = Math.max(1, Math.round((r.durationSeconds || 0) / 60));
+      return {
+        id: r.id,
+        attemptNumber: idx + 1,
+        quizId: r.quizId,
+        quizTitle,
+        shortTitle,
+        score: Number(r.score.toFixed(2)),
+        date: format(subDate, 'dd/MM/yyyy HH:mm'),
+        shortDate: format(subDate, 'dd/MM'),
+        durationMinutes: durationMin,
+        quizType: q?.type || 'test',
+        label: `#${idx + 1} (${format(subDate, 'dd/MM')})`
+      };
+    });
+  }, [results, quizzes, chartScope, chartLimit]);
+
+  // Phổ điểm (Score distribution for bar chart)
+  const scoreDistributionData = useMemo(() => {
+    let filtered = [...results];
+    if (chartScope !== 'all') {
+      filtered = filtered.filter(r => {
+        const q = quizzes.find(item => item.id === r.quizId);
+        return q ? q.type === chartScope : true;
+      });
+    }
+
+    const total = filtered.length || 1;
+    const groups = [
+      { key: 'under5', name: 'Dưới 5.0 (Cần cố gắng)', shortName: '< 5.0', range: [0, 5], count: 0, color: '#f43f5e' },
+      { key: '5to65', name: '5.0 - 6.4 (Trung bình)', shortName: '5.0 - 6.4', range: [5, 6.5], count: 0, color: '#f59e0b' },
+      { key: '65to8', name: '6.5 - 7.9 (Khá)', shortName: '6.5 - 7.9', range: [6.5, 8], count: 0, color: '#3b82f6' },
+      { key: '8to10', name: '8.0 - 10.0 (Giỏi / Xuất sắc)', shortName: '8.0 - 10.0', range: [8, 10.01], count: 0, color: '#10b981' }
+    ];
+
+    filtered.forEach(r => {
+      if (r.score < 5) groups[0].count++;
+      else if (r.score < 6.5) groups[1].count++;
+      else if (r.score < 8) groups[2].count++;
+      else groups[3].count++;
+    });
+
+    return groups.map(g => ({
+      ...g,
+      percentage: filtered.length > 0 ? Math.round((g.count / total) * 100) : 0
+    }));
+  }, [results, quizzes, chartScope]);
+
+  // Thống kê phân tích xu hướng
+  const performanceInsights = useMemo(() => {
+    if (results.length === 0) {
+      return {
+        highest: 0,
+        latest: 0,
+        recentAvg: 0,
+        trendDiff: 0,
+        passRate: 0,
+        distinctionRate: 0
+      };
+    }
+    const scores = results.map(r => r.score);
+    const highest = Math.max(...scores);
+    const sortedDesc = [...results].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    const latest = sortedDesc[0]?.score || 0;
+    
+    // 3 bài gần nhất
+    const recent3 = sortedDesc.slice(0, 3);
+    const recentAvg = recent3.length > 0 ? (recent3.reduce((acc, r) => acc + r.score, 0) / recent3.length) : 0;
+    const overallAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const trendDiff = recentAvg - overallAvg;
+
+    const passCount = results.filter(r => r.score >= 5).length;
+    const distinctionCount = results.filter(r => r.score >= 8).length;
+
+    return {
+      highest,
+      latest,
+      recentAvg,
+      trendDiff,
+      passRate: Math.round((passCount / results.length) * 100),
+      distinctionRate: Math.round((distinctionCount / results.length) * 100)
     };
   }, [results]);
 
@@ -598,19 +778,384 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
-            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><Trophy size={28} /></div>
-            <div><p className="text-slate-400 text-[10px] font-black uppercase">ĐTB Chung</p><h3 className="text-2xl font-black text-slate-800">{stats.avgScore.toFixed(2)}</h3></div>
+        <div className={`bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105 ${stats.uncompletedAssignedCount > 0 ? 'border-amber-300' : 'border-slate-200'}`}>
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${stats.avgScore >= 8 ? 'bg-emerald-50 text-emerald-600' : stats.avgScore >= 5 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
+              <Trophy size={28} />
+            </div>
+            <div>
+              <p className="text-slate-400 text-[10px] font-black uppercase">ĐTB Tổng kết</p>
+              <h3 className={`text-2xl font-black ${stats.avgScore >= 8 ? 'text-emerald-600' : stats.avgScore >= 5 ? 'text-blue-600' : 'text-rose-600'}`}>
+                {stats.avgScore.toFixed(2)}
+              </h3>
+              <span className="text-[9px] font-bold text-slate-400 block">
+                {stats.uncompletedAssignedCount > 0 
+                  ? `⚠️ Gồm ${stats.uncompletedAssignedCount} đề chưa nộp (0đ)` 
+                  : '✨ Đã hoàn thành đủ 100% đề giao'}
+              </span>
+            </div>
         </div>
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
             <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><BookOpen size={28} /></div>
-            <div><p className="text-slate-400 text-[10px] font-black uppercase">Bài hoàn thành</p><h3 className="text-2xl font-black text-slate-800">{stats.totalQuizzes} bài</h3></div>
+            <div>
+              <p className="text-slate-400 text-[10px] font-black uppercase">Tiến độ bài giao</p>
+              <h3 className="text-2xl font-black text-slate-800">
+                {stats.completedAssignedCount}/{stats.totalAssignedCount} bài
+              </h3>
+              <span className="text-[9px] font-bold text-slate-400 block">
+                ĐTB bài đã nộp: <strong className="text-indigo-600">{stats.avgSubmittedScore.toFixed(2)}đ</strong>
+              </span>
+            </div>
         </div>
         <div className="bg-white rounded-[2rem] p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
             <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><Clock size={28} /></div>
-            <div><p className="text-slate-400 text-[10px] font-black uppercase">TG luyện tập</p><h3 className="text-xl font-black text-slate-800">{formatStudyTime(stats.totalSeconds)}</h3></div>
+            <div>
+              <p className="text-slate-400 text-[10px] font-black uppercase">TG luyện tập & Tích lũy</p>
+              <h3 className="text-xl font-black text-slate-800">{formatStudyTime(stats.totalSeconds)}</h3>
+              <span className="text-[9px] font-black text-yellow-600 uppercase block">⭐ Tích lũy: {stats.accumulatedPoints.toFixed(2)}</span>
+            </div>
         </div>
       </div>
+
+      {/* Biểu đồ thống kê kết quả thi & Lịch sử điểm số với Recharts */}
+      <section className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden space-y-6">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-blue-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* Header & Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
+              <BarChart3 size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">
+                  Biểu Đồ Thống Kê & Tiến Trình Điểm Số
+                </h2>
+                <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 font-black text-[9px] rounded-full uppercase hidden sm:inline-flex items-center gap-1">
+                  <Sparkles size={10} /> Recharts Analytics
+                </span>
+              </div>
+              <p className="text-slate-400 font-medium text-xs mt-0.5">
+                Lịch sử điểm số qua các lần thi, bài luyện tập và phân tích phong độ học tập
+              </p>
+            </div>
+          </div>
+
+          {/* Toggle Type + Filters */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Tab switch */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+              <button
+                onClick={() => setChartType('timeline')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                  chartType === 'timeline'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <LineChartIcon size={13} />
+                <span>Tiến trình điểm</span>
+              </button>
+              <button
+                onClick={() => setChartType('distribution')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                  chartType === 'distribution'
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <BarChart2 size={13} />
+                <span>Phổ điểm</span>
+              </button>
+            </div>
+
+            {/* Scope filter */}
+            <select
+              value={chartScope}
+              onChange={(e) => setChartScope(e.target.value as any)}
+              className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+            >
+              <option value="all">Tất cả bài ({results.length})</option>
+              <option value="test">Chỉ đề kiểm tra</option>
+              <option value="practice">Chỉ bài luyện tập</option>
+            </select>
+
+            {/* Limit filter (only for timeline) */}
+            {chartType === 'timeline' && (
+              <select
+                value={chartLimit}
+                onChange={(e) => setChartLimit(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+              >
+                <option value={10}>10 bài gần nhất</option>
+                <option value={15}>15 bài gần nhất</option>
+                <option value={30}>30 bài gần nhất</option>
+                <option value={0}>Tất cả lịch sử</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Analytical Insight Cards */}
+        {results.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 relative z-10">
+            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <Trophy size={18} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">Điểm cao nhất</p>
+                <p className="text-lg font-black text-emerald-600 leading-tight">
+                  {performanceInsights.highest.toFixed(2)}
+                  <span className="text-[10px] text-slate-400 font-normal"> /10</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                <Clock size={18} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">Lần thi gần nhất</p>
+                <p className="text-lg font-black text-blue-600 leading-tight">
+                  {performanceInsights.latest.toFixed(2)}
+                  <span className="text-[10px] text-slate-400 font-normal"> /10</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                performanceInsights.trendDiff >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+              }`}>
+                {performanceInsights.trendDiff >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">Phong độ 3 bài gần đây</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-lg font-black text-slate-800 leading-tight">
+                    {performanceInsights.recentAvg.toFixed(2)}
+                  </p>
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                    performanceInsights.trendDiff >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                  }`}>
+                    {performanceInsights.trendDiff >= 0 ? `+${performanceInsights.trendDiff.toFixed(2)}` : performanceInsights.trendDiff.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <Target size={18} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">Tỷ lệ Đạt / Giỏi</p>
+                <p className="text-xs font-black text-slate-800 leading-tight mt-0.5">
+                  Đạt: <span className="text-blue-600">{performanceInsights.passRate}%</span> • Giỏi: <span className="text-emerald-600">{performanceInsights.distinctionRate}%</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Chart Area */}
+        <div className="relative z-10 w-full min-h-[300px] flex flex-col justify-center">
+          {results.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
+                <LineChartIcon size={24} />
+              </div>
+              <p className="text-sm font-black text-slate-700 uppercase">Chưa có dữ liệu bài thi</p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Hãy hoàn thành các bài kiểm tra hoặc bài luyện tập để hệ thống tự động vẽ biểu đồ phân tích tiến trình điểm số của bạn.
+              </p>
+            </div>
+          ) : scoreHistoryData.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <p className="text-xs font-bold text-slate-600">Không có bài thi nào phù hợp với bộ lọc đã chọn.</p>
+              <button
+                onClick={() => setChartScope('all')}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-blue-700 transition-colors"
+              >
+                Xem tất cả
+              </button>
+            </div>
+          ) : chartType === 'timeline' ? (
+            <div className="w-full h-[320px] pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={scoreHistoryData}
+                  margin={{ top: 20, right: 15, left: -15, bottom: 25 }}
+                >
+                  <defs>
+                    <linearGradient id="scoreAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="shortDate"
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    dy={8}
+                  />
+                  <YAxis
+                    domain={[0, 10]}
+                    ticks={[0, 2, 4, 6, 8, 10]}
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-xs text-xs z-50">
+                            <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
+                              <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${
+                                data.quizType === 'practice' ? 'bg-amber-500/20 text-amber-300' : 'bg-blue-500/20 text-blue-300'
+                              }`}>
+                                {data.quizType === 'practice' ? '⚡ Luyện tập' : '📝 Đề thi'} • #{data.attemptNumber}
+                              </span>
+                              <span className="text-slate-400 text-[9px]">{data.date}</span>
+                            </div>
+                            <p className="font-bold text-slate-100 text-sm mb-2 line-clamp-2">{data.quizTitle}</p>
+                            <div className="grid grid-cols-2 gap-2 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50">
+                              <div>
+                                <p className="text-[8px] uppercase text-slate-400 font-bold">Điểm số</p>
+                                <p className={`text-lg font-black ${
+                                  data.score >= 8 ? 'text-emerald-400' : data.score >= 5 ? 'text-blue-400' : 'text-rose-400'
+                                }`}>
+                                  {data.score.toFixed(2)} <span className="text-[10px] text-slate-400">/ 10</span>
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[8px] uppercase text-slate-400 font-bold">Thời gian</p>
+                                <p className="text-slate-200 font-bold text-xs mt-1">{data.durationMinutes} phút</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <ReferenceLine
+                    y={8}
+                    stroke="#10b981"
+                    strokeDasharray="4 4"
+                    label={{ value: 'Giỏi (8.0)', position: 'insideTopRight', fill: '#10b981', fontSize: 10, fontWeight: 700 }}
+                  />
+                  <ReferenceLine
+                    y={5}
+                    stroke="#f59e0b"
+                    strokeDasharray="4 4"
+                    label={{ value: 'Đạt (5.0)', position: 'insideBottomRight', fill: '#f59e0b', fontSize: 10, fontWeight: 700 }}
+                  />
+                  <ReferenceLine
+                    y={Number(stats.avgScore.toFixed(2))}
+                    stroke="#6366f1"
+                    strokeWidth={1.5}
+                    label={{ value: `ĐTB (${stats.avgScore.toFixed(2)})`, position: 'insideLeft', fill: '#6366f1', fontSize: 10, fontWeight: 700 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="score"
+                    name="Điểm số"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    fill="url(#scoreAreaGradient)"
+                    activeDot={{ r: 7, fill: '#2563eb', stroke: '#fff', strokeWidth: 3 }}
+                    dot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap items-center justify-center gap-6 mt-2 text-[10px] font-bold text-slate-500">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
+                  <span>Điểm bài thi</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-indigo-500 inline-block"></span>
+                  <span>ĐTB chung ({stats.avgScore.toFixed(2)})</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-emerald-500 border-dashed border-t inline-block"></span>
+                  <span>Chuẩn Giỏi (8.0)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-amber-500 border-dashed border-t inline-block"></span>
+                  <span>Chuẩn Đạt (5.0)</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full h-[320px] pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={scoreDistributionData}
+                  margin={{ top: 20, right: 15, left: -15, bottom: 25 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="shortName"
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    dy={8}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700 text-xs z-50">
+                            <p className="font-black uppercase tracking-wider text-[10px] text-slate-300 mb-1">
+                              {data.name}
+                            </p>
+                            <p className="text-sm font-bold text-white">
+                              Số lượng: <span className="text-emerald-400 text-base font-black">{data.count}</span> bài ({data.percentage}%)
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="count" name="Số bài thi" radius={[10, 10, 0, 0]} maxBarSize={64}>
+                    {scoreDistributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap items-center justify-center gap-4 mt-2 text-[10px] font-bold">
+                {scoreDistributionData.map((item) => (
+                  <div key={item.key} className="flex items-center gap-1.5 text-slate-600">
+                    <span className="w-3 h-3 rounded-md inline-block" style={{ backgroundColor: item.color }}></span>
+                    <span>{item.name}: <strong>{item.count}</strong> bài ({item.percentage}%)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="space-y-12">
           {testQuizzes.length > 0 && (
