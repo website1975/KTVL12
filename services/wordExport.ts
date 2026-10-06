@@ -132,6 +132,14 @@ export function latexToWordHtml(latex: string): string {
     .replace(/(\$\$|\$)$/, '')
     .trim();
 
+  // Chuẩn hóa dấu phẩy / chấm thập phân LaTeX dạng {,}, {.}, {;} (Ví dụ: 0{,}5 -> 0,5 ; 12{,}75 -> 12,75)
+  clean = clean
+    .replace(/\\\{,\s*\\\}/g, ',')
+    .replace(/\\\{;\s*\\\}/g, ';')
+    .replace(/\{,\s*\}/g, ',')
+    .replace(/\{;\s*\}/g, ';')
+    .replace(/\{\.\s*\}/g, '.');
+
   // Xóa các lệnh font
   clean = clean.replace(/\\mathrm\{([^}]+)\}/g, '$1');
   clean = clean.replace(/\\text\{([^}]+)\}/g, '$1');
