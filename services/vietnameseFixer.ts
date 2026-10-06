@@ -109,6 +109,14 @@
             .replace(/(b|B)iê\s*[`´'\u00B4\u02CA\u02CB~]\s*n/g, (_m, p1) => (p1 === 'B' ? 'Biến' : 'biến'))
             .replace(/(đ|Đ)ô\s*[`´'\u00B4\u02CA\u02CB~]\s*i/g, (_m, p1) => (p1 === 'Đ' ? 'Đối' : 'đối'));
 
+        // 4. Chuẩn hóa dấu phẩy/chấm/chấm phẩy thập phân LaTeX dạng {,}, {.}, {;} bị sót ngoài văn bản thường (Ví dụ: 0{,}5 -> 0,5)
+        text = text
+            .replace(/\\\{,\s*\\\}/g, ',')
+            .replace(/\\\{;\s*\\\}/g, ';')
+            .replace(/\{,\s*\}/g, ',')
+            .replace(/\{;\s*\}/g, ';')
+            .replace(/\{\.\s*\}/g, '.');
+
         // 4. Sửa dạng nguyên âm đôi + dấu rời rạc (iê, uô, ươ, ưa, ua, ie, ye, IÊ, UÔ, ƯƠ)
         const diphthongPattern = /(iê|uô|ươ|ưa|ua|ie|ye|Iê|Uô|Ươ|Ưa|Ua|IÊ|UÔ|ƯƠ)\s*([´`'\u00B4\u02CA\u02CB\u02DC\u0309\u0303\u0323~])\s*([a-zA-ZđĐ]*)/g;
         text = text.replace(diphthongPattern, (match, diph, accentChar, nextChars) => {
