@@ -53,7 +53,7 @@ const LATEX_SYMBOLS: Record<string, string> = {
   '\\mp': '∓',
   '\\times': '×',
   '\\div': '÷',
-  '\\cdot': '·',
+  '\\cdot': '.',
   '\\circ': '°',
   '\\degree': '°',
   '\\bullet': '•',
@@ -139,7 +139,7 @@ export function latexToWordHtml(latex: string): string {
     .replace(/\{,\s*\}/g, ',')
     .replace(/\{;\s*\}/g, ';')
     .replace(/\{\.\s*\}/g, '.')
-    .replace(/\\cdot(?:\{\})?\s*/g, '·')
+    .replace(/\\cdot(?:\{\})?\s*/g, '.')
     .replace(/\\times(?:\{\})?\s*/g, '×')
     .replace(/\\pm(?:\{\})?\s*/g, '±')
     .replace(/\\mp(?:\{\})?\s*/g, '∓')

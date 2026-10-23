@@ -19,6 +19,7 @@ interface AIRendererProps {
         editorAction?: 'replace' | 'append';
         matrix?: { easy: number; medium: number; hard: number; vhard: number };
         pdfBase64?: string;
+        onProgress?: (status: string, percent?: number) => void;
     }) => Promise<void>;
     onGenerateFromMatrix?: (
         createdQuestions: Question[], 
@@ -57,6 +58,27 @@ export default function AIRenderer({
     const [pdfBase64, setPdfBase64] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    // Tiến trình chi tiết và đồng hồ đếm giây thời gian thực
+    const [progressStatus, setProgressStatus] = useState<string>('');
+    const [progressPercent, setProgressPercent] = useState<number>(0);
+    const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+    // Bộ đếm thời gian khi đang tải AI
+    React.useEffect(() => {
+        let interval: any = null;
+        if (isLoading) {
+            setElapsedSeconds(0);
+            interval = setInterval(() => {
+                setElapsedSeconds(prev => prev + 1);
+            }, 1000);
+        } else {
+            setElapsedSeconds(0);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isLoading]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -76,6 +98,8 @@ export default function AIRenderer({
 
     const handleGenerate = async () => {
         setErrorMsg(null);
+        setProgressStatus("Đang khởi tạo kết nối AI...");
+        setProgressPercent(10);
         try {
             await onGenerate({
                 topic: prompt || (pdfFile ? `Dựa theo tài liệu: ${pdfFile.name}` : "Đề thi tổng hợp"),
@@ -83,10 +107,16 @@ export default function AIRenderer({
                 target,
                 editorAction: target === 'editor' ? editorAction : undefined,
                 matrix,
-                pdfBase64: pdfBase64 || undefined
+                pdfBase64: pdfBase64 || undefined,
+                onProgress: (status, percent) => {
+                    setProgressStatus(status);
+                    if (percent !== undefined) setProgressPercent(percent);
+                }
             });
+            setProgressPercent(100);
+            setProgressStatus("Tạo đề thành công!");
         } catch (err: any) {
-            setErrorMsg(err.message || "Đã xảy ra lỗi không xác định.");
+            setErrorMsg(err.message || "Đã xảy ra lỗi không xác định khi tạo đề bằng AI.");
         }
     };
 
@@ -316,6 +346,60 @@ export default function AIRenderer({
                         />
                     </div>
 
+                    {/* KHỐI TIẾN TRÌNH TRỰC QUAN KHI AI ĐANG SOẠN ĐỀ */}
+                    {isLoading && (
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-3xl p-6 text-left space-y-4 shadow-lg animate-fade-in">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-md animate-pulse">
+                                        <Sparkles size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-black uppercase text-blue-900 tracking-wider">
+                                            AI đang tạo đề thi
+                                        </h4>
+                                        <p className="text-[11px] font-bold text-blue-700 mt-0.5">
+                                            {progressStatus || "Đang xử lý câu hỏi..."}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs font-black text-blue-900 font-mono">
+                                        {elapsedSeconds}s
+                                    </span>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Thời gian chạy</p>
+                                </div>
+                            </div>
+
+                            {/* Thanh phần trăm tiến trình */}
+                            <div className="w-full bg-blue-100 rounded-full h-2.5 overflow-hidden">
+                                <div 
+                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out shadow-sm"
+                                    style={{ width: `${Math.max(10, Math.min(progressPercent, 100))}%` }}
+                                />
+                            </div>
+
+                            <p className="text-[10px] text-slate-500 font-semibold italic">
+                                💡 Hệ thống tự động chia nhỏ đề thi thành các phần độc lập (Phần I, II, III) để đảm bảo tốc độ nhanh nhất, không bị tràn bộ nhớ token và giữ trọn vẹn công thức LaTeX.
+                            </p>
+                        </div>
+                    )}
+
+                    {errorMsg && (
+                        <div className="bg-red-50 border-2 border-red-200 p-5 rounded-3xl flex items-start gap-3.5 text-red-700 text-xs font-bold text-left animate-shake shadow-md">
+                            <AlertTriangle className="shrink-0 text-red-600 mt-0.5" size={20} />
+                            <div className="flex-1 space-y-1">
+                                <p className="font-black uppercase tracking-wide text-red-900">Không thể hoàn tất tạo đề bằng AI</p>
+                                <p className="leading-relaxed">{errorMsg}</p>
+                                {errorMsg.includes('Rate Limit') && (
+                                    <p className="text-[10px] text-red-600 font-semibold mt-1">
+                                        👉 Gợi ý: Chờ 30-60 giây để hạn mức miễn phí của Google hồi phục, hoặc vào phần cấu hình hệ thống thêm API key mới.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <button 
                         onClick={handleGenerate} 
                         disabled={isLoading || (activeMode === 'prompt' && !prompt) || (activeMode === 'pdf' && !pdfFile)} 
@@ -325,7 +409,7 @@ export default function AIRenderer({
                         } text-white text-sm uppercase tracking-widest`}
                     >
                         {isLoading ? <Loader2 className="animate-spin" size={28}/> : <Sparkles size={28}/>} 
-                        {isLoading ? 'Hệ thống đang xử lý...' : (
+                        {isLoading ? (progressStatus || 'Hệ thống đang xử lý...') : (
                             target === 'bank' ? 'Soạn & Lưu vào ngân hàng' : 
                             (hasQuestionsInEditor && editorAction === 'append' ? 'Soạn & Chèn thêm vào đề' : 'Bắt đầu tạo đề mới với AI')
                         )}

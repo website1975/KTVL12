@@ -695,6 +695,7 @@ export default function AdminDashboard() {
     editorAction?: 'replace' | 'append';
     matrix?: { easy: number; medium: number; hard: number; vhard: number };
     pdfBase64?: string;
+    onProgress?: (status: string, percent?: number) => void;
   }) => {
     setIsAiLoading(true);
     try {
@@ -706,7 +707,7 @@ export default function AdminDashboard() {
         part3Count: config.p3,
         matrix: config.matrix,
         pdfBase64: config.pdfBase64
-      });
+      }, config.onProgress);
       
       if (config.target === 'editor') {
         const isAppend = config.editorAction === 'append';
@@ -729,6 +730,7 @@ export default function AdminDashboard() {
       }
     } catch (error: any) {
       showAlert("Lỗi tạo đề AI", error.message || "Không thể tạo đề bằng AI.", "error");
+      throw error;
     } finally {
       setIsAiLoading(false);
     }

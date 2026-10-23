@@ -1013,7 +1013,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                     axisLine={false}
                   />
                   <Tooltip
-                    content={({ active, payload }) => {
+                    content={({ active, payload }: any) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
@@ -1120,7 +1120,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                     axisLine={false}
                   />
                   <Tooltip
-                    content={({ active, payload }) => {
+                    content={({ active, payload }: any) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (

@@ -38,9 +38,5 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
     },
-    define: {
-      'process.env.API_KEY': JSON.stringify(apiKey),
-      'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
-    }
   }
 })

@@ -502,7 +502,7 @@ export const FALLBACK_MODELS = [
     'gemini-3.8-flash',
     'gemini-flash-latest',
     'gemini-3.1-flash-lite',
-    'gemini-3.1-pro-preview'
+    'gemini-4-argon'
 ];
 
 export const formatAIError = (error: any): string => {
@@ -515,20 +515,66 @@ export const formatAIError = (error: any): string => {
     if (raw.includes('503') || raw.includes('UNAVAILABLE') || raw.includes('high demand')) {
         return "Máy chủ AI của Google hiện đang có lượng truy cập tăng đột biến (503 High Demand). Vui lòng thử lại sau giây lát.";
     }
-    if (raw.includes('API key') || raw.includes('API_KEY')) {
-        return "Khóa API Gemini chưa hợp lệ hoặc chưa được cấu hình. Vui lòng kiểm tra lại biến môi trường GEMINI_API_KEY.";
+    if (raw.includes('API key') || raw.includes('API_KEY') || raw.includes('UNAUTHENTICATED')) {
+        return "Khóa API Gemini chưa hợp lệ hoặc chưa được cấu hình. Vui lòng kiểm tra lại biến môi trường GEMINI_API_KEY trong hệ thống.";
+    }
+    if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('TIMEOUT')) {
+        return "Quá thời gian phản hồi từ máy chủ AI (Timeout). Vui lòng thử lại với số lượng câu hỏi ít hơn hoặc kiểm tra kết nối mạng.";
     }
     return raw;
 };
 
-export const callAIWithFallback = async (requestFn: (model: string) => Promise<any>): Promise<any> => {
+// Nhận diện lỗi không thể phục hồi bằng cách đổi model với cùng một API Key
+export const isFatalAIError = (err: any): boolean => {
+    if (!err) return false;
+    const raw = typeof err === 'string' ? errorString(err) : '';
+    return raw.includes('429') || 
+           raw.includes('RESOURCE_EXHAUSTED') || 
+           raw.includes('quota') || 
+           raw.includes('Quota exceeded') || 
+           raw.includes('limit: 20') ||
+           raw.includes('API key') || 
+           raw.includes('API_KEY') || 
+           raw.includes('UNAUTHENTICATED');
+};
+
+const errorString = (err: any): string => {
+    if (!err) return '';
+    return typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+};
+
+export const callAIWithFallback = async (
+    requestFn: (model: string) => Promise<any>,
+    onStatusUpdate?: (status: string) => void,
+    timeoutMs: number = 45000
+): Promise<any> => {
     let lastError: any = null;
-    for (const model of FALLBACK_MODELS) {
+    for (let i = 0; i < FALLBACK_MODELS.length; i++) {
+        const model = FALLBACK_MODELS[i];
         try {
-            return await requestFn(model);
+            if (onStatusUpdate) {
+                onStatusUpdate(`Đang kết nối AI (${model})...`);
+            }
+            
+            // Timeout bảo vệ cho từng model: không để request treo vô hạn
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Quá thời gian phản hồi từ mô hình ${model} (${Math.round(timeoutMs / 1000)} giây)`));
+                }, timeoutMs);
+            });
+
+            return await Promise.race([requestFn(model), timeoutPromise]);
         } catch (err: any) {
             lastError = err;
             console.warn(`Thử model ${model} thất bại:`, err?.message || err);
+
+            // NGUYÊN NHÂN LỚN NHẤT GÂY TREO LÂU MÀ KHÔNG BÁO:
+            // Khi API Key đã bị 429 Quota Exceeded hoặc sai Key, gọi 3 model tiếp theo
+            // với CÙNG MỘT KEY chắc chắn sẽ lại bị 429, làm tăng thời gian chờ gấp 4 lần!
+            // Dừng ngay lập tức và ném lỗi rõ ràng cho người dùng biết!
+            if (isFatalAIError(err)) {
+                throw new Error(formatAIError(err));
+            }
         }
     }
     throw new Error(formatAIError(lastError));
@@ -542,103 +588,298 @@ const getAIClient = (): GoogleGenAI => {
     return new GoogleGenAI({ apiKey: key });
 };
 
-export const generateQuizFromPrompt = async (config: any): Promise<Question[]> => {
+export const generateQuizFromPrompt = async (
+    config: any,
+    onProgress?: (status: string, percent?: number) => void
+): Promise<Question[]> => {
     const ai = getAIClient();
     
     let matrixPrompt = "";
     if (config.matrix) {
         matrixPrompt = `
 MA TRẬN ĐỘ KHÓ (PHÂN BỔ THEO % TỔNG SỐ CÂU):
-- Nhận biết (Easy/Knowledge): ${config.matrix.easy}% 
-- Thông hiểu (Medium/Understanding): ${config.matrix.medium}%
-- Vận dụng (Hard/Application): ${config.matrix.hard}%
-- Vận dụng cao (Very Hard/High Application): ${config.matrix.vhard}%
+- Nhận biết (B): ${config.matrix.easy}% 
+- Thông hiểu (H): ${config.matrix.medium}%
+- Vận dụng (VD): ${config.matrix.hard}%
+- Vận dụng cao (VDC): ${config.matrix.vhard}%
 Hãy phân bổ độ khó cho các câu hỏi sao cho tỉ lệ các mức độ sát với ma trận này nhất có thể.
 `;
     }
 
-    const sourceInstruction = config.pdfBase64 
-        ? "NGUỒN DỮ LIỆU: Hãy đọc kỹ file PDF được cung cấp. BẮT BUỘC chỉ được lấy dữ liệu, ý tưởng hoặc trích xuất trực tiếp các câu hỏi từ nội dung trong file PDF này để soạn đề. Không được tự ý chế tác nội dung nằm ngoài phạm vi tài liệu PDF trừ khi cần thiết để hoàn thiện cấu trúc câu hỏi."
-        : "NGUỒN DỮ LIỆU: Sử dụng kho tri thức chuyên sâu của bạn về chương trình giáo dục phổ thông Việt Nam để soạn đề.";
+    // Trường hợp 1: Có đính kèm file PDF
+    if (config.pdfBase64) {
+        if (onProgress) onProgress("Đang phân tích tệp tài liệu PDF và trích xuất câu hỏi...", 20);
 
-    const prompt = `Bạn là chuyên gia soạn đề thi THPT quốc gia Việt Nam môn Toán/Lý/Hóa.
-${sourceInstruction}
+        const prompt = `Bạn là chuyên gia soạn đề thi THPT quốc gia Việt Nam môn Toán/Lý/Hóa.
+NGUỒN DỮ LIỆU: Hãy đọc kỹ file PDF được cung cấp. BẮT BUỘC chỉ được lấy dữ liệu, ý tưởng hoặc trích xuất trực tiếp các câu hỏi từ nội dung trong file PDF này để soạn đề.
 
 YÊU CẦU CHI TIẾT:
-- Chủ đề: ${config.topic}.
-- Khối lớp: ${config.grade}.
-- Cấu trúc: ${config.part1Count} câu trắc nghiệm 4 lựa chọn (MCQ), ${config.part2Count} câu trắc nghiệm Đúng/Sai (Group-TF), ${config.part3Count} câu trả lời ngắn (Short).
+- Chủ đề: ${config.topic || 'Dựa theo tài liệu PDF'}.
+- Khối lớp: ${config.grade || '12'}.
+- Cấu trúc đề: ${config.part1Count || 0} câu trắc nghiệm 4 lựa chọn (MCQ), ${config.part2Count || 0} câu Đúng/Sai (Group-TF), ${config.part3Count || 0} câu trả lời ngắn (Short).
 ${matrixPrompt}
 
-QUY TẮC KỸ THUẬT BẮT BUỘC:
-1. LaTeX: Mọi biểu thức, công thức, ký hiệu toán/lý/hóa (VD: $\Delta\Phi$, $\Omega$, $x^2$, $\vec{v}$) BẮT BUỘC phải nằm trong cặp dấu $...$. Quy tắc này áp dụng cho NỘI DUNG CÂU HỎI, CÁC PHƯƠNG ÁN (Options), và LỜI GIẢI (Solution).
-2. Solution (Lời giải): Phải có lời giải chi tiết, sư phạm cho từng câu.
-3. MCQ: 'correctAnswer' phải là nội dung của phương án đúng (không kèm nhãn A, B, C, D).
-4. GROUP-TF: 
-   - 'subQuestions' phải có chính xác 4 ý (a, b, c, d).
-   - 'solution' phải giải thích chi tiết cho từng ý theo mẫu:
-     a) [Đúng/Sai] : Vì [Lý do chi tiết]
-     ... (tương tự cho b, c, d)
-5. Options: Tuyệt đối KHÔNG bao gồm nhãn "A.", "B.", "C.", "D." vào nội dung phương án.
-6. JSON: Trả về kết quả dưới dạng mảng JSON chuẩn xác theo schema đã định.`;
+QUY TẮC KỸ THUẬT:
+1. LaTeX: Mọi biểu thức, công thức toán/lý/hóa BẮT BUỘC nằm trong $...$.
+2. Solution: Lời giải chi tiết sư phạm cho từng câu.
+3. GROUP-TF: subQuestions có chính xác 4 ý (a, b, c, d), solution giải thích từng ý.
+4. Options: Không chèn nhãn "A.", "B.", "C.", "D." vào text options.
+5. Trả về mảng JSON theo schema đã chỉ định.`;
 
-    try {
-        const contents = config.pdfBase64 
-            ? {
+        try {
+            const contents = {
                 parts: [
                     { inlineData: { mimeType: "application/pdf", data: config.pdfBase64 } },
                     { text: prompt }
                 ]
-            }
-            : prompt;
+            };
 
-        const response = await callAIWithFallback((model) => 
-            ai.models.generateContent({
-                model,
-                contents: contents,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                type: { type: Type.STRING },
-                                text: { type: Type.STRING },
-                                context: { type: Type.STRING, nullable: true },
-                                level: { type: Type.STRING, nullable: true },
-                                points: { type: Type.NUMBER },
-                                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                                correctAnswer: { type: Type.STRING, nullable: true },
-                                solution: { type: Type.STRING },
-                                subQuestions: {
-                                    type: Type.ARRAY,
-                                    nullable: true,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            text: { type: Type.STRING },
-                                            correctAnswer: { type: Type.STRING },
-                                            level: { type: Type.STRING, nullable: true }
-                                        },
-                                        required: ["text", "correctAnswer"]
+            const response = await callAIWithFallback((model) => 
+                ai.models.generateContent({
+                    model,
+                    contents: contents,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    type: { type: Type.STRING },
+                                    text: { type: Type.STRING },
+                                    context: { type: Type.STRING, nullable: true },
+                                    level: { type: Type.STRING, nullable: true },
+                                    points: { type: Type.NUMBER },
+                                    options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                                    correctAnswer: { type: Type.STRING, nullable: true },
+                                    solution: { type: Type.STRING },
+                                    subQuestions: {
+                                        type: Type.ARRAY,
+                                        nullable: true,
+                                        items: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                text: { type: Type.STRING },
+                                                correctAnswer: { type: Type.STRING },
+                                                level: { type: Type.STRING, nullable: true }
+                                            },
+                                            required: ["text", "correctAnswer"]
+                                        }
                                     }
-                                }
-                            },
-                            required: ["type", "text", "points", "solution"]
+                                },
+                                required: ["type", "text", "points", "solution"]
+                            }
                         }
                     }
-                }
-            })
-        );
+                }),
+                (status) => onProgress?.(status, 50)
+            );
 
-        const textOutput = response.text || "[]";
-        const rawData = safeJsonParse(textOutput, []);
-        
-        return processAIQuestions(Array.isArray(rawData) ? rawData : []);
-    } catch (error: any) {
-        throw new Error("AI không thể tạo đề: " + formatAIError(error));
+            if (onProgress) onProgress("Đang chuẩn hóa và xử lý câu hỏi...", 90);
+            const textOutput = response.text || "[]";
+            const rawData = safeJsonParse(textOutput, []);
+            return processAIQuestions(Array.isArray(rawData) ? rawData : []);
+        } catch (error: any) {
+            throw new Error("AI không thể tạo đề từ PDF: " + formatAIError(error));
+        }
     }
+
+    // Trường hợp 2: Soạn đề mới qua Prompt
+    // TỐI ƯU HÓA ĐẶC BIỆT: Nếu số câu lớn hoặc nhiều phần (P1, P2, P3), sinh tuần tự theo từng phần
+    // Giúp: Tránh tràn token (token cutoff), giảm 3-5 lần thời gian chờ, không bị timeout, và có tiến trình trực quan!
+    const p1 = Number(config.part1Count) || 0;
+    const p2 = Number(config.part2Count) || 0;
+    const p3 = Number(config.part3Count) || 0;
+    const totalQs = p1 + p2 + p3;
+
+    if (totalQs === 0) {
+        throw new Error("Vui lòng cấu hình số lượng câu hỏi cần tạo lớn hơn 0.");
+    }
+
+    const allGenerated: Question[] = [];
+
+    // Bước 1: Soạn Phần I (Trắc nghiệm 4 lựa chọn)
+    if (p1 > 0) {
+        if (onProgress) onProgress(`Bước 1/3: Đang soạn Phần I (${p1} câu trắc nghiệm 4 lựa chọn)...`, 15);
+        
+        const mcqPrompt = `Bạn là chuyên gia khảo thí THPT quốc gia môn Vật lý/Toán/Hóa theo chương trình GDPT 2018.
+HÃY SOẠN ĐÚNG ${p1} CÂU HỎI TRẮC NGHIỆM 4 LỰA CHỌN (PHẦN I):
+- Chủ đề: ${config.topic}
+- Khối lớp: ${config.grade || '12'}
+${matrixPrompt}
+
+YÊU CẦU:
+1. Mọi công thức LaTeX BẮT BUỘC nằm trong $...$.
+2. Mỗi câu có đúng 4 phương án (options) không kèm nhãn A, B, C, D.
+3. 'correctAnswer' là nội dung chính xác của phương án đúng.
+4. 'solution': Lời giải chi tiết, rõ ràng từng bước.
+5. 'points': 0.25 cho mỗi câu.
+6. 'type': "mcq".
+7. 'level': "B" (Nhận biết), "H" (Thông hiểu), "VD" (Vận dụng), hoặc "VDC" (Vận dụng cao).`;
+
+        try {
+            const resp = await callAIWithFallback((model) =>
+                ai.models.generateContent({
+                    model,
+                    contents: mcqPrompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    type: { type: Type.STRING },
+                                    text: { type: Type.STRING },
+                                    level: { type: Type.STRING, nullable: true },
+                                    points: { type: Type.NUMBER },
+                                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                    correctAnswer: { type: Type.STRING },
+                                    solution: { type: Type.STRING }
+                                },
+                                required: ["type", "text", "options", "correctAnswer", "solution", "points"]
+                            }
+                        }
+                    }
+                }),
+                (st) => onProgress?.(`Phần I: ${st}`, 25)
+            );
+            const raw = safeJsonParse(resp.text || "[]", []);
+            const processed = processAIQuestions(Array.isArray(raw) ? raw : []).map(q => ({
+                ...q,
+                type: 'mcq' as const,
+                points: q.points || 0.25
+            }));
+            allGenerated.push(...processed);
+        } catch (err: any) {
+            throw new Error(`Lỗi khi tạo Phần I (${p1} câu trắc nghiệm): ${formatAIError(err)}`);
+        }
+    }
+
+    // Bước 2: Soạn Phần II (Trắc nghiệm Đúng/Sai)
+    if (p2 > 0) {
+        if (onProgress) onProgress(`Bước 2/3: Đang soạn Phần II (${p2} câu Đúng/Sai, mỗi câu 4 ý a-d)...`, 50);
+
+        const tfPrompt = `Bạn là chuyên gia khảo thí THPT quốc gia môn Vật lý/Toán/Hóa theo GDPT 2018.
+HÃY SOẠN ĐÚNG ${p2} CÂU HỎI TRẮC NGHIỆM ĐÚNG/SAI (PHẦN II):
+- Chủ đề: ${config.topic}
+- Khối lớp: ${config.grade || '12'}
+${matrixPrompt}
+
+YÊU CẦU ĐẶC BIỆT CHO PHẦN II:
+1. Mọi công thức LaTeX BẮT BUỘC nằm trong $...$.
+2. 'text': Phần dẫn chung (bối cảnh thí nghiệm, bài toán thực tiễn).
+3. 'subQuestions': BẮT BUỘC có đúng 4 ý a, b, c, d. Mỗi ý có 'text' và 'correctAnswer' ("True" hoặc "False").
+4. 'solution': Lời giải chi tiết giải thích rõ lý do từng ý a, b, c, d là Đúng hay Sai.
+5. 'points': 1.0 cho mỗi câu.
+6. 'type': "group-tf".`;
+
+        try {
+            const resp = await callAIWithFallback((model) =>
+                ai.models.generateContent({
+                    model,
+                    contents: tfPrompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    type: { type: Type.STRING },
+                                    text: { type: Type.STRING },
+                                    level: { type: Type.STRING, nullable: true },
+                                    points: { type: Type.NUMBER },
+                                    solution: { type: Type.STRING },
+                                    subQuestions: {
+                                        type: Type.ARRAY,
+                                        items: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                text: { type: Type.STRING },
+                                                correctAnswer: { type: Type.STRING },
+                                                level: { type: Type.STRING, nullable: true }
+                                            },
+                                            required: ["text", "correctAnswer"]
+                                        }
+                                    }
+                                },
+                                required: ["type", "text", "subQuestions", "solution", "points"]
+                            }
+                        }
+                    }
+                }),
+                (st) => onProgress?.(`Phần II: ${st}`, 65)
+            );
+            const raw = safeJsonParse(resp.text || "[]", []);
+            const processed = processAIQuestions(Array.isArray(raw) ? raw : []).map(q => ({
+                ...q,
+                type: 'group-tf' as const,
+                points: q.points || 1.0
+            }));
+            allGenerated.push(...processed);
+        } catch (err: any) {
+            throw new Error(`Lỗi khi tạo Phần II (${p2} câu Đúng/Sai): ${formatAIError(err)}`);
+        }
+    }
+
+    // Bước 3: Soạn Phần III (Trả lời ngắn)
+    if (p3 > 0) {
+        if (onProgress) onProgress(`Bước 3/3: Đang soạn Phần III (${p3} câu trả lời ngắn)...`, 80);
+
+        const shortPrompt = `Bạn là chuyên gia khảo thí THPT quốc gia môn Vật lý/Toán/Hóa theo GDPT 2018.
+HÃY SOẠN ĐÚNG ${p3} CÂU HỎI TRẢ LỜI NGẮN (PHẦN III):
+- Chủ đề: ${config.topic}
+- Khối lớp: ${config.grade || '12'}
+${matrixPrompt}
+
+YÊU CẦU:
+1. Mọi công thức LaTeX BẮT BUỘC nằm trong $...$.
+2. 'correctAnswer': Giá trị số hoặc biểu thức ngắn học sinh cần điền (VD: "12", "3.5", "-4").
+3. 'solution': Các bước tính toán và biện luận chi tiết.
+4. 'points': 0.25 cho mỗi câu.
+5. 'type': "short".`;
+
+        try {
+            const resp = await callAIWithFallback((model) =>
+                ai.models.generateContent({
+                    model,
+                    contents: shortPrompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    type: { type: Type.STRING },
+                                    text: { type: Type.STRING },
+                                    level: { type: Type.STRING, nullable: true },
+                                    points: { type: Type.NUMBER },
+                                    correctAnswer: { type: Type.STRING },
+                                    solution: { type: Type.STRING }
+                                },
+                                required: ["type", "text", "correctAnswer", "solution", "points"]
+                            }
+                        }
+                    }
+                }),
+                (st) => onProgress?.(`Phần III: ${st}`, 90)
+            );
+            const raw = safeJsonParse(resp.text || "[]", []);
+            const processed = processAIQuestions(Array.isArray(raw) ? raw : []).map(q => ({
+                ...q,
+                type: 'short' as const,
+                points: q.points || 0.25
+            }));
+            allGenerated.push(...processed);
+        } catch (err: any) {
+            throw new Error(`Lỗi khi tạo Phần III (${p3} câu trả lời ngắn): ${formatAIError(err)}`);
+        }
+    }
+
+    if (onProgress) onProgress("Đang hoàn thiện đề thi và chuẩn hóa công thức...", 98);
+    return allGenerated;
 };
 
 export const parseQuestionsFromPDF = async (base64Data: string, includeSolutions: boolean = true): Promise<Question[]> => {
@@ -1133,8 +1374,8 @@ export const autoCategorizeChaptersWithAI = async (
     
     const chapterListText = chapters.map((c, idx) => `${idx + 1}. [Mã: "${c.id}"] - Tên chương: "${c.name}"`).join('\n');
     
-    // Chia câu hỏi thành các lô nhỏ tối đa 15 câu/lô để AI phản hồi trong vài giây
-    const CHUNK_SIZE = 15;
+    // Chia câu hỏi thành các lô nhỏ tối đa 25 câu/lô và xử lý tuần tự để tránh nghẽn rate limit
+    const CHUNK_SIZE = 25;
     const chunks: Question[][] = [];
     for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
         chunks.push(questions.slice(i, i + CHUNK_SIZE));
@@ -1192,7 +1433,11 @@ NHIỆM VỤ:
     };
 
     try {
-        const chunkResults = await Promise.all(chunks.map(chunk => processChunk(chunk)));
+        const chunkResults: any[] = [];
+        for (const chunk of chunks) {
+            const res = await processChunk(chunk);
+            chunkResults.push(res);
+        }
         return chunkResults.flat();
     } catch (err: any) {
         console.error("Lỗi AI phân loại chương:", err);
@@ -1310,7 +1555,7 @@ ${jsonFormatDesc}`;
         }));
     } catch (err: any) {
         console.error("Lỗi AI sinh bù câu hỏi cho ma trận:", err);
-        return [];
+        throw new Error("Không thể soạn bù bằng AI: " + formatAIError(err));
     }
 };
 
@@ -1324,7 +1569,7 @@ export const autoClassifyLevelsWithAI = async (
     if (!questions || questions.length === 0) return [];
     const ai = getAIClient();
 
-    const CHUNK_SIZE = 15;
+    const CHUNK_SIZE = 25;
     const chunks: Question[][] = [];
     for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
         chunks.push(questions.slice(i, i + CHUNK_SIZE));
@@ -1414,7 +1659,11 @@ TRẢ VỀ MẢNG JSON THUẦN TÚY:
     };
 
     try {
-        const chunkResults = await Promise.all(chunks.map(chunk => processChunk(chunk)));
+        const chunkResults: any[] = [];
+        for (const chunk of chunks) {
+            const res = await processChunk(chunk);
+            chunkResults.push(res);
+        }
         return chunkResults.flat();
     } catch (err: any) {
         console.error("Lỗi AI phân mức độ:", err);

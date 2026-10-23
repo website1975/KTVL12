@@ -111,7 +111,7 @@ export const GREEK_AND_MATH_SYMBOLS: Record<string, string> = {
   '\\mp': '∓',
   '\\times': '×',
   '\\div': '÷',
-  '\\cdot': '·',
+  '\\cdot': '.',
   '\\circ': '°',
   '\\degree': '°',
   '\\bullet': '•',
@@ -201,7 +201,7 @@ export function replaceLatexMacros(str: string): string {
 
   // Chuẩn hóa dấu chấm nhân \cdot và các phép toán cơ bản
   s = s
-    .replace(/\\cdot(?:\{\})?/g, '·')
+    .replace(/\\cdot(?:\{\})?/g, '.')
     .replace(/\\times(?:\{\})?/g, '×')
     .replace(/\\pm(?:\{\})?/g, '±')
     .replace(/\\mp(?:\{\})?/g, '∓')
@@ -395,7 +395,7 @@ export function parseLatexToDocxMath(latex: string): MathComponent[] {
   clean = clean.replace(/\{\.\s*\}/g, '.');
 
   // Chuẩn hóa dấu chấm nhân \cdot và các phép toán cơ bản
-  clean = clean.replace(/\\cdot(?:\{\})?/g, '·');
+  clean = clean.replace(/\\cdot(?:\{\})?/g, '.');
   clean = clean.replace(/\\times(?:\{\})?/g, '×');
   clean = clean.replace(/\\pm(?:\{\})?/g, '±');
   clean = clean.replace(/\\mp(?:\{\})?/g, '∓');
@@ -870,7 +870,7 @@ export function parseTextWithMath(
     .replace(/\{,\s*\}/g, ',')
     .replace(/\{;\s*\}/g, ';')
     .replace(/\{\.\s*\}/g, '.')
-    .replace(/\\cdot(?:\{\})?/g, '·')
+    .replace(/\\cdot(?:\{\})?/g, '.')
     .replace(/\\times(?:\{\})?/g, '×')
     .replace(/\\pm(?:\{\})?/g, '±')
     .replace(/\\approx(?:\{\})?/g, '≈');
@@ -896,7 +896,7 @@ export function parseTextWithMath(
         .replace(/\{,\s*\}/g, ',')
         .replace(/\{;\s*\}/g, ';')
         .replace(/\{\.\s*\}/g, '.')
-        .replace(/\\cdot(?:\{\})?/g, '·')
+        .replace(/\\cdot(?:\{\})?/g, '.')
         .replace(/\\times(?:\{\})?/g, '×')
         .replace(/\\pm(?:\{\})?/g, '±')
         .replace(/\\approx(?:\{\})?/g, '≈');

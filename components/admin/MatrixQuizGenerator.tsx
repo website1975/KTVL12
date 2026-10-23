@@ -376,7 +376,7 @@ export default function MatrixQuizGenerator({
     const [allowAiFallback, setAllowAiFallback] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generationProgress, setGenerationProgress] = useState<string | null>(null);
-    const [statusMessage, setStatusMessage] = useState<{ type: 'error' | 'success' | 'info'; text: string } | null>(null);
+    const [statusMessage, setStatusMessage] = useState<{ type: 'error' | 'success' | 'info' | 'warning'; text: string } | null>(null);
 
     // Bộ lọc hiển thị Loại câu (Xem tất cả hoặc lọc riêng từng loại)
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | QuestionType>('all');
@@ -738,17 +738,19 @@ export default function MatrixQuizGenerator({
             });
 
             // 2. Nếu thiếu câu hỏi và bật tính năng AI bù câu
+            let aiFailureNotice: string | null = null;
             if (shortfalls.length > 0) {
                 if (allowAiFallback) {
                     const totalMissing = shortfalls.reduce((acc, s) => acc + s.needed, 0);
                     setGenerationProgress(`Đã lấy ${finalQuestions.length} câu từ CSDL. Đang nhờ AI tạo bổ sung ${totalMissing} câu còn thiếu...`);
 
                     try {
-                        for (const shortfall of shortfalls) {
+                        for (let sIdx = 0; sIdx < shortfalls.length; sIdx++) {
+                            const shortfall = shortfalls[sIdx];
                             const typeLabel = shortfall.type === 'mcq' ? 'Trắc nghiệm' : shortfall.type === 'group-tf' ? 'Đúng/Sai' : 'Trả lời ngắn';
                             const levelLabel = shortfall.level === 'B' ? 'Nhận biết' : shortfall.level === 'H' ? 'Thông hiểu' : shortfall.level === 'VD' ? 'Vận dụng' : 'VDC';
                             
-                            setGenerationProgress(`AI đang soạn bù ${shortfall.needed} câu [${typeLabel} - ${levelLabel}] cho "${shortfall.chapterName}"...`);
+                            setGenerationProgress(`AI đang soạn bù ${shortfall.needed} câu [${typeLabel} - ${levelLabel}] cho "${shortfall.chapterName}" (${sIdx + 1}/${shortfalls.length})...`);
                             
                             const aiCreated = await generateMissingQuestionsForChapter(
                                 String(grade),
@@ -764,10 +766,29 @@ export default function MatrixQuizGenerator({
                                 finalQuestions.push(q);
                             });
                         }
-                    } catch (aiErr) {
-                        console.warn("Lỗi khi AI soạn bù câu, tiếp tục với câu hỏi đã lấy từ CSDL:", aiErr);
+                    } catch (aiErr: any) {
+                        console.warn("Lỗi khi AI soạn bù câu, dừng lại và thông báo:", aiErr);
+                        aiFailureNotice = aiErr?.message || "Không thể kết nối máy chủ AI.";
                     }
                 }
+            }
+
+            // Nếu CSDL hoàn toàn không có câu nào và AI cũng thất bại
+            if (finalQuestions.length === 0) {
+                setStatusMessage({
+                    type: 'error',
+                    text: aiFailureNotice 
+                        ? `Không thể tạo đề: CSDL không có câu hỏi phù hợp và AI gặp lỗi: ${aiFailureNotice}`
+                        : 'Không tìm thấy câu hỏi phù hợp trong CSDL và không thể tạo đề. Vui lòng kiểm tra lại cấu hình ma trận!'
+                });
+                return;
+            }
+
+            if (aiFailureNotice) {
+                setStatusMessage({
+                    type: 'warning',
+                    text: `Đã tạo đề với ${finalQuestions.length} câu có sẵn trong CSDL. Lưu ý: AI không thể hoàn tất soạn bù các câu còn thiếu (${aiFailureNotice}).`
+                });
             }
 
             // 3. Sắp xếp đề thi theo cấu trúc chính quy GDPT 2018:
@@ -926,11 +947,12 @@ export default function MatrixQuizGenerator({
                 {statusMessage && (
                     <div className={`p-4 rounded-2xl border-2 flex items-center justify-between text-xs font-bold animate-fade-in ${
                         statusMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
+                        statusMessage.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
                         statusMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
                         'bg-blue-50 border-blue-200 text-blue-700'
                     }`}>
                         <div className="flex items-center gap-2">
-                            {statusMessage.type === 'error' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+                            {statusMessage.type === 'error' || statusMessage.type === 'warning' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
                             <span>{statusMessage.text}</span>
                         </div>
                         <button type="button" onClick={() => setStatusMessage(null)} className="text-xs opacity-60 hover:opacity-100">Đóng</button>
