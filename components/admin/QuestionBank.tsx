@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../types';
-import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap } from 'lucide-react';
+import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap, Edit3, Trash2, Plus } from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 import { isExamOrNonChapterName, STANDARD_CHAPTERS, getChapterNumberFromName } from './MatrixQuizGenerator';
@@ -19,6 +19,9 @@ interface QuestionBankProps {
     setBSearch: (val: string) => void;
     onAddMultiple: (qs: Question[]) => void;
     onOpenMatrixGenerator?: () => void;
+    onAddNew?: () => void;
+    onEdit?: (q: Question) => void;
+    onDelete?: (q: Question) => void;
 }
 
 const PAGE_SIZE = 40;
@@ -84,7 +87,7 @@ const getQuestionImageUrl = (q: any): string | null => {
 };
 
 export default function QuestionBank({ 
-    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple, onOpenMatrixGenerator 
+    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple, onOpenMatrixGenerator, onAddNew, onEdit, onDelete
 }: QuestionBankProps) {
     // Sử dụng Map<string, Question> để lưu TOÀN BỘ đối tượng câu hỏi đã chọn từ mọi mức độ (Biết, Hiểu, Vận dụng...)
     const [selectedMap, setSelectedMap] = useState<Map<string, Question>>(new Map());
@@ -298,6 +301,17 @@ export default function QuestionBank({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {onAddNew && (
+                            <button
+                                type="button"
+                                onClick={onAddNew}
+                                className="flex items-center gap-1.5 text-[9px] font-black uppercase text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-xl shadow-xs active:scale-95 transition-all"
+                                title="Thêm câu hỏi mới thủ công vào Ngân hàng"
+                            >
+                                <Plus size={13} />
+                                <span>+ Thêm câu mới</span>
+                            </button>
+                        )}
                         {onOpenMatrixGenerator && (
                             <button
                                 type="button"
@@ -410,9 +424,35 @@ export default function QuestionBank({
                                     <CheckCircle2 size={24}/>
                                 </div>
 
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0 relative">
+                                    {/* Nút Hiệu chỉnh & Xóa ở góc phải */}
+                                    <div className="absolute top-0 right-0 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                        {onEdit && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); onEdit(bq); }}
+                                                className="px-2.5 py-1 bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 shadow-xs transition-all"
+                                                title="Hiệu chỉnh câu hỏi"
+                                            >
+                                                <Edit3 size={11} />
+                                                <span>Sửa</span>
+                                            </button>
+                                        )}
+                                        {onDelete && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); onDelete(bq); }}
+                                                className="px-2.5 py-1 bg-white border border-slate-200 text-red-600 hover:bg-red-50 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 shadow-xs transition-all"
+                                                title="Xóa câu hỏi khỏi ngân hàng"
+                                            >
+                                                <Trash2 size={11} />
+                                                <span>Xóa</span>
+                                            </button>
+                                        )}
+                                    </div>
+
                                     {/* Nhãn tag phân loại */}
-                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <div className="flex flex-wrap items-center gap-2 mb-2 pr-24">
                                         <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${
                                             bq.type === 'mcq' ? 'bg-blue-600' : bq.type.includes('tf') ? 'bg-purple-600' : 'bg-orange-600'
                                         }`}>
