@@ -1566,6 +1566,18 @@ export const saveBankQuestion = async (q: Question): Promise<void> => {
     }
 };
 
+export const deleteBankQuestion = async (id: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+        const { error } = await supabase.from('bank_questions').delete().eq('id', id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.warn("Lỗi xóa bank question:", e);
+        return false;
+    }
+};
+
 // --- Cấu hình lưu trữ hình ảnh (ImgBB & Supabase Storage) ---
 export type ImageStorageProvider = 'auto' | 'imgbb' | 'supabase';
 
