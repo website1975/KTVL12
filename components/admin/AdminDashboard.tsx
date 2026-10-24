@@ -5,7 +5,7 @@ import {
   getResultsMetadata, getResultById, deleteResult, getResultsMetadataPage,
   getChapters, saveChapter, deleteChapter,
   getQuizFolders, saveQuizFolder, deleteQuizFolder, batchMoveQuizzesToFolder,
-  getBankQuestions, saveBankQuestion,
+  getBankQuestions, saveBankQuestion, deleteBankQuestion,
   getClasses, saveClass, deleteClass, saveClassesBatch, assignStudentsToClass,
   clearLocalCache, clearAllLocalCaches,
   isDatabaseConnected,
@@ -38,6 +38,7 @@ import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
 import AIRenderer from './AIRenderer';
 import ClassManager from './ClassManager';
+import BankQuestionModal from './BankQuestionModal';
 
 import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
@@ -143,6 +144,8 @@ export default function AdminDashboard() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [folders, setFolders] = useState<QuizFolder[]>([]);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
+  const [isBankQuestionModalOpen, setIsBankQuestionModalOpen] = useState(false);
+  const [selectedBankQuestion, setSelectedBankQuestion] = useState<Question | null>(null);
 
   // Lazy loading data with memory cache & forceRefresh
   const loadTabData = useCallback(async (tab: AdminTab, forceRefresh: boolean = false) => {
@@ -1670,6 +1673,21 @@ export default function AdminDashboard() {
                         setIsEditingQuiz(true); 
                     }}
                     onOpenMatrixGenerator={() => setActiveTab('ai')}
+                    onAddNew={() => {
+                        setSelectedBankQuestion(null);
+                        setIsBankQuestionModalOpen(true);
+                    }}
+                    onEdit={(q) => {
+                        setSelectedBankQuestion(q);
+                        setIsBankQuestionModalOpen(true);
+                    }}
+                    onDelete={async (q) => {
+                        if (confirm("Bạn có chắc chắn muốn xóa câu hỏi này khỏi Ngân hàng?")) {
+                            await deleteBankQuestion(q.id);
+                            showAlert("Thành công", "Đã xóa câu hỏi khỏi Ngân hàng!", "success");
+                            loadTabData('bank');
+                        }
+                    }}
                 />
             </div>
           )}
@@ -1808,6 +1826,21 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {isBankQuestionModalOpen && (
+        <BankQuestionModal
+          isOpen={isBankQuestionModalOpen}
+          question={selectedBankQuestion}
+          chapters={chapters}
+          grade={quizGrade}
+          onClose={() => setIsBankQuestionModalOpen(false)}
+          onSave={async (q) => {
+            await saveBankQuestion(q);
+            showAlert("Thành công", "Đã lưu câu hỏi vào Ngân hàng!", "success");
+            loadTabData('bank');
+          }}
+        />
       )}
     </div>
   );
