@@ -3,9 +3,11 @@ import { Question } from '../../types';
 import { 
   X, Image as ImageIcon, UploadCloud, Check, CheckCircle2, 
   Crop, Sparkles, RefreshCw, Loader2, AlertCircle, FileUp, 
-  Maximize2, Scissors, Plus, Trash2, Zap, Undo2
+  Maximize2, Scissors, Plus, Trash2, Zap, Undo2, Download, Cloud, HardDrive
 } from 'lucide-react';
 import { uploadQuizImageWithResult, uploadToImgbb, getImageStorageConfig } from '../../services/storage';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 export interface ExtractedPdfImage {
   id: string;
@@ -234,6 +236,60 @@ export default function PdfImageExtractorModal({
   // Zoom và xem ảnh phóng to
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [uploadSuccessMap, setUploadSuccessMap] = useState<Record<string, string>>({}); // imgId -> success message
+
+  // Lựa chọn phương thức lưu trữ ảnh khi bóc tách (Auto, Supabase, ImgBB, Base64)
+  const [storageMode, setStorageMode] = useState<'auto' | 'supabase' | 'imgbb' | 'base64'>(() => {
+    return getImageStorageConfig().provider || 'auto';
+  });
+
+  // Tải 1 ảnh bóc tách về máy tính
+  const handleDownloadSingleImage = (img: ExtractedPdfImage, idx: number) => {
+    try {
+      const link = document.createElement('a');
+      link.href = img.dataUrl;
+      link.download = `anh_pdf_trang_${img.pageNumber}_cautrucxuat_${idx + 1}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error("Lỗi khi tải ảnh về máy:", e);
+    }
+  };
+
+  const [isZipping, setIsZipping] = useState<boolean>(false);
+
+  // Tải toàn bộ danh sách ảnh bóc tách đóng gói trong 1 file .ZIP duy nhất
+  const handleDownloadAllImagesZip = async () => {
+    if (extractedImages.length === 0) {
+      alert("Chưa có ảnh nào trong kho để tải về!");
+      return;
+    }
+
+    setIsZipping(true);
+    try {
+      const zip = new JSZip();
+      const folderName = pdfFile ? pdfFile.name.replace(/\.[^/.]+$/, "") : "anh_boc_tach_pdf";
+      const imgFolder = zip.folder(folderName) || zip;
+
+      extractedImages.forEach((img, idx) => {
+        const parts = img.dataUrl.split(';base64,');
+        if (parts.length === 2) {
+          const base64Data = parts[1];
+          const fileName = `trang_${img.pageNumber}_anh_${idx + 1}.png`;
+          imgFolder.file(fileName, base64Data, { base64: true });
+        }
+      });
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const zipFileName = `${folderName}_tat_ca_anh.zip`;
+      saveAs(content, zipFileName);
+    } catch (err: any) {
+      console.error("Lỗi khi đóng gói file ZIP:", err);
+      alert("Lỗi khi đóng gói file ZIP: " + (err.message || "Lỗi xử lý"));
+    } finally {
+      setIsZipping(false);
+    }
+  };
 
   // Tải lại cache từ session khi modal mở
   useEffect(() => {
@@ -519,9 +575,21 @@ export default function PdfImageExtractorModal({
     }, 3000);
   };
 
-  // Tải ảnh lên ImgBB / Cloud và lấy URL trực tiếp
-  const handleUploadImage = async (img: ExtractedPdfImage): Promise<string> => {
+  // Tải ảnh lên Cloud (Supabase / ImgBB / Base64 / Auto) và lấy URL trực tiếp
+  const handleUploadImage = async (img: ExtractedPdfImage, customMode?: 'auto' | 'supabase' | 'imgbb' | 'base64'): Promise<string> => {
     if (img.uploadedUrl) return img.uploadedUrl;
+
+    const mode = customMode || storageMode;
+
+    // Chế độ Base64: Sử dụng trực tiếp dataUrl không qua mạng
+    if (mode === 'base64') {
+      setExtractedImages(prev => prev.map(item => item.id === img.id ? { 
+        ...item, 
+        uploadedUrl: img.dataUrl, 
+        isUploading: false 
+      } : item));
+      return img.dataUrl;
+    }
 
     setExtractedImages(prev => prev.map(item => item.id === img.id ? { ...item, isUploading: true } : item));
 
@@ -529,12 +597,16 @@ export default function PdfImageExtractorModal({
       const blob = dataUrlToBlob(img.dataUrl);
       const file = new File([blob], `quiz_img_p${img.pageNumber}_${img.id.slice(-6)}.png`, { type: 'image/png' });
       
-      // Ưu tiên tải trực tiếp lên ImgBB
       let finalUrl = '';
-      try {
-        finalUrl = await uploadToImgbb(file);
-      } catch (e) {
-        const res = await uploadQuizImageWithResult(file);
+      if (mode === 'imgbb') {
+        try {
+          finalUrl = await uploadToImgbb(file);
+        } catch (e) {
+          const res = await uploadQuizImageWithResult(file, 'auto');
+          finalUrl = res.url;
+        }
+      } else {
+        const res = await uploadQuizImageWithResult(file, mode);
         finalUrl = res.url;
       }
       
@@ -606,7 +678,7 @@ export default function PdfImageExtractorModal({
       <div className="bg-slate-50 w-full max-w-6xl max-h-[95vh] rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200">
         
         {/* HEADER MODAL */}
-        <div className="bg-[#0f172a] text-white px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-800 shrink-0">
+        <div className="bg-[#0f172a] text-white px-6 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-11 h-11 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
               <ImageIcon size={22} />
@@ -614,10 +686,10 @@ export default function PdfImageExtractorModal({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-white truncate">
-                  BỘ BÓC TÁCH ẢNH PDF & TẢI LÊN IMGBB
+                  BỘ BÓC TÁCH & QUẢN LÝ ẢNH PDF
                 </h3>
                 <span className="bg-purple-900/60 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
-                  TỰ ĐỘNG
+                  {storageMode === 'supabase' ? 'SUPABASE STORAGE' : storageMode === 'imgbb' ? 'IMGBB CDN' : storageMode === 'base64' ? 'BASE64 DATAURL' : 'TỰ ĐỘNG (AUTO)'}
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-300">
@@ -643,11 +715,44 @@ export default function PdfImageExtractorModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="bg-purple-950/80 text-purple-200 border border-purple-700/50 px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs">
-              <UploadCloud size={14} className="text-purple-400" />
-              <span>Đã kết nối ImgBB</span>
+          <div className="flex items-center gap-3 flex-wrap shrink-0 justify-between sm:justify-end">
+            {/* THANH CHỌN LỰA CHỌN LƯU TRỮ (AUTO, SUPABASE, IMGBB, BASE64) */}
+            <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-700 text-[11px] font-black shadow-inner">
+              <span className="text-[10px] uppercase text-slate-400 font-extrabold px-2 hidden md:inline">Lưu:</span>
+              <button
+                type="button"
+                onClick={() => setStorageMode('auto')}
+                className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${storageMode === 'auto' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Tự động (Ưu tiên Supabase -> ImgBB -> Base64)"
+              >
+                <Zap size={12} className={storageMode === 'auto' ? "text-amber-300" : "text-amber-500"} /> Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => setStorageMode('supabase')}
+                className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${storageMode === 'supabase' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Lưu vĩnh viễn trên Supabase Cloud Storage"
+              >
+                <Cloud size={12} className={storageMode === 'supabase' ? "text-purple-200" : "text-purple-400"} /> Supabase
+              </button>
+              <button
+                type="button"
+                onClick={() => setStorageMode('imgbb')}
+                className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${storageMode === 'imgbb' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Lưu trên ImgBB CDN"
+              >
+                <UploadCloud size={12} className={storageMode === 'imgbb' ? "text-emerald-200" : "text-emerald-400"} /> ImgBB
+              </button>
+              <button
+                type="button"
+                onClick={() => setStorageMode('base64')}
+                className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${storageMode === 'base64' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'}`}
+                title="Nhúng trực tiếp Base64 DataURL (Không cần internet)"
+              >
+                <HardDrive size={12} className={storageMode === 'base64' ? "text-amber-200" : "text-amber-400"} /> Base64
+              </button>
             </div>
+
             <button 
               type="button"
               onClick={onClose}
@@ -731,19 +836,45 @@ export default function PdfImageExtractorModal({
           {activeTab === 'gallery' && !isExtracting && (
             <div className="space-y-4">
               
-              {/* THANH THỐNG KÊ VÀ QUÉT LẠI */}
+              {/* THANH THỐNG KÊ, TẢI CẢ VÀ QUÉT LẠI */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <p className="text-xs font-bold text-slate-700">
                   Đã trích xuất thành công <span className="text-blue-600 font-black text-sm">{extractedImages.length}</span> ảnh từ tài liệu. Chọn câu hỏi để gán ảnh trực tiếp:
                 </p>
-                <button
-                  type="button"
-                  onClick={() => pdfFile && loadAndExtractPdf(pdfFile)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase transition-all border border-slate-200 active:scale-95"
-                >
-                  <RefreshCw size={13} className={isExtracting ? "animate-spin" : ""} />
-                  <span>QUÉT LẠI</span>
-                </button>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Nút Tải tất cả ảnh về máy trong 1 file ZIP */}
+                  {extractedImages.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={isZipping}
+                      onClick={handleDownloadAllImagesZip}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase transition-all shadow-sm active:scale-95 cursor-pointer"
+                      title="Nén và tải tất cả ảnh bóc tách về máy thành 1 file .ZIP"
+                    >
+                      {isZipping ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin text-white" />
+                          <span>ĐANG NÉN ZIP...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download size={13} className="text-emerald-200" />
+                          <span>TẢI FILE ZIP (TẤT CẢ ẢNH)</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => pdfFile && loadAndExtractPdf(pdfFile)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase transition-all border border-slate-200 active:scale-95"
+                  >
+                    <RefreshCw size={13} className={isExtracting ? "animate-spin" : ""} />
+                    <span>QUÉT LẠI</span>
+                  </button>
+                </div>
               </div>
 
               {/* LƯỚI THẺ ẢNH (3 CỘT) */}
@@ -785,15 +916,23 @@ export default function PdfImageExtractorModal({
                             </span>
                           </div>
 
-                          {/* THAO TÁC ZOOM VÀ XÓA */}
-                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* THAO TÁC ZOOM, TẢI VỀ MÁY VÀ XÓA */}
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                             <button
                               type="button"
                               onClick={() => setPreviewImage(img.dataUrl)}
-                              className="p-1.5 bg-slate-900/70 hover:bg-slate-900 text-white rounded-lg shadow-xs"
+                              className="p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg shadow-xs"
                               title="Xem ảnh phóng to"
                             >
                               <Maximize2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadSingleImage(img, idx)}
+                              className="p-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-lg shadow-xs"
+                              title="Tải ảnh này về máy tính"
+                            >
+                              <Download size={13} />
                             </button>
                             <button
                               type="button"
@@ -814,9 +953,9 @@ export default function PdfImageExtractorModal({
                           )}
                         </div>
 
-                        {/* HÀNG NÚT THAO TÁC: [LÊN IMGBB]  [👉 Gán vào câu hỏi... ▾] */}
+                        {/* HÀNG NÚT THAO TÁC: [LƯU ẢNH]  [👉 Gán vào câu hỏi... ▾] */}
                         <div className="pt-3.5 flex items-center justify-between gap-2">
-                          {/* Nút Lên ImgBB */}
+                          {/* Nút Upload theo Storage Mode */}
                           <button
                             type="button"
                             onClick={() => handleUploadImage(img)}
@@ -826,18 +965,42 @@ export default function PdfImageExtractorModal({
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
                                 : img.isUploading
                                 ? 'bg-purple-100 text-purple-700 border border-purple-200 cursor-wait'
-                                : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80 active:scale-95'
+                                : storageMode === 'supabase'
+                                ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80 active:scale-95'
+                                : storageMode === 'imgbb'
+                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 active:scale-95'
+                                : storageMode === 'base64'
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 active:scale-95'
+                                : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 active:scale-95'
                             }`}
-                            title={isUploaded ? "Ảnh đã được tải lên Cloud CDN" : "Tải ảnh lên ImgBB"}
+                            title={isUploaded ? "Ảnh đã được tải lên Cloud" : `Tải ảnh theo chế độ: ${storageMode}`}
                           >
                             {img.isUploading ? (
                               <Loader2 size={13} className="animate-spin" />
                             ) : isUploaded ? (
                               <Check size={13} className="text-emerald-600" />
+                            ) : storageMode === 'supabase' ? (
+                              <Cloud size={13} className="text-purple-600" />
+                            ) : storageMode === 'imgbb' ? (
+                              <UploadCloud size={13} className="text-emerald-600" />
+                            ) : storageMode === 'base64' ? (
+                              <HardDrive size={13} className="text-amber-600" />
                             ) : (
-                              <UploadCloud size={13} className="text-purple-600" />
+                              <Zap size={13} className="text-blue-600" />
                             )}
-                            <span>{isUploaded ? 'Đã lên Cloud' : img.isUploading ? 'Đang tải...' : 'LÊN IMGBB'}</span>
+                            <span>
+                              {isUploaded 
+                                ? 'Đã lên Cloud' 
+                                : img.isUploading 
+                                ? 'Đang tải...' 
+                                : storageMode === 'supabase' 
+                                ? 'LƯU SUPABASE' 
+                                : storageMode === 'imgbb' 
+                                ? 'LƯU IMGBB' 
+                                : storageMode === 'base64' 
+                                ? 'NỐI BASE64' 
+                                : 'LƯU TỰ ĐỘNG'}
+                            </span>
                           </button>
 
                           {/* Menu Gán vào câu hỏi */}

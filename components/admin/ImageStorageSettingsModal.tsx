@@ -162,11 +162,11 @@ export default function ImageStorageSettingsModal({
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-black text-sm text-slate-800">Ưu tiên ImgBB CDN + Fallback Supabase</span>
-                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-black text-[9px] rounded-md uppercase">Khuyên dùng</span>
+                  <span className="font-black text-sm text-slate-800">Tự động (Ưu tiên Supabase Cloud Storage)</span>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-black text-[9px] rounded-md uppercase">An toàn & Vĩnh viễn</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Tải ảnh lên <strong>ImgBB CDN</strong> để học sinh tải nhanh tức thì và không tốn băng thông Supabase. Nếu ImgBB bận hoặc lỗi, tự động lưu vào <strong>Supabase Storage</strong> làm dự phòng.
+                  Lưu ảnh trực tiếp & vĩnh viễn trên <strong>Supabase Cloud Storage</strong> (không bao giờ bị xóa hay chặn link sau thời gian ngắn). Nếu Supabase bận, tự động chuyển ImgBB làm dự phòng.
                 </p>
               </div>
             </div>

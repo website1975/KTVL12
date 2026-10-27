@@ -733,7 +733,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                         title="Cấu hình lưu trữ ảnh: ImgBB CDN hoặc Supabase Storage"
                                     >
                                         <Zap size={11} className="text-amber-500" />
-                                        <span>Lưu: {imageStorageConfig?.provider === 'supabase' ? 'Supabase' : imageStorageConfig?.provider === 'imgbb' ? 'ImgBB CDN' : 'ImgBB ⚡ (Auto)'}</span>
+                                        <span>Lưu: {imageStorageConfig?.provider === 'supabase' ? 'Supabase' : imageStorageConfig?.provider === 'imgbb' ? 'ImgBB CDN' : 'Supabase Cloud ⚡ (Auto)'}</span>
                                     </button>
                                 )}
                             </div>
@@ -1516,7 +1516,7 @@ export default function QuizEditor(props: QuizEditorProps) {
                             title="Tùy chọn lưu trữ hình ảnh: ImgBB CDN hoặc Supabase Storage"
                         >
                             <Zap size={13} className="text-amber-500"/> 
-                            Lưu ảnh: {imageStorageConfig.provider === 'supabase' ? 'Supabase' : imageStorageConfig.provider === 'imgbb' ? 'ImgBB' : 'ImgBB ⚡ (Auto)'}
+                            Lưu ảnh: {imageStorageConfig.provider === 'supabase' ? 'Supabase' : imageStorageConfig.provider === 'imgbb' ? 'ImgBB' : 'Supabase Cloud ⚡ (Auto)'}
                         </button>
                         {/* Nút mở Thư viện ảnh đề thi */}
                         <button

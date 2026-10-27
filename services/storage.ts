@@ -1713,23 +1713,23 @@ export const uploadQuizImageWithResult = async (
         });
     };
 
-    // 1. Chế độ 'auto' (Ưu tiên ImgBB -> Fallback Supabase Storage -> Fallback Base64)
+    // 1. Chế độ 'auto' (Ưu tiên Supabase Storage vĩnh viễn -> Fallback ImgBB -> Fallback Base64)
     if (provider === 'auto') {
         try {
-            const imgbbUrl = await uploadToImgbb(file, apiKey);
-            return { url: imgbbUrl, provider: 'imgbb' };
-        } catch (imgbbErr: any) {
-            console.warn("⚠️ Upload ImgBB không thành công, tự động chuyển sang Supabase Storage:", imgbbErr?.message || imgbbErr);
+            const supabaseUrl = await uploadToSupabaseStorage(file);
+            return { url: supabaseUrl, provider: 'supabase' };
+        } catch (supabaseErr: any) {
+            console.warn("⚠️ Upload Supabase Storage không thành công, tự động chuyển sang ImgBB:", supabaseErr?.message || supabaseErr);
             try {
-                const supabaseUrl = await uploadToSupabaseStorage(file);
-                return { url: supabaseUrl, provider: 'supabase' };
-            } catch (supabaseErr: any) {
-                console.warn("⚠️ Upload Supabase Storage cũng không thành công, fallback sang Base64 DataURL:", supabaseErr?.message || supabaseErr);
+                const imgbbUrl = await uploadToImgbb(file, apiKey);
+                return { url: imgbbUrl, provider: 'imgbb' };
+            } catch (imgbbErr: any) {
+                console.warn("⚠️ Upload ImgBB cũng không thành công, fallback sang Base64 DataURL:", imgbbErr?.message || imgbbErr);
                 const base64Url = await toBase64(file);
                 return { 
                     url: base64Url, 
                     provider: 'base64', 
-                    error: `ImgBB: ${imgbbErr?.message || 'Lỗi'}; Supabase: ${supabaseErr?.message || 'Lỗi'}` 
+                    error: `Supabase: ${supabaseErr?.message || 'Lỗi'}; ImgBB: ${imgbbErr?.message || 'Lỗi'}` 
                 };
             }
         }
