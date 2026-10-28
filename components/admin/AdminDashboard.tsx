@@ -38,16 +38,17 @@ import ChapterManager from './ChapterManager';
 import QuestionBank from './QuestionBank';
 import AIRenderer from './AIRenderer';
 import ClassManager from './ClassManager';
+import QuestionReviewBoard from './QuestionReviewBoard';
 import BankQuestionModal from './BankQuestionModal';
-
 import StudentModal from './StudentModal';
 import StudentDetailModal from './StudentDetailModal';
 import ResultHistoryModal from './ResultHistoryModal';
 import ResultDetailModal from './ResultDetailModal';
 import QuizPreviewModal from './QuizPreviewModal';
 import SyncBankModal from './SyncBankModal';
+import { Presentation, Tv, Pencil } from 'lucide-react';
 
-type AdminTab = 'quizzes' | 'classes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai';
+type AdminTab = 'quizzes' | 'classes' | 'students' | 'results' | 'monitor' | 'chapters' | 'bank' | 'ai' | 'review';
 
 const SESSION_KEY_QUIZ_FILTERS = 'eduquiz_admin_quiz_filters_v6';
 
@@ -82,6 +83,7 @@ const getInitialQuizFilters = () => {
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>('quizzes');
+  const [activeReviewQuizId, setActiveReviewQuizId] = useState<string | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncBankModalOpen, setIsSyncBankModalOpen] = useState(false);
@@ -1363,6 +1365,7 @@ export default function AdminDashboard() {
         <nav className="flex-1 p-2 lg:p-3 space-y-1 mt-2">
           {[
             { id: 'quizzes', icon: LayoutDashboard, label: 'Đề thi' },
+            { id: 'review', icon: Presentation, label: 'Sửa Bài Bảng' },
             { id: 'classes', icon: GraduationCap, label: 'Lớp học' },
             { id: 'ai', icon: Sparkles, label: 'AI Soạn đề' },
             { id: 'students', icon: Users, label: 'Học sinh' },
@@ -1522,6 +1525,10 @@ export default function AdminDashboard() {
                     onSaveFolder={handleSaveFolder}
                     onDeleteFolder={handleDeleteFolder}
                     onBatchMoveToFolder={handleBatchMoveToFolder}
+                    onOpenReviewBoard={(quizId) => {
+                      setActiveReviewQuizId(quizId);
+                      setActiveTab('review');
+                    }}
                     qAcademicYearFilter={qAcademicYearFilter} setQAcademicYearFilter={setQAcademicYearFilter}
                     qSearch={qSearch} setQSearch={setQSearch} qGradeFilter={qGradeFilter} setQGradeFilter={setQGradeFilter}
                     qChapterFilter={qChapterFilter} setQChapterFilter={setQChapterFilter}
@@ -1531,6 +1538,17 @@ export default function AdminDashboard() {
                 />
               </div>
             )
+          )}
+
+          {activeTab === 'review' && (
+            <div className="space-y-4">
+              <QuestionReviewBoard 
+                quizzes={quizzes}
+                bankQuestions={allAvailableQuestions}
+                initialQuizId={activeReviewQuizId}
+                onClose={() => setActiveTab('quizzes')}
+              />
+            </div>
           )}
 
           {activeTab === 'classes' && (
