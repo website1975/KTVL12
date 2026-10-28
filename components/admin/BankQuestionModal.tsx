@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../types';
-import { X, Save, Edit3, Loader2 } from 'lucide-react';
+import { X, Save, Edit3, Loader2, Image as ImageIcon, Upload, Link as LinkIcon, Clipboard, Trash2, Check } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { uploadQuizImageWithResult } from '../../services/storage';
 
 interface BankQuestionModalProps {
     isOpen: boolean;
@@ -26,6 +27,57 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
         chapterName: chapters[0]?.name || ''
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
+    const [isUploadingImg, setIsUploadingImg] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleProcessImageFile = async (file: File) => {
+        if (!file.type.startsWith('image/')) {
+            return alert("Vui lòng chọn hoặc dán đúng tệp hình ảnh!");
+        }
+        setIsUploadingImg(true);
+        try {
+            if (storageMode === 'base64') {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64Url = reader.result as string;
+                    setForm(prev => ({ ...prev, imageUrl: base64Url }));
+                    setIsUploadingImg(false);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                const result = await uploadQuizImageWithResult(file, storageMode);
+                if (result && result.url) {
+                    setForm(prev => ({ ...prev, imageUrl: result.url }));
+                } else {
+                    alert("Lỗi tải ảnh lên máy chủ.");
+                }
+                setIsUploadingImg(false);
+            }
+        } catch (e: any) {
+            alert("Lỗi khi xử lý ảnh: " + (e.message || "Không xác định"));
+            setIsUploadingImg(false);
+        }
+    };
+
+    const handlePasteClipboard = async () => {
+        try {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                for (const type of item.types) {
+                    if (type.startsWith('image/')) {
+                        const blob = await item.getType(type);
+                        const file = new File([blob], "pasted_image.png", { type });
+                        handleProcessImageFile(file);
+                        return;
+                    }
+                }
+            }
+            alert("Không tìm thấy hình ảnh trong khay nhớ tạm (Clipboard). Vui lòng chụp/chép vùng ảnh trước!");
+        } catch (e) {
+            alert("Vui lòng bấm tổ hợp phím Ctrl + V trực tiếp trên giao diện để dán ảnh.");
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -156,16 +208,137 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
                         />
                     </div>
 
-                    {/* Hình ảnh minh họa URL */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500">Link hình ảnh minh họa (URL tùy chọn)</label>
-                        <input 
-                            type="text"
-                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none"
-                            value={form.imageUrl || ''}
-                            onChange={e => setForm(prev => ({ ...prev, imageUrl: e.target.value }))}
-                            placeholder="https://example.com/image.png"
-                        />
+                    {/* ĐÍNH KÈM HÌNH ẢNH MINH HỌA (3 CHẾ ĐỘ LƯU TRỮ) */}
+                    <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-100 pb-2">
+                            <label className="text-[10px] font-black uppercase text-slate-700 flex items-center gap-1.5">
+                                <ImageIcon size={14} className="text-blue-600" />
+                                <span>Đính kèm hình ảnh minh họa câu hỏi</span>
+                            </label>
+
+                            {/* Nút Chọn Chế độ Lưu Trữ Linh Hoạt */}
+                            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                                <span className="text-[9px] font-extrabold uppercase text-slate-400 px-1">Lưu:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setStorageMode('auto')}
+                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                        storageMode === 'auto' 
+                                            ? 'bg-blue-600 text-white shadow-xs' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title="Lưu vào Cloud Database (Store) - An toàn, ổn định"
+                                >
+                                    ⚡ Store
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStorageMode('base64')}
+                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                        storageMode === 'base64' 
+                                            ? 'bg-amber-500 text-white shadow-xs' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title="Nhúng sBase64 vĩnh viễn trong dữ liệu - 100% không bao giờ mất link!"
+                                >
+                                    🚀 sBase64
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStorageMode('imgbb')}
+                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                        storageMode === 'imgbb' 
+                                            ? 'bg-purple-600 text-white shadow-xs' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title="Lưu trữ ngoại vi lên ImgBB"
+                                >
+                                    🌐 ImgBB
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Buttons Row: Dán ảnh / Tải ảnh lên / Dán link */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handlePasteClipboard}
+                                disabled={isUploadingImg}
+                                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                title="Dán nhanh hình chụp Snipping Tool từ bộ nhớ tạm"
+                            >
+                                <Clipboard size={14} />
+                                <span>DÁN ẢNH (CTRL + V)</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploadingImg}
+                                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                                {isUploadingImg ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                <span>{isUploadingImg ? 'Đang tải...' : 'TẢI ẢNH LÊN'}</span>
+                            </button>
+                            <input 
+                                ref={fileInputRef}
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={e => {
+                                    const f = e.target.files?.[0];
+                                    if (f) handleProcessImageFile(f);
+                                    e.target.value = '';
+                                }}
+                            />
+
+                            <div className="flex-1 min-w-[200px] flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                                <LinkIcon size={12} className="text-slate-400 mr-1.5 shrink-0" />
+                                <input 
+                                    type="text"
+                                    className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400"
+                                    value={form.imageUrl || ''}
+                                    onChange={e => setForm(prev => ({ ...prev, imageUrl: e.target.value }))}
+                                    placeholder="Hoặc dán URL link ảnh..."
+                                />
+                                {form.imageUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setForm(prev => ({ ...prev, imageUrl: '' }))}
+                                        className="p-1 text-slate-400 hover:text-red-500 rounded-md"
+                                        title="Xóa link ảnh"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Image Preview Card */}
+                        {form.imageUrl && (
+                            <div className="relative mt-2 p-2 bg-slate-900 rounded-xl border border-slate-800 flex items-center gap-3">
+                                <img 
+                                    src={form.imageUrl} 
+                                    alt="Minh họa câu hỏi" 
+                                    className="max-h-24 max-w-[160px] rounded-lg object-contain bg-white border border-slate-700" 
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[10px] font-black uppercase text-emerald-400 flex items-center gap-1">
+                                        <Check size={12} /> Đã gán hình ảnh cho câu hỏi
+                                    </span>
+                                    <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
+                                        {form.imageUrl.startsWith('data:image') ? '[Dữ liệu ảnh sBase64 mã hóa]' : form.imageUrl}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setForm(prev => ({ ...prev, imageUrl: '' }))}
+                                    className="px-2.5 py-1.5 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg text-[10px] font-black uppercase transition-all"
+                                >
+                                    XÓA ẢNH
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Tùy chỉnh theo loại câu */}

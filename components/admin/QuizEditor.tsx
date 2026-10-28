@@ -71,7 +71,7 @@ interface QuizEditorProps {
     setOrderIndex: React.Dispatch<React.SetStateAction<number>> | ((val: number) => void);
     onPdfExtract: (e: React.ChangeEvent<HTMLInputElement>, includeSolutions?: boolean) => void;
     onTextExtract: (text: string, includeSolutions?: boolean) => void;
-    onUploadImage: (qId: string, file: File) => void;
+    onUploadImage: (qId: string, file: File, customProvider?: 'auto' | 'base64' | 'imgbb') => void;
     uploadingId: string | null;
     isAiLoading?: boolean;
     onCancel?: () => void;
@@ -92,7 +92,7 @@ interface QuestionSectionProps {
     type: QuestionType;
     questions: Question[];
     setQuestions: (qs: Question[]) => void;
-    onUploadImage: (qId: string, file: File) => void;
+    onUploadImage: (qId: string, file: File, customProvider?: 'auto' | 'base64' | 'imgbb') => void;
     uploadingId: string | null;
     onOpenBank: (type: QuestionType) => void;
     onOpenGalleryForQuestion?: (qId: string) => void;
@@ -134,6 +134,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
+    const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
     const sectionQuestions = questions.filter(q => q.type === type);
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
@@ -221,7 +222,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
         setQuestions([...nl]);
 
         try {
-            const res = await uploadQuizImageWithResult(imageFile);
+            const res = await uploadQuizImageWithResult(imageFile, storageMode);
             const tag = buildImageTag({ url: res.url, maxHeight: 260, align: 'center' });
 
             const updated = [...questions];
@@ -269,7 +270,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
             }
 
             if (foundFile) {
-                onUploadImage(qId, foundFile);
+                onUploadImage(qId, foundFile, storageMode);
                 return;
             }
 
@@ -294,7 +295,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                 if (file) {
                     e.preventDefault();
                     e.stopPropagation();
-                    onUploadImage(qId, file);
+                    onUploadImage(qId, file, storageMode);
                     return;
                 }
             }
@@ -308,7 +309,7 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
             if (file.type.startsWith('image/')) {
-                onUploadImage(qId, file);
+                onUploadImage(qId, file, storageMode);
             }
         }
     };
@@ -594,19 +595,62 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                             )}
                         </div>
                         <div className="flex flex-col gap-3 flex-1">
-                            <div className="flex items-center justify-between">
-                                <h4 className="font-black text-slate-800 text-xs uppercase tracking-tight">
-                                    Đính kèm hình ảnh minh họa
-                                </h4>
-                                {q.imageUrl && (
-                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                                        ✓ Đã gán ảnh
-                                    </span>
-                                )}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-black text-slate-800 text-xs uppercase tracking-tight">
+                                        Đính kèm hình ảnh minh họa
+                                    </h4>
+                                    {q.imageUrl && (
+                                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                                            ✓ Đã gán ảnh
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* CHỌN KÊNH LƯU TRỮ ẢNH TRỰC TIẾP */}
+                                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 px-1">Nơi lưu:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStorageMode('auto')}
+                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                            storageMode === 'auto' 
+                                                ? 'bg-blue-600 text-white shadow-xs' 
+                                                : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                        title="Lưu vào Cloud Database (Store) - An toàn, mặc định"
+                                    >
+                                        ⚡ Store
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStorageMode('base64')}
+                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                            storageMode === 'base64' 
+                                                ? 'bg-amber-500 text-white shadow-xs' 
+                                                : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                        title="Nhúng sBase64 vĩnh viễn trong đề - 100% không bao giờ mất link!"
+                                    >
+                                        🚀 sBase64
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStorageMode('imgbb')}
+                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                            storageMode === 'imgbb' 
+                                                ? 'bg-purple-600 text-white shadow-xs' 
+                                                : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                        title="Lưu trữ ngoại vi lên ImgBB CDN"
+                                    >
+                                        🌐 ImgBB
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="flex flex-wrap gap-2">
-                                <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0])} />
+                                <input type="file" accept="image/*" className="hidden" id={`img-${q.id}`} onChange={(e) => e.target.files && onUploadImage(q.id, e.target.files[0], storageMode)} />
                                 
                                 {/* NÚT DÁN ẢNH TỪ CLIPBOARD (Ctrl + V) */}
                                 <button

@@ -1579,7 +1579,7 @@ export const deleteBankQuestion = async (id: string): Promise<boolean> => {
 };
 
 // --- Cấu hình lưu trữ hình ảnh (ImgBB & Supabase Storage) ---
-export type ImageStorageProvider = 'auto' | 'imgbb' | 'supabase';
+export type ImageStorageProvider = 'auto' | 'imgbb' | 'supabase' | 'base64';
 
 export interface ImageStorageConfig {
     provider: ImageStorageProvider;
@@ -1593,7 +1593,7 @@ export const getImageStorageConfig = (): ImageStorageConfig => {
         const storedProvider = localStorage.getItem('eduquiz_image_provider') as ImageStorageProvider;
         const storedKey = localStorage.getItem('eduquiz_imgbb_key');
         return {
-            provider: (storedProvider === 'imgbb' || storedProvider === 'supabase' || storedProvider === 'auto') ? storedProvider : 'auto',
+            provider: (storedProvider === 'imgbb' || storedProvider === 'supabase' || storedProvider === 'base64' || storedProvider === 'auto') ? storedProvider : 'auto',
             imgbbApiKey: (storedKey && storedKey.trim()) ? storedKey.trim() : DEFAULT_IMGBB_KEY
         };
     } catch (e) {
@@ -1712,6 +1712,12 @@ export const uploadQuizImageWithResult = async (
             reader.readAsDataURL(f);
         });
     };
+
+    // 0. Chế độ 'base64' (Mã hóa nhúng trực tiếp sBase64 vĩnh viễn)
+    if (provider === 'base64') {
+        const base64Url = await toBase64(file);
+        return { url: base64Url, provider: 'base64' };
+    }
 
     // 1. Chế độ 'auto' (Ưu tiên Supabase Storage vĩnh viễn -> Fallback ImgBB -> Fallback Base64)
     if (provider === 'auto') {

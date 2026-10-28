@@ -1,6 +1,6 @@
 
 import { 
-  getQuizzesMetadata, getQuizzes, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage,
+  getQuizzesMetadata, getQuizzes, getQuizById, deleteQuiz, saveQuiz, updateQuiz, uploadQuizImage, uploadQuizImageWithResult,
   getUsers, saveUser, deleteUser, changePassword, getUsersPage, saveUsersBatch,
   getResultsMetadata, getResultById, deleteResult, getResultsMetadataPage,
   getChapters, saveChapter, deleteChapter,
@@ -988,12 +988,12 @@ export default function AdminDashboard() {
       }
   };
 
-  const handleUploadImage = async (id: string, f: File) => {
+  const handleUploadImage = async (id: string, f: File, customProvider?: 'auto' | 'base64' | 'imgbb') => {
     setUploadingId(id);
     try {
-      const url = await uploadQuizImage(f);
-      if (url) {
-        setQuestions(prev => prev.map(q => q.id === id ? { ...q, imageUrl: url } : q));
+      const res = await uploadQuizImageWithResult(f, customProvider);
+      if (res && res.url) {
+        setQuestions(prev => prev.map(q => q.id === id ? { ...q, imageUrl: res.url } : q));
       }
     } catch (err: any) {
       console.error("Lỗi khi tải ảnh:", err);

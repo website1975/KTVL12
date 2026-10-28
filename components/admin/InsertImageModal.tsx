@@ -129,6 +129,9 @@ export default function InsertImageModal({
     setUploadItems(prev => prev.map(item => item.id === id ? { ...item, caption } : item));
   };
 
+  // Storage mode selection
+  const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
+
   // Perform upload and insert for Upload Tab
   const handleExecuteUploadAndInsert = async () => {
     if (uploadItems.length === 0) return;
@@ -144,7 +147,7 @@ export default function InsertImageModal({
 
         let finalUrl = item.uploadedUrl;
         if (!finalUrl && item.file) {
-          const res = await uploadQuizImageWithResult(item.file);
+          const res = await uploadQuizImageWithResult(item.file, storageMode);
           finalUrl = res.url;
         }
 
@@ -232,7 +235,7 @@ export default function InsertImageModal({
     setIsUploading(true);
     setUploadProgress('Đang tải ảnh từ Clipboard lên máy chủ...');
     try {
-      const res = await uploadQuizImageWithResult(clipboardPreview.file);
+      const res = await uploadQuizImageWithResult(clipboardPreview.file, storageMode);
       const htmlTag = buildImageTag({
         url: res.url,
         caption: clipboardCaption.trim() || undefined,
@@ -309,6 +312,49 @@ export default function InsertImageModal({
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* Storage mode selector */}
+        <div className="flex items-center justify-between px-6 py-2 bg-slate-50 border-b border-slate-200/70 text-xs">
+          <span className="text-[10px] font-extrabold uppercase text-slate-500">Kênh lưu trữ ảnh:</span>
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setStorageMode('auto')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                storageMode === 'auto' 
+                  ? 'bg-blue-600 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Lưu vào Cloud Database (Store) - Mặc định an toàn, load nhanh"
+            >
+              ⚡ Store
+            </button>
+            <button
+              type="button"
+              onClick={() => setStorageMode('base64')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                storageMode === 'base64' 
+                  ? 'bg-amber-500 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Nhúng sBase64 vĩnh viễn trong đề - 100% không bao giờ mất link!"
+            >
+              🚀 sBase64
+            </button>
+            <button
+              type="button"
+              onClick={() => setStorageMode('imgbb')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                storageMode === 'imgbb' 
+                  ? 'bg-purple-600 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Lưu trữ ngoại vi ImgBB CDN"
+            >
+              🌐 ImgBB
+            </button>
+          </div>
         </div>
 
         {/* Tab selection */}
