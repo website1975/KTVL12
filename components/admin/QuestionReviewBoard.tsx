@@ -1052,7 +1052,9 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
-                  className="absolute inset-0 z-10 touch-none cursor-crosshair w-full h-full pointer-events-auto"
+                  className={`absolute inset-0 z-30 touch-none w-full h-full pointer-events-auto ${
+                    activeTool === 'laser' ? 'cursor-none' : 'cursor-crosshair'
+                  }`}
                 />
 
                 {/* Laser Pointer Glow Effect */}
@@ -1065,14 +1067,14 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
                 {/* Context Text (If present) */}
                 {currentQ.context && (
-                  <div className="bg-slate-800/80 border-l-4 border-amber-500 p-4 rounded-r-2xl text-slate-200 text-sm leading-relaxed mb-4 relative z-20 pointer-events-auto">
+                  <div className="bg-slate-800/80 border-l-4 border-amber-500 p-4 rounded-r-2xl text-slate-200 text-sm leading-relaxed mb-4 relative z-10 pointer-events-none">
                     <span className="font-bold text-amber-400 block mb-1">📌 Dữ liệu dùng chung:</span>
                     <LatexText text={currentQ.context} />
                   </div>
                 )}
 
                 {/* Question Header Card */}
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl relative z-30 pointer-events-auto space-y-4">
+                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl relative z-10 pointer-events-none space-y-4">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
                     <div className="flex items-center gap-2">
                       <span className="bg-blue-600 text-white font-extrabold text-sm px-3 py-1 rounded-xl shadow">
@@ -1088,11 +1090,11 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 relative z-40 pointer-events-auto">
                       <button
                         onClick={handleGenerateAiNotes}
                         disabled={isGeneratingAi}
-                        className="bg-purple-950/80 hover:bg-purple-900 border border-purple-700 text-purple-300 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition shadow"
+                        className="bg-purple-950/90 hover:bg-purple-900 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition shadow cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                         <span>{isGeneratingAi ? 'AI đang phân tích...' : 'AI Phân Tích Bẫy'}</span>
@@ -1198,13 +1200,13 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
                 {/* AI Explanation / Trap Analysis Box */}
                 {aiExplanation && (
-                  <div className="bg-purple-950/80 border border-purple-800 rounded-2xl p-5 shadow-xl space-y-2 relative z-30 pointer-events-auto animate-fade-in">
+                  <div className="bg-purple-950/90 border border-purple-800 rounded-2xl p-5 shadow-xl space-y-2 relative z-10 pointer-events-none animate-fade-in">
                     <div className="flex items-center justify-between border-b border-purple-800/80 pb-2">
                       <div className="flex items-center gap-2 text-purple-300 font-bold text-xs uppercase tracking-wide">
                         <Sparkles className="w-4 h-4 text-purple-400" />
                         <span>AI Trợ Lý Phân Tích Bẫy & Hướng Dẫn Giảng</span>
                       </div>
-                      <button onClick={() => setAiExplanation(null)} className="text-purple-400 hover:text-white p-1 rounded-lg hover:bg-purple-900 cursor-pointer">
+                      <button onClick={() => setAiExplanation(null)} className="text-purple-400 hover:text-white p-1 rounded-lg hover:bg-purple-900 cursor-pointer relative z-40 pointer-events-auto">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -1216,7 +1218,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
                 {/* Solution & Explanation Card */}
                 {showSolution && (currentQ.solution || currentQ.correctAnswer) && (
-                  <div className="bg-amber-950/50 border border-amber-800/60 rounded-2xl p-5 shadow-xl space-y-3 relative z-30 pointer-events-auto">
+                  <div className="bg-amber-950/50 border border-amber-800/60 rounded-2xl p-5 shadow-xl space-y-3 relative z-10 pointer-events-none">
                     <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wide border-b border-amber-800/60 pb-2">
                       <Eye className="w-4 h-4" />
                       <span>Lời Giải Chi Tiết & Hướng Dẫn Biến Đổi</span>
