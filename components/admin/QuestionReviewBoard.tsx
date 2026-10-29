@@ -1043,7 +1043,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                 </p>
               </div>
             ) : (
-              <div className={`max-w-4xl mx-auto space-y-6 relative ${
+              <div className={`max-w-4xl mx-auto space-y-8 relative ${
                 fontSize === 'large' ? 'text-lg' : fontSize === 'xlarge' ? 'text-xl' : 'text-base'
               }`}>
                 {/* INTERACTIVE CANVAS OVERLAY (LỚP BẢNG VẼ TƯƠNG TÁC) */}
@@ -1200,14 +1200,14 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
                 {/* AI Explanation / Trap Analysis Box */}
                 {aiExplanation && (
-                  <div className="bg-purple-950/90 border border-purple-800 rounded-2xl p-5 shadow-xl space-y-2 relative z-10 pointer-events-none animate-fade-in">
+                  <div className="bg-purple-950/95 border-2 border-purple-600 rounded-2xl p-5 shadow-2xl space-y-2 relative z-50 pointer-events-auto animate-fade-in">
                     <div className="flex items-center justify-between border-b border-purple-800/80 pb-2">
                       <div className="flex items-center gap-2 text-purple-300 font-bold text-xs uppercase tracking-wide">
                         <Sparkles className="w-4 h-4 text-purple-400" />
                         <span>AI Trợ Lý Phân Tích Bẫy & Hướng Dẫn Giảng</span>
                       </div>
-                      <button onClick={() => setAiExplanation(null)} className="text-purple-400 hover:text-white p-1 rounded-lg hover:bg-purple-900 cursor-pointer relative z-40 pointer-events-auto">
-                        <X className="w-4 h-4" />
+                      <button onClick={() => setAiExplanation(null)} className="text-purple-300 hover:text-white p-1.5 rounded-xl hover:bg-purple-900 cursor-pointer pointer-events-auto">
+                        <X className="w-5 h-5 font-black" />
                       </button>
                     </div>
                     <div className="text-sm text-purple-100 leading-relaxed whitespace-pre-wrap font-sans pt-1">
@@ -1216,21 +1216,44 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                   </div>
                 )}
 
-                {/* Solution & Explanation Card */}
-                {showSolution && (currentQ.solution || currentQ.correctAnswer) && (
-                  <div className="bg-amber-950/50 border border-amber-800/60 rounded-2xl p-5 shadow-xl space-y-3 relative z-10 pointer-events-none">
-                    <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wide border-b border-amber-800/60 pb-2">
-                      <Eye className="w-4 h-4" />
-                      <span>Lời Giải Chi Tiết & Hướng Dẫn Biến Đổi</span>
+                {/* Solution & Explanation Card (Always visible writing frame box) */}
+                {currentQ && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                        ✍️ Vùng viết
+                      </span>
+                      <button
+                        onClick={() => setShowSolution(!showSolution)}
+                        className="text-[11px] text-amber-300 hover:text-white bg-slate-800/90 hover:bg-slate-700 px-3 py-1 rounded-lg border border-slate-700 transition cursor-pointer flex items-center gap-1 shadow-xs"
+                        title={showSolution ? "Ẩn chữ lời giải để lấy không gian viết rộng" : "Hiện lại chữ lời giải chi tiết"}
+                      >
+                        {showSolution ? <EyeOff className="w-3.5 h-3.5 text-amber-400" /> : <Eye className="w-3.5 h-3.5 text-amber-400" />}
+                        <span>{showSolution ? 'Ẩn lời giải' : 'Hiện lời giải'}</span>
+                      </button>
                     </div>
 
-                    <div className="text-amber-100 text-sm leading-relaxed">
-                      {currentQ.solution ? (
-                        <LatexText text={currentQ.solution} />
+                    <div className="bg-slate-900/60 border-2 border-slate-700/80 rounded-2xl p-6 shadow-xl space-y-3 relative z-10 pointer-events-auto min-h-[160px]">
+                      {showSolution ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wide border-b border-slate-800 pb-2.5">
+                            <Eye className="w-4 h-4" />
+                            <span>Lời Giải Chi Tiết</span>
+                          </div>
+                          <div className="text-amber-100/90 text-sm leading-relaxed">
+                            {currentQ.solution ? (
+                              <LatexText text={currentQ.solution} />
+                            ) : (
+                              <p className="italic text-slate-400 text-xs">
+                                Chưa có câu văn lời giải chi tiết. Giáo viên có thể viết trực tiếp lên khung bảng này.
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       ) : (
-                        <p className="italic text-amber-300/80 text-xs">
-                          Chưa có câu văn lời giải chi tiết. Giáo viên có thể dùng bút vẽ trực tiếp lên màn hình để biến đổi bước giải cho học sinh.
-                        </p>
+                        <div className="h-full flex items-center justify-center text-slate-600 text-xs italic select-none py-8">
+                          <span className="opacity-30 font-semibold tracking-wider uppercase text-[11px]">Vùng bảng trống (Sẵn sàng viết / vẽ)</span>
+                        </div>
                       )}
                     </div>
                   </div>
