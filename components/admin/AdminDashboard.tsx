@@ -860,6 +860,16 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleUpdateQuiz = async (updatedQuiz: Quiz) => {
+    try {
+      await updateQuiz(updatedQuiz);
+      setQuizzes(prev => prev.map(q => q.id === updatedQuiz.id ? { ...updatedQuiz, questions: [] } : q));
+      showAlert("Thành công", "Đã đổi tên đề thi thành công!", "success");
+    } catch (e: any) {
+      showAlert("Lỗi", "Không thể đổi tên đề thi: " + (e.message || "Không xác định"), "error");
+    }
+  };
+
   const handleQuickAssignTarget = async (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => {
     try {
       if (quizIds.length === 1) {
@@ -1517,6 +1527,7 @@ export default function AdminDashboard() {
                     quizzes={quizzes} results={results} chapters={chapters} classes={classes}
                     folders={folders}
                     onEdit={handleEditQuiz} onDelete={handleDeleteQuiz} onPreview={handlePreviewQuiz}
+                    onUpdateQuiz={handleUpdateQuiz}
                     onQuickAssignTarget={handleQuickAssignTarget}
                     onToggleAllowReview={handleToggleAllowReview}
                     onQuickUpdateAcademicYear={handleQuickUpdateAcademicYear}
