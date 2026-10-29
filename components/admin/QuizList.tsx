@@ -12,7 +12,7 @@ import QuickAssignModal from './QuickAssignModal';
 import FolderModal from './FolderModal';
 import FolderMoveModal from './FolderMoveModal';
 import ZaloNoticeModal, { generateZaloNoticeText } from './ZaloNoticeModal';
-import { getQuizById, getCurrentAcademicYear } from '../../services/storage';
+import { getQuizById, getCurrentAcademicYear, updateQuiz } from '../../services/storage';
 import { exportQuizToJson, exportQuizzesBatchToJson } from '../../services/quizExport';
 
 export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
@@ -26,6 +26,7 @@ interface QuizListProps {
     onEdit: (quiz: Quiz) => void;
     onDelete: (id: string) => void;
     onPreview: (quiz: Quiz) => void;
+    onUpdateQuiz?: (quiz: Quiz) => Promise<void> | void;
     onQuickAssignTarget?: (quizIds: string[], targetType: 'all' | 'classes', assignedClassIds: string[]) => Promise<void>;
     onToggleAllowReview?: (quizId: string, currentAllowReview: boolean) => Promise<void> | void;
     onQuickUpdateAcademicYear?: (quizIds: string[], newYear: string) => Promise<void>;
@@ -53,6 +54,7 @@ const PAGE_SIZE = 16;
 
 export default function QuizList({ 
     quizzes, results, chapters, classes = [], folders = [], onEdit, onDelete, onPreview, 
+    onUpdateQuiz,
     onQuickAssignTarget,
     onToggleAllowReview,
     onQuickUpdateAcademicYear,
@@ -110,6 +112,7 @@ export default function QuizList({
     const [zaloModalQuiz, setZaloModalQuiz] = useState<Quiz | null>(null);
     const [isZaloModalOpen, setIsZaloModalOpen] = useState(false);
     const [zaloCopiedToastId, setZaloCopiedToastId] = useState<string | null>(null);
+    const [renamingQuizId, setRenamingQuizId] = useState<string | null>(null);
 
     const handleOpenZaloNotice = (quiz: Quiz, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
@@ -120,6 +123,26 @@ export default function QuizList({
         }).catch(() => {});
         setZaloModalQuiz(quiz);
         setIsZaloModalOpen(true);
+    };
+
+    const handleRenameQuiz = async (quiz: Quiz, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newTitle = prompt("Nhập tên mới cho đề thi (File):", quiz.title);
+        if (newTitle && newTitle.trim() && newTitle !== quiz.title) {
+            setRenamingQuizId(quiz.id);
+            try {
+                const updated = { ...quiz, title: newTitle.trim().toUpperCase() };
+                if (onUpdateQuiz) {
+                    await onUpdateQuiz(updated);
+                } else {
+                    await updateQuiz(updated);
+                }
+            } catch (err: any) {
+                alert("Lỗi đổi tên đề thi: " + (err.message || "Không xác định"));
+            } finally {
+                setRenamingQuizId(null);
+            }
+        }
     };
 
     // Niên khóa hiện hành theo lịch Việt Nam
@@ -993,7 +1016,7 @@ export default function QuizList({
                             </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
                             {visibleQuizzes.map(q => {
                                 const isSelected = selectedQuizIds.includes(q.id);
                                 const state = getQuizState(q);
@@ -1074,6 +1097,15 @@ export default function QuizList({
 
                                                 {/* Nút sửa đề & chuyển thư mục góc trên phải */}
                                                 <div className="flex items-center gap-1">
+                                                    {/* Nút Đổi tên file đề thi */}
+                                                    <button 
+                                                        onClick={(e) => handleRenameQuiz(q, e)} 
+                                                        disabled={renamingQuizId === q.id}
+                                                        className="p-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white rounded-lg border border-amber-200 shadow-xs transition-colors cursor-pointer flex items-center gap-1" 
+                                                        title="Đổi tên file đề thi"
+                                                    >
+                                                        {renamingQuizId === q.id ? <Loader2 size={12} className="animate-spin" /> : <FileEdit size={12}/>}
+                                                    </button>
                                                     {/* Nút copy thông báo Zalo */}
                                                     <button 
                                                         onClick={(e) => handleOpenZaloNotice(q, e)} 
