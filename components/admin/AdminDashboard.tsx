@@ -417,6 +417,7 @@ export default function AdminDashboard() {
   const [bChapterFilter, setBChapterFilter] = useState('all');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('all');
   const [bSearch, setBSearch] = useState('');
+  const [bPage, setBPage] = useState(1);
 
   // Alert and Confirmation Modal State
   const [alertModal, setAlertModal] = useState<{
@@ -1377,9 +1378,6 @@ export default function AdminDashboard() {
             <button
               key={tab.id}
               onClick={() => { 
-                if (tab.id === 'bank') {
-                  setBGradeFilter('10');
-                }
                 setActiveTab(tab.id as AdminTab); 
                 setIsEditingQuiz(false); 
               }}
@@ -1577,6 +1575,7 @@ export default function AdminDashboard() {
                 await loadTabData('classes');
               }}
               onRefresh={() => loadTabData('classes')}
+              onPreviewQuiz={handlePreviewQuiz}
             />
           )}
 
@@ -1685,6 +1684,7 @@ export default function AdminDashboard() {
                     questions={allAvailableQuestions} chapters={chapters} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
                     bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                     bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
+                    bPage={bPage} setBPage={setBPage}
                     onAddMultiple={(qs) => { 
                         setQuestions(prev => [...prev, ...qs]); 
                         setActiveTab('quizzes'); 
@@ -1702,8 +1702,9 @@ export default function AdminDashboard() {
                     onDelete={async (q) => {
                         if (confirm("Bạn có chắc chắn muốn xóa câu hỏi này khỏi Ngân hàng?")) {
                             await deleteBankQuestion(q.id);
+                            setBankQuestions(prev => prev.filter(item => item.id !== q.id));
                             showAlert("Thành công", "Đã xóa câu hỏi khỏi Ngân hàng!", "success");
-                            loadTabData('bank');
+                            loadTabData('bank', true);
                         }
                     }}
                 />
@@ -1778,6 +1779,7 @@ export default function AdminDashboard() {
                             bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
                             bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
                             bSearch={bSearch} setBSearch={setBSearch}
+                            bPage={bPage} setBPage={setBPage}
                             onAddMultiple={(qs) => { 
                                 setQuestions(prev => [...prev, ...qs]); 
                                 setIsBankOpen(false); 
@@ -1851,12 +1853,48 @@ export default function AdminDashboard() {
           isOpen={isBankQuestionModalOpen}
           question={selectedBankQuestion}
           chapters={chapters}
-          grade={quizGrade}
+          grade={selectedBankQuestion?.quizGrade || (bGradeFilter !== 'all' ? bGradeFilter : quizGrade)}
+          defaultChapter={selectedBankQuestion?.chapterName || (bChapterFilter !== 'all' ? bChapterFilter : '')}
           onClose={() => setIsBankQuestionModalOpen(false)}
           onSave={async (q) => {
-            await saveBankQuestion(q);
-            showAlert("Thành công", "Đã lưu câu hỏi vào Ngân hàng!", "success");
-            loadTabData('bank');
+            const isEditing = !!selectedBankQuestion;
+            try {
+              await saveBankQuestion(q);
+              setBankQuestions(prev => {
+                const next = [...prev];
+                const idx = next.findIndex(item => item.id === q.id);
+                if (idx !== -1) {
+                  next[idx] = q;
+                } else {
+                  next.unshift(q);
+                }
+                return next;
+              });
+
+              if (isEditing) {
+                // Sửa câu: Lưu trang hiện hành, lưu chương hiện hành và hiển thị theo chương hiện hành
+                if (q.chapterName && bChapterFilter !== 'all' && selectedBankQuestion?.chapterName && bChapterFilter === selectedBankQuestion.chapterName) {
+                  setBChapterFilter(q.chapterName);
+                }
+                if (q.quizGrade && bGradeFilter !== 'all' && bGradeFilter !== q.quizGrade) {
+                  setBGradeFilter(q.quizGrade);
+                }
+                showAlert("Thành công", "Đã cập nhật câu hỏi vào Ngân hàng!", "success");
+              } else {
+                // Thêm mới: Tự động lọc theo khối lớp và chương vừa tạo, chuyển về trang 1
+                if (q.quizGrade) setBGradeFilter(q.quizGrade);
+                if (q.chapterName) setBChapterFilter(q.chapterName);
+                setBTypeFilter('all');
+                setBSearch('');
+                setBPage(1);
+                showAlert("Thành công", `Đã thêm câu hỏi mới vào Ngân hàng (${q.quizGrade ? 'Khối ' + q.quizGrade : ''}${q.chapterName ? ' - ' + q.chapterName : ''})!`, "success");
+              }
+              setIsBankQuestionModalOpen(false);
+              loadTabData('bank', true);
+            } catch (err: any) {
+              console.error(err);
+              showAlert("Lỗi", "Không thể lưu câu hỏi vào Ngân hàng: " + (err.message || ''), "error");
+            }
           }}
         />
       )}

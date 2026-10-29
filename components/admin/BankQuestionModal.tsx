@@ -9,11 +9,15 @@ interface BankQuestionModalProps {
     question: Question | null;
     chapters: Chapter[];
     grade: Grade;
+    defaultChapter?: string;
     onClose: () => void;
     onSave: (q: Question) => Promise<void> | void;
 }
 
-export default function BankQuestionModal({ isOpen, question, chapters, grade, onClose, onSave }: BankQuestionModalProps) {
+export default function BankQuestionModal({ isOpen, question, chapters, grade, defaultChapter, onClose, onSave }: BankQuestionModalProps) {
+    const initialGrade = (question?.quizGrade || grade || '10') as Grade;
+    const initialChapter = question?.chapterName || defaultChapter || chapters.find(c => String(c.grade) === String(initialGrade))?.name || chapters[0]?.name || '';
+
     const [form, setForm] = useState<Question>(question ? { ...question } : {
         id: uuidv4(),
         type: 'mcq',
@@ -23,8 +27,8 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
         correctAnswer: 'A',
         solution: '',
         level: 'B',
-        quizGrade: grade || '12',
-        chapterName: chapters[0]?.name || ''
+        quizGrade: initialGrade,
+        chapterName: initialChapter
     });
     const [isSaving, setIsSaving] = useState(false);
     const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
@@ -37,25 +41,15 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
         }
         setIsUploadingImg(true);
         try {
-            if (storageMode === 'base64') {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64Url = reader.result as string;
-                    setForm(prev => ({ ...prev, imageUrl: base64Url }));
-                    setIsUploadingImg(false);
-                };
-                reader.readAsDataURL(file);
+            const result = await uploadQuizImageWithResult(file, storageMode);
+            if (result && result.url) {
+                setForm(prev => ({ ...prev, imageUrl: result.url }));
             } else {
-                const result = await uploadQuizImageWithResult(file, storageMode);
-                if (result && result.url) {
-                    setForm(prev => ({ ...prev, imageUrl: result.url }));
-                } else {
-                    alert("Lỗi tải ảnh lên máy chủ.");
-                }
-                setIsUploadingImg(false);
+                alert("Lỗi tải ảnh lên máy chủ: " + (result?.error || 'Không xác định'));
             }
         } catch (e: any) {
             alert("Lỗi khi xử lý ảnh: " + (e.message || "Không xác định"));
+        } finally {
             setIsUploadingImg(false);
         }
     };
@@ -148,7 +142,15 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
                             <select 
                                 className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none"
                                 value={form.quizGrade || grade}
-                                onChange={e => setForm(prev => ({ ...prev, quizGrade: e.target.value as Grade }))}
+                                onChange={e => {
+                                    const newGrade = e.target.value as Grade;
+                                    const matchCh = chapters.find(c => String(c.grade) === String(newGrade))?.name || '';
+                                    setForm(prev => ({
+                                        ...prev,
+                                        quizGrade: newGrade,
+                                        chapterName: matchCh || prev.chapterName
+                                    }));
+                                }}
                             >
                                 <option value="12">Khối 12</option>
                                 <option value="11">Khối 11</option>
@@ -173,16 +175,43 @@ export default function BankQuestionModal({ isOpen, question, chapters, grade, o
 
                     {/* Hàng 2: Chương kiến thức */}
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500">Chương kiến thức</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase text-slate-500">Chương kiến thức</label>
+                            {form.quizGrade && (
+                                <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-md">
+                                    Khối {form.quizGrade}
+                                </span>
+                            )}
+                        </div>
                         <select 
                             className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none"
                             value={form.chapterName || ''}
                             onChange={e => setForm(prev => ({ ...prev, chapterName: e.target.value }))}
                         >
                             <option value="">-- Chọn chương kiến thức --</option>
-                            {chapters.map(ch => (
-                                <option key={ch.id} value={ch.name}>{ch.name}</option>
-                            ))}
+                            {(() => {
+                                const targetGrade = form.quizGrade || grade;
+                                const gradeChapters = chapters.filter(ch => !targetGrade || String(ch.grade) === String(targetGrade));
+                                const otherChapters = chapters.filter(ch => targetGrade && String(ch.grade) !== String(targetGrade));
+                                return (
+                                    <>
+                                        {gradeChapters.length > 0 && (
+                                            <optgroup label={`Chương Khối ${targetGrade || ''}`}>
+                                                {gradeChapters.map(ch => (
+                                                    <option key={ch.id} value={ch.name}>{ch.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        {otherChapters.length > 0 && (
+                                            <optgroup label="Các chương khối khác">
+                                                {otherChapters.map(ch => (
+                                                    <option key={ch.id} value={ch.name}>[{ch.grade ? `K${ch.grade}` : 'Khác'}] {ch.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </select>
                     </div>
 

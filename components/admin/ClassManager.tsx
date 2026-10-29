@@ -6,7 +6,8 @@ import {
   Check, ChevronRight, X, ArrowUpRight, BarChart3, Award,
   Clock, TrendingUp, AlertCircle, Copy, CheckCheck, BookOpen, 
   Star, Filter, ArrowLeft, Lightbulb, CheckCircle2, XCircle,
-  BarChart2, LineChart as LineChartIcon, Sparkles, Trophy
+  BarChart2, LineChart as LineChartIcon, Sparkles, Trophy,
+  Folder, FileText, Eye, EyeOff, Printer, Loader2
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -26,6 +27,8 @@ import {
 } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
+import { getQuizById } from '../../services/storage';
+import QuizPreviewModal from './QuizPreviewModal';
 
 interface ClassManagerProps {
   classes: ClassRoom[];
@@ -37,6 +40,7 @@ interface ClassManagerProps {
   onDeleteClass: (id: string, name: string) => Promise<void>;
   onAssignStudents: (studentIds: string[], classInfo: { classId?: string; className?: string; academicYear?: string; grade?: Grade } | null) => Promise<void>;
   onRefresh: () => void;
+  onPreviewQuiz?: (quiz: Quiz) => void;
 }
 
 type ClassDetailTab = 'students' | 'stats' | 'progress';
@@ -49,11 +53,32 @@ export default function ClassManager({
   chapters = [],
   onSaveClass,
   onDeleteClass,
-  onAssignStudents
+  onAssignStudents,
+  onPreviewQuiz
 }: ClassManagerProps) {
   // Main view state
   const [selectedClass, setSelectedClass] = useState<ClassRoom | null>(null);
   const [activeTab, setActiveTab] = useState<ClassDetailTab>('students');
+  const [previewingQuiz, setPreviewingQuiz] = useState<Quiz | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+  const handleOpenPreview = async (quizToPreview: Quiz) => {
+    if (!quizToPreview) return;
+    if (onPreviewQuiz) {
+      onPreviewQuiz(quizToPreview);
+      return;
+    }
+    setIsPreviewLoading(true);
+    try {
+      const full = await getQuizById(quizToPreview.id);
+      setPreviewingQuiz(full || quizToPreview);
+    } catch (err) {
+      console.error("Lỗi tải đề thi xem trước:", err);
+      setPreviewingQuiz(quizToPreview);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
 
   // Filters for Class Cards
   const [searchQuery, setSearchQuery] = useState('');
@@ -1240,6 +1265,178 @@ export default function ClassManager({
                     </select>
                   </div>
                 </div>
+
+                {/* THÔNG TIN SƠ LƯỢC ĐỀ THI ĐANG CHỌN (CARD THÔNG TIN SƠ LƯỢC) */}
+                {currentQuiz && (
+                  <div className="pt-4 border-t border-slate-100 bg-gradient-to-r from-slate-50 via-indigo-50/20 to-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs space-y-3">
+                    {/* Hàng 1: Các huy hiệu phân loại & Trạng thái */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight bg-blue-50 text-blue-700 border border-blue-200">
+                          KHỐI {currentQuiz.grade}
+                        </span>
+
+                        {currentQuiz.academicYear && (
+                          <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                            <Calendar size={11} className="text-amber-600" />
+                            NK {currentQuiz.academicYear}
+                          </span>
+                        )}
+
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight border ${
+                          currentQuiz.type === 'practice' 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        }`}>
+                          {currentQuiz.type === 'practice' ? 'Luyện tập' : 'Bài thi'}
+                        </span>
+
+                        {currentQuiz.folderName && (
+                          <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight bg-amber-100/80 text-amber-900 border border-amber-300 flex items-center gap-1">
+                            <Folder size={11} className="text-amber-700" />
+                            {currentQuiz.folderName}
+                          </span>
+                        )}
+
+                        {/* Trạng thái thời gian / phát hành */}
+                        {(() => {
+                          const now = new Date();
+                          const startX = currentQuiz.startTime ? new Date(currentQuiz.startTime) : null;
+                          const endY = currentQuiz.endTime ? new Date(currentQuiz.endTime) : null;
+                          const isExpired = Boolean(endY && now.getTime() > endY.getTime());
+                          const isUpcoming = Boolean(startX && now.getTime() < startX.getTime());
+                          
+                          if (!currentQuiz.isPublished) {
+                            return (
+                              <span className="px-2.5 py-0.5 bg-slate-200 text-slate-700 rounded-lg text-[9px] font-black uppercase">
+                                Bản nháp
+                              </span>
+                            );
+                          }
+                          if (isExpired) {
+                            return (
+                              <span className="px-2.5 py-0.5 bg-amber-500 text-white rounded-lg text-[9px] font-black uppercase shadow-xs">
+                                Hết hạn nộp
+                              </span>
+                            );
+                          }
+                          if (isUpcoming) {
+                            return (
+                              <span className="px-2.5 py-0.5 bg-sky-500 text-white rounded-lg text-[9px] font-black uppercase shadow-xs">
+                                Sắp mở
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="px-2.5 py-0.5 bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase shadow-xs flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                              Đang mở
+                            </span>
+                          );
+                        })()}
+
+                        {/* Chế độ xem đáp án */}
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 border ${
+                          (currentQuiz.allowReview ?? true)
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {(currentQuiz.allowReview ?? true) ? <Eye size={11} className="text-emerald-600" /> : <EyeOff size={11} className="text-rose-600" />}
+                          {(currentQuiz.allowReview ?? true) ? 'Cho xem đáp án' : 'Khóa đáp án'}
+                        </span>
+                      </div>
+
+                      {/* Nút Xem / In đề & Phạm vi phân phối */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPreview(currentQuiz)}
+                          disabled={isPreviewLoading}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-[9.5px] font-black uppercase shadow-xs flex items-center gap-1.5 transition-all cursor-pointer border border-blue-500 hover:shadow-md"
+                          title="Xem trước & In đề thi (Xuất Word DOCX / MathType / PDF)"
+                        >
+                          {isPreviewLoading ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
+                          <span>XEM / IN ĐỀ</span>
+                        </button>
+
+                        <span className="text-[9px] font-black uppercase px-2.5 py-1.5 rounded-xl bg-indigo-100/80 text-indigo-900 border border-indigo-200 flex items-center gap-1">
+                          <GraduationCap size={12} className="text-indigo-600" />
+                          {currentQuiz.targetType === 'classes' ? `Giao riêng lớp ${selectedClass.name}` : 'Mở cho toàn khối'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Hàng 2: Tên đề thi & Mô tả */}
+                    <div>
+                      <h4 
+                        onClick={() => handleOpenPreview(currentQuiz)}
+                        className="text-sm sm:text-base font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+                        title="Bấm để xem trước & in đề thi"
+                      >
+                        <BookOpen size={16} className="text-indigo-600 shrink-0" />
+                        <span>{currentQuiz.title}</span>
+                      </h4>
+                      {currentQuiz.description && (
+                        <p className="text-xs text-slate-500 font-medium mt-1 line-clamp-2 italic pl-6">
+                          "{currentQuiz.description}"
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Hàng 3: 4 Ô thông số sơ lược (Chương, Số câu, Thời lượng, Tiến độ nộp) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-200/60">
+                      {/* Chương học */}
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Chương học</span>
+                        <span className="font-black text-slate-800 truncate block text-xs" title={currentQuiz.category || 'Chưa phân chương'}>
+                          {currentQuiz.category || 'Chưa phân chương'}
+                        </span>
+                      </div>
+
+                      {/* Số câu hỏi */}
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Số câu hỏi</span>
+                        <span className="font-black text-indigo-700 flex items-center gap-1.5 text-xs">
+                          <FileText size={13} className="text-indigo-500" />
+                          {currentQuiz.questionCount || (currentQuiz.questions ? currentQuiz.questions.length : 0)} câu
+                        </span>
+                      </div>
+
+                      {/* Thời lượng */}
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Thời lượng</span>
+                        <span className="font-black text-amber-700 flex items-center gap-1.5 text-xs">
+                          <Clock size={13} className="text-amber-500" />
+                          {currentQuiz.durationMinutes} phút
+                        </span>
+                      </div>
+
+                      {/* Đã nộp bài */}
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Đã nộp bài</span>
+                        <span className="font-black text-emerald-700 flex items-center gap-1.5 text-xs">
+                          <Users size={13} className="text-emerald-500" />
+                          {quizAttemptStats.submittedStudents.length} / {classStudents.length} HS ({classStudents.length > 0 ? Math.round((quizAttemptStats.submittedStudents.length / classStudents.length) * 100) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Hàng 4: Khung thời gian mở/đóng nếu có */}
+                    {(currentQuiz.startTime || currentQuiz.endTime) && (
+                      <div className="text-[10px] font-bold text-slate-500 bg-white/70 px-3 py-1.5 rounded-xl border border-slate-200/70 flex items-center gap-3 flex-wrap">
+                        <span className="font-black uppercase text-slate-400 flex items-center gap-1">
+                          <Calendar size={11} className="text-slate-400" /> Khung giờ:
+                        </span>
+                        {currentQuiz.startTime && (
+                          <span>Bắt đầu: <strong className="text-slate-700">{format(new Date(currentQuiz.startTime), 'HH:mm • dd/MM/yyyy')}</strong></span>
+                        )}
+                        {currentQuiz.endTime && (
+                          <span>Hạn chót: <strong className="text-rose-600">{format(new Date(currentQuiz.endTime), 'HH:mm • dd/MM/yyyy')}</strong></span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {currentQuiz ? (
@@ -2904,6 +3101,15 @@ export default function ClassManager({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Xem trước & In đề thi */}
+      {previewingQuiz && (
+        <QuizPreviewModal 
+          quiz={previewingQuiz} 
+          onClose={() => setPreviewingQuiz(null)} 
+          isAdmin={true}
+        />
       )}
     </div>
   );

@@ -1,7 +1,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Question, QuestionType, Grade, Chapter, QuestionLevel } from '../../types';
-import { Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap, Edit3, Trash2, Plus } from 'lucide-react';
+import { 
+    Database, Search, CheckCircle2, CheckSquare, Square, X, BookOpen, Bookmark, 
+    Image as ImageIcon, Eye, MousePointer, Maximize2, Layers, FolderTree, Zap, 
+    Edit3, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight 
+} from 'lucide-react';
 import LatexText from '../LatexText';
 import { v4 as uuidv4 } from 'uuid';
 import { isExamOrNonChapterName, STANDARD_CHAPTERS, getChapterNumberFromName } from './MatrixQuizGenerator';
@@ -17,6 +21,8 @@ interface QuestionBankProps {
     setBTypeFilter: (val: QuestionType | 'all') => void;
     bSearch: string;
     setBSearch: (val: string) => void;
+    bPage?: number;
+    setBPage?: (val: number) => void;
     onAddMultiple: (qs: Question[]) => void;
     onOpenMatrixGenerator?: () => void;
     onAddNew?: () => void;
@@ -87,11 +93,14 @@ const getQuestionImageUrl = (q: any): string | null => {
 };
 
 export default function QuestionBank({ 
-    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, onAddMultiple, onOpenMatrixGenerator, onAddNew, onEdit, onDelete
+    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, bPage, setBPage, onAddMultiple, onOpenMatrixGenerator, onAddNew, onEdit, onDelete
 }: QuestionBankProps) {
     // Sử dụng Map<string, Question> để lưu TOÀN BỘ đối tượng câu hỏi đã chọn từ mọi mức độ (Biết, Hiểu, Vận dụng...)
     const [selectedMap, setSelectedMap] = useState<Map<string, Question>>(new Map());
-    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    const [localPage, setLocalPage] = useState(1);
+    const currentPage = bPage ?? localPage;
+    const setCurrentPage = setBPage ?? setLocalPage;
+
     const [bLevelFilter, setBLevelFilter] = useState<QuestionLevel | 'all'>('all');
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [alwaysShowOptions, setAlwaysShowOptions] = useState(false);
@@ -142,7 +151,43 @@ export default function QuestionBank({
         });
     }, [questions, bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, onlyShowSelected, selectedMap]);
 
-    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, onlyShowSelected]);
+    const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / PAGE_SIZE));
+
+    useEffect(() => {
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(totalPages);
+        }
+    }, [totalPages, currentPage, setCurrentPage]);
+
+    const visibleQuestions = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return filteredQuestions.slice(start, start + PAGE_SIZE);
+    }, [filteredQuestions, currentPage]);
+
+    const pageNumbers = useMemo(() => {
+        if (totalPages <= 7) {
+            return Array.from({ length: totalPages }, (_, i) => i + 1);
+        }
+        const range: (number | string)[] = [];
+        const delta = 1;
+        for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+            range.push(i);
+        }
+        if (currentPage - delta > 2) {
+            range.unshift('...');
+        }
+        range.unshift(1);
+        if (currentPage + delta < totalPages - 1) {
+            range.push('...');
+        }
+        range.push(totalPages);
+        return range;
+    }, [totalPages, currentPage]);
+
+    const goToPage = (page: number) => {
+        const target = Math.max(1, Math.min(totalPages, page));
+        setCurrentPage(target);
+    };
 
     // Thống kê chi tiết các câu đã chọn theo từng mức độ nhận thức (tính từ selectedMap lưu trữ độc lập)
     const selectedStats = useMemo(() => {
@@ -207,7 +252,93 @@ export default function QuestionBank({
         setSelectedMap(new Map());
     };
 
-    const visibleQuestions = useMemo(() => filteredQuestions.slice(0, visibleCount), [filteredQuestions, visibleCount]);
+    const renderPaginationBar = () => {
+        if (filteredQuestions.length === 0) return null;
+        return (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+                    <span className="font-black text-slate-800">
+                        Hiển thị {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredQuestions.length)} - {Math.min(currentPage * PAGE_SIZE, filteredQuestions.length)}
+                    </span>
+                    <span className="text-slate-400">/</span>
+                    <span className="text-slate-500 font-extrabold">{filteredQuestions.length} câu</span>
+                    {bChapterFilter !== 'all' && (
+                        <span className="hidden md:inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg text-[10px] font-black border border-purple-200 truncate max-w-[280px]" title={`Chương hiện hành: ${bChapterFilter}`}>
+                            <FolderTree size={12} className="shrink-0 text-purple-600" />
+                            <span className="truncate">{bChapterFilter}</span>
+                        </span>
+                    )}
+                </div>
+
+                {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => goToPage(1)}
+                            disabled={currentPage <= 1}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none text-slate-600 transition-colors"
+                            title="Về trang đầu"
+                        >
+                            <ChevronsLeft size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage <= 1}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none text-xs font-bold text-slate-700 flex items-center gap-1 transition-colors"
+                            title="Trang trước"
+                        >
+                            <ChevronLeft size={14} />
+                            <span className="hidden sm:inline">Trước</span>
+                        </button>
+
+                        <div className="flex items-center gap-1 mx-1">
+                            {pageNumbers.map((p, idx) => {
+                                if (p === '...') {
+                                    return <span key={`dots-${idx}`} className="px-1 text-xs text-slate-400 font-bold select-none">...</span>;
+                                }
+                                const isCur = p === currentPage;
+                                return (
+                                    <button
+                                        key={`p-${p}`}
+                                        type="button"
+                                        onClick={() => goToPage(Number(p))}
+                                        className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-black transition-all ${
+                                            isCur
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                        }`}
+                                    >
+                                        {p}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage >= totalPages}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none text-xs font-bold text-slate-700 flex items-center gap-1 transition-colors"
+                            title="Trang sau"
+                        >
+                            <span className="hidden sm:inline">Sau</span>
+                            <ChevronRight size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => goToPage(totalPages)}
+                            disabled={currentPage >= totalPages}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none text-slate-600 transition-colors"
+                            title={`Đến trang cuối (${totalPages})`}
+                        >
+                            <ChevronsRight size={14} />
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-4 animate-fade-in w-full max-w-full pb-10">
@@ -215,13 +346,28 @@ export default function QuestionBank({
             <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm sticky top-0 z-30 flex flex-col gap-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" value={bGradeFilter} onChange={e => { setBGradeFilter(e.target.value as any); setBChapterFilter('all'); }}>
+                        <select 
+                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" 
+                            value={bGradeFilter} 
+                            onChange={e => { 
+                                setBGradeFilter(e.target.value as any); 
+                                setBChapterFilter('all'); 
+                                setCurrentPage(1);
+                            }}
+                        >
                             <option value="all">Khối: Tất cả</option>
                             <option value="12">Khối 12</option>
                             <option value="11">Khối 11</option>
                             <option value="10">Khối 10</option>
                         </select>
-                        <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none max-w-[150px] focus:border-blue-500" value={bChapterFilter} onChange={e => setBChapterFilter(e.target.value)}>
+                        <select 
+                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none max-w-[150px] focus:border-blue-500" 
+                            value={bChapterFilter} 
+                            onChange={e => {
+                                setBChapterFilter(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                        >
                             <option value="all">Chương: Tất cả</option>
                             {(() => {
                                 const validDb = chapters.filter(c => {
@@ -246,13 +392,27 @@ export default function QuestionBank({
                                 return null;
                             })()}
                         </select>
-                        <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" value={bTypeFilter} onChange={e => setBTypeFilter(e.target.value as any)}>
+                        <select 
+                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" 
+                            value={bTypeFilter} 
+                            onChange={e => {
+                                setBTypeFilter(e.target.value as any);
+                                setCurrentPage(1);
+                            }}
+                        >
                             <option value="all">Dạng: Tất cả</option>
                             <option value="mcq">P.I (MCQ - 4 Lựa chọn)</option>
                             <option value="group-tf">P.II (Đúng/Sai)</option>
                             <option value="short">P.III (Trả lời ngắn)</option>
                         </select>
-                        <select className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" value={bLevelFilter} onChange={e => setBLevelFilter(e.target.value as any)}>
+                        <select 
+                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" 
+                            value={bLevelFilter} 
+                            onChange={e => {
+                                setBLevelFilter(e.target.value as any);
+                                setCurrentPage(1);
+                            }}
+                        >
                             <option value="all">Mức độ: Tất cả</option>
                             <option value="B">🟢 [B] Biết</option>
                             <option value="H">🔵 [H] Hiểu</option>
@@ -260,7 +420,15 @@ export default function QuestionBank({
                             <option value="VDC">🔴 [VDC] Vận dụng cao</option>
                         </select>
                         <button 
-                            onClick={() => { setBGradeFilter('all'); setBChapterFilter('all'); setBTypeFilter('all'); setBLevelFilter('all'); setBSearch(''); setOnlyShowSelected(false); }}
+                            onClick={() => { 
+                                setBGradeFilter('all'); 
+                                setBChapterFilter('all'); 
+                                setBTypeFilter('all'); 
+                                setBLevelFilter('all'); 
+                                setBSearch(''); 
+                                setOnlyShowSelected(false); 
+                                setCurrentPage(1);
+                            }}
                             className="bg-red-50 hover:bg-red-100 text-red-500 border border-red-100 px-2.5 py-1.5 rounded-lg text-[8px] font-black uppercase transition-colors"
                         >
                             Xóa lọc
@@ -297,7 +465,15 @@ export default function QuestionBank({
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 pt-1 border-t border-slate-100">
                     <div className="flex-1 flex items-center bg-slate-50 border rounded-xl px-3 focus-within:border-blue-500 focus-within:bg-white transition-all">
                         <Search size={14} className="text-slate-400 mr-2 shrink-0"/>
-                        <input className="bg-transparent py-2 text-xs font-medium outline-none w-full text-slate-800 placeholder:text-slate-400" placeholder="Tìm kiếm nội dung câu hỏi hoặc tên đề thi..." value={bSearch} onChange={e => setBSearch(e.target.value)} />
+                        <input 
+                            className="bg-transparent py-2 text-xs font-medium outline-none w-full text-slate-800 placeholder:text-slate-400" 
+                            placeholder="Tìm kiếm nội dung câu hỏi hoặc tên đề thi..." 
+                            value={bSearch} 
+                            onChange={e => {
+                                setBSearch(e.target.value);
+                                setCurrentPage(1);
+                            }} 
+                        />
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -395,6 +571,9 @@ export default function QuestionBank({
                     </div>
                 )}
             </div>
+
+            {/* Thanh phân trang trên */}
+            {renderPaginationBar()}
 
             {/* Danh sách câu hỏi */}
             <div className="grid grid-cols-1 gap-2.5">
@@ -646,17 +825,10 @@ export default function QuestionBank({
                     </div>
                 )}
 
-                {visibleCount < filteredQuestions.length && (
-                    <div className="py-6 text-center">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setVisibleCount(prev => prev + PAGE_SIZE); }} 
-                            className="px-10 py-3 bg-white border-2 border-slate-200 rounded-full text-[10px] font-black uppercase text-slate-600 shadow-sm hover:bg-slate-900 hover:text-white transition-all"
-                        >
-                            Tải thêm câu hỏi ({filteredQuestions.length - visibleCount} câu còn lại)
-                        </button>
-                    </div>
-                )}
             </div>
+
+            {/* Thanh phân trang dưới */}
+            {renderPaginationBar()}
 
             {/* Modal phóng to hình ảnh đính kèm */}
             {previewImage && (

@@ -1557,10 +1557,11 @@ export const saveBankQuestion = async (q: Question): Promise<void> => {
     if (!supabase) return;
     try {
         const fp = getQuestionFingerprint(q);
-        const existing = await getBankQuestions();
-        const found = existing.find(item => getQuestionFingerprint(item) === fp);
-        const finalId = found ? found.id : q.id;
+        const existing = await getBankQuestions('all', true);
+        const found = existing.find(item => item.id === q.id || getQuestionFingerprint(item) === fp);
+        const finalId = q.id || (found ? found.id : uuidv4());
         await supabase.from('bank_questions').upsert({ id: finalId, data: { ...q, id: finalId } });
+        invalidateCache('bank_questions');
     } catch (e) {
         console.warn("Lỗi lưu bank question:", e);
     }
@@ -1571,6 +1572,7 @@ export const deleteBankQuestion = async (id: string): Promise<boolean> => {
     try {
         const { error } = await supabase.from('bank_questions').delete().eq('id', id);
         if (error) throw error;
+        invalidateCache('bank_questions');
         return true;
     } catch (e) {
         console.warn("Lỗi xóa bank question:", e);
@@ -1692,6 +1694,74 @@ export interface ImageUploadResult {
 }
 
 /**
+ * Tự động tối ưu hoá và nén ảnh (giữ độ sắc nét cho sơ đồ, công thức, đồ thị)
+ * Giúp tiết kiệm tối đa băng thông (giảm 70% - 90% dung lượng ảnh chụp màn hình Snipping Tool)
+ */
+export const compressImageForUpload = async (
+    file: File | Blob, 
+    maxWidth: number = 1200, 
+    quality: number = 0.85
+): Promise<{ blob: Blob; dataUrl: string }> => {
+    return new Promise((resolve) => {
+        const toFallback = () => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({ blob: file, dataUrl: (reader.result as string) || '' });
+            reader.onerror = () => resolve({ blob: file, dataUrl: '' });
+            reader.readAsDataURL(file);
+        };
+
+        if (typeof window === 'undefined' || typeof Image === 'undefined') {
+            return toFallback();
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            try {
+                let { width, height } = img;
+                if (width <= 0 || height <= 0) return toFallback();
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return toFallback();
+
+                // Nền trắng cho các ảnh cắt có kênh trong suốt (tránh bị đen nền)
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const mimeType = 'image/jpeg';
+                const dataUrl = canvas.toDataURL(mimeType, quality);
+                canvas.toBlob((blob) => {
+                    if (blob && blob.size < file.size) {
+                        resolve({ blob, dataUrl });
+                    } else {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve({ blob: file, dataUrl: (reader.result as string) || dataUrl });
+                        reader.onerror = () => resolve({ blob: file, dataUrl });
+                        reader.readAsDataURL(file);
+                    }
+                }, mimeType, quality);
+            } catch (err) {
+                toFallback();
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            toFallback();
+        };
+        img.src = objectUrl;
+    });
+};
+
+/**
  * Tải ảnh đề thi với cơ chế lựa chọn thông minh & tự động fallback:
  * Ưu tiên ImgBB -> Chuyển Supabase Storage -> Chuyển Base64 DataURL
  */
@@ -1704,34 +1774,30 @@ export const uploadQuizImageWithResult = async (
     const provider = customProvider || config.provider;
     const apiKey = customApiKey || config.imgbbApiKey;
 
-    const toBase64 = (f: File | Blob): Promise<string> => {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string || '');
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(f);
-        });
-    };
+    // Tự động nén ảnh thông minh trước khi tải lên hoặc chuyển Base64 (tiết kiệm băng thông tối đa)
+    const { blob: optimizedBlob, dataUrl: optimizedDataUrl } = await compressImageForUpload(file);
+    const toBase64 = async (): Promise<string> => optimizedDataUrl;
+    const targetFile = optimizedBlob;
 
     // 0. Chế độ 'base64' (Mã hóa nhúng trực tiếp sBase64 vĩnh viễn)
     if (provider === 'base64') {
-        const base64Url = await toBase64(file);
+        const base64Url = await toBase64();
         return { url: base64Url, provider: 'base64' };
     }
 
     // 1. Chế độ 'auto' (Ưu tiên Supabase Storage vĩnh viễn -> Fallback ImgBB -> Fallback Base64)
     if (provider === 'auto') {
         try {
-            const supabaseUrl = await uploadToSupabaseStorage(file);
+            const supabaseUrl = await uploadToSupabaseStorage(targetFile);
             return { url: supabaseUrl, provider: 'supabase' };
         } catch (supabaseErr: any) {
             console.warn("⚠️ Upload Supabase Storage không thành công, tự động chuyển sang ImgBB:", supabaseErr?.message || supabaseErr);
             try {
-                const imgbbUrl = await uploadToImgbb(file, apiKey);
+                const imgbbUrl = await uploadToImgbb(targetFile, apiKey);
                 return { url: imgbbUrl, provider: 'imgbb' };
             } catch (imgbbErr: any) {
                 console.warn("⚠️ Upload ImgBB cũng không thành công, fallback sang Base64 DataURL:", imgbbErr?.message || imgbbErr);
-                const base64Url = await toBase64(file);
+                const base64Url = await toBase64();
                 return { 
                     url: base64Url, 
                     provider: 'base64', 
@@ -1744,11 +1810,11 @@ export const uploadQuizImageWithResult = async (
     // 2. Chế độ 'imgbb' (Chỉ dùng ImgBB -> Fallback Base64)
     if (provider === 'imgbb') {
         try {
-            const imgbbUrl = await uploadToImgbb(file, apiKey);
+            const imgbbUrl = await uploadToImgbb(targetFile, apiKey);
             return { url: imgbbUrl, provider: 'imgbb' };
         } catch (imgbbErr: any) {
             console.warn("⚠️ Upload ImgBB thất bại, fallback sang Base64:", imgbbErr);
-            const base64Url = await toBase64(file);
+            const base64Url = await toBase64();
             return { url: base64Url, provider: 'base64', error: imgbbErr?.message };
         }
     }
@@ -1756,16 +1822,16 @@ export const uploadQuizImageWithResult = async (
     // 3. Chế độ 'supabase' (Chỉ dùng Supabase Storage -> Fallback Base64)
     if (provider === 'supabase') {
         try {
-            const supabaseUrl = await uploadToSupabaseStorage(file);
+            const supabaseUrl = await uploadToSupabaseStorage(targetFile);
             return { url: supabaseUrl, provider: 'supabase' };
         } catch (supabaseErr: any) {
             console.warn("⚠️ Upload Supabase thất bại, fallback sang Base64:", supabaseErr);
-            const base64Url = await toBase64(file);
+            const base64Url = await toBase64();
             return { url: base64Url, provider: 'base64', error: supabaseErr?.message };
         }
     }
 
-    const fallbackUrl = await toBase64(file);
+    const fallbackUrl = await toBase64();
     return { url: fallbackUrl, provider: 'base64' };
 };
 
