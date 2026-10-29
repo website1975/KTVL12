@@ -7,7 +7,7 @@ import {
   Clock, TrendingUp, AlertCircle, Copy, CheckCheck, BookOpen, 
   Star, Filter, ArrowLeft, Lightbulb, CheckCircle2, XCircle,
   BarChart2, LineChart as LineChartIcon, Sparkles, Trophy,
-  Folder, FileText, Eye, EyeOff, Printer, Loader2
+  Folder, FileText, Eye, EyeOff, Printer, Loader2, FileSpreadsheet
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -310,6 +310,60 @@ export default function ClassManager({
       lowestFirstScore: totalSub > 0 ? lowest : 0
     };
   }, [currentQuiz, selectedClass, classStudents, results]);
+
+  const handleExportClassScoresCsv = () => {
+    if (!currentQuiz || classStudents.length === 0) return;
+
+    const quizResults = results.filter(r => r.quizId === currentQuiz.id);
+    const headers = ["STT", "Họ và tên", "Mã học sinh", "Tài khoản", "Điểm lần 1", "Điểm cao nhất", "Số lần làm", "Trạng thái / Chú thích"];
+    const rows: string[][] = [];
+
+    classStudents.forEach((student, idx) => {
+      const studentResults = quizResults.filter(r => 
+        r.studentId === student.id || 
+        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase())
+      );
+
+      let scoreFirst = "0.0";
+      let scoreBest = "0.0";
+      let attemptsCount = "0";
+      let statusNote = "0.0đ (chưa làm)";
+
+      if (studentResults.length > 0) {
+        const sorted = [...studentResults].sort((a, b) => 
+          new Date(a.submittedAt || 0).getTime() - new Date(b.submittedAt || 0).getTime()
+        );
+        const firstAttempt = sorted[0];
+        const bestScore = studentResults.reduce((max, r) => Math.max(max, r.score), 0);
+
+        scoreFirst = firstAttempt.score.toFixed(1);
+        scoreBest = bestScore.toFixed(1);
+        attemptsCount = String(studentResults.length);
+        statusNote = "Đã làm";
+      }
+
+      rows.push([
+        String(idx + 1),
+        `"${student.fullName.replace(/"/g, '""')}"`,
+        `"${student.studentCode || 'N/A'}"`,
+        `"${student.username || ''}"`,
+        scoreFirst,
+        scoreBest,
+        attemptsCount,
+        `"${statusNote}"`
+      ]);
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ThongKe_Diem_${currentQuiz.title.replace(/[^a-zA-Z0-9]/g, '_')}_Lop_${selectedClass?.name || 'TatCa'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Tab 3: Helper to calculate student progress statistics & automated feedback
   const getStudentTrainingData = (student: User) => {
@@ -1630,8 +1684,15 @@ export default function ClassManager({
                         </p>
                       </div>
 
-                      {/* Toggle Cards for Submitted vs Unsubmitted */}
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {/* Toggle Cards for Submitted vs Unsubmitted & CSV Export */}
+                      <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+                        <button
+                          onClick={handleExportClassScoresCsv}
+                          className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase shadow-xs transition-all active:scale-95"
+                          title="Xuất file CSV danh sách điểm (chưa làm tính 0đ)"
+                        >
+                          <FileSpreadsheet size={15} /> XUẤT FILE CSV
+                        </button>
                         <button
                           onClick={() => setParticipationView('submitted')}
                           className={`flex-1 sm:flex-initial flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${participationView === 'submitted' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
