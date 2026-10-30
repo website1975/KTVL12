@@ -862,8 +862,11 @@ export default function AdminDashboard() {
 
   const handleUpdateQuiz = async (updatedQuiz: Quiz) => {
     try {
-      await updateQuiz(updatedQuiz);
-      setQuizzes(prev => prev.map(q => q.id === updatedQuiz.id ? { ...updatedQuiz, questions: [] } : q));
+      setQuizzes(prev => prev.map(q => q.id === updatedQuiz.id ? { 
+        ...q, 
+        title: updatedQuiz.title,
+        questionCount: updatedQuiz.questionCount || (updatedQuiz.questions ? updatedQuiz.questions.length : q.questionCount)
+      } : q));
       showAlert("Thành công", "Đã đổi tên đề thi thành công!", "success");
     } catch (e: any) {
       showAlert("Lỗi", "Không thể đổi tên đề thi: " + (e.message || "Không xác định"), "error");
