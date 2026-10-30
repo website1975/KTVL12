@@ -59,12 +59,12 @@ export default function QuestionReviewBoard({
   // Drawing Canvas State
   const [activeTool, setActiveTool] = useState<DrawTool>('pen');
   const [penColor, setPenColor] = useState<string>('#ef4444'); // Red default
-  const [penWidth, setPenWidth] = useState<number>(3);
+  const [penWidth, setPenWidth] = useState<number>(1.5);
   const [drawingsPerQuestion, setDrawingsPerQuestion] = useState<{ [qIdx: number]: DrawingStroke[] }>({});
   const [redoStackPerQuestion, setRedoStackPerQuestion] = useState<{ [qIdx: number]: DrawingStroke[] }>({});
   
-  // Laser Pointer position
-  const [laserPos, setLaserPos] = useState<{ x: number; y: number } | null>(null);
+  // Floating Tool Cursor position (Pen, Highlighter, Eraser, Laser)
+  const [hoverCursorPos, setHoverCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   // AI Explanation State
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
@@ -149,6 +149,121 @@ export default function QuestionReviewBoard({
   // Current Question
   const currentQ = questions[currentIdx] || null;
 
+  // Helper to render any stroke accurately on canvas
+  const renderStroke = (ctx: CanvasRenderingContext2D, stroke: DrawingStroke) => {
+    if (!stroke || !stroke.points || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+
+    ctx.save();
+    ctx.strokeStyle = stroke.color || '#ef4444';
+    ctx.lineWidth = stroke.width || 1.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (stroke.tool === 'highlighter') {
+      ctx.globalAlpha = 0.35;
+      ctx.globalCompositeOperation = 'source-over';
+    } else if (stroke.tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = (stroke.width || 1.5) * 4;
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1.0;
+    }
+
+    const p0 = stroke.points[0];
+    if (!p0) {
+      ctx.restore();
+      return;
+    }
+
+    if (stroke.tool === 'pen' || stroke.tool === 'highlighter' || stroke.tool === 'eraser') {
+      const isSinglePoint = stroke.points.length === 1 || (
+        stroke.points.length === 2 && 
+        Math.abs(stroke.points[0].x - stroke.points[1].x) < 1 && 
+        Math.abs(stroke.points[0].y - stroke.points[1].y) < 1
+      );
+
+      if (isSinglePoint) {
+        // Draw solid circular dot for quick taps / accent marks / dots so they never disappear
+        ctx.beginPath();
+        ctx.arc(p0.x, p0.y, Math.max(ctx.lineWidth / 2, 0.75), 0, Math.PI * 2);
+        if (stroke.tool === 'eraser') {
+          ctx.fill();
+        } else {
+          ctx.fillStyle = stroke.color || '#ef4444';
+          ctx.fill();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          const pt = stroke.points[i];
+          if (pt) ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+      }
+    } else if (stroke.tool === 'line') {
+      ctx.globalCompositeOperation = 'source-over';
+      const start = stroke.points[0];
+      const end = stroke.points[stroke.points.length - 1];
+      if (start && end) {
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+      }
+    } else if (stroke.tool === 'arrow') {
+      ctx.globalCompositeOperation = 'source-over';
+      const start = stroke.points[0];
+      const end = stroke.points[stroke.points.length - 1];
+      if (start && end) {
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+
+        // Arrow head
+        const headlen = 14;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const angle = Math.atan2(dy, dx);
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - headlen * Math.cos(angle - Math.PI / 6), end.y - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - headlen * Math.cos(angle + Math.PI / 6), end.y - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+      }
+    } else if (stroke.tool === 'rect') {
+      ctx.globalCompositeOperation = 'source-over';
+      const start = stroke.points[0];
+      const end = stroke.points[stroke.points.length - 1];
+      if (start && end) {
+        ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+      }
+    } else if (stroke.tool === 'circle') {
+      ctx.globalCompositeOperation = 'source-over';
+      const start = stroke.points[0];
+      const end = stroke.points[stroke.points.length - 1];
+      if (start && end) {
+        const rx = Math.abs(end.x - start.x) / 2;
+        const ry = Math.abs(end.y - start.y) / 2;
+        const cx = Math.min(start.x, end.x) + rx;
+        const cy = Math.min(start.y, end.y) + ry;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    } else if (stroke.tool === 'text' && stroke.text) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillStyle = stroke.color || '#ef4444';
+      if (p0) ctx.fillText(stroke.text, p0.x, p0.y);
+    }
+
+    ctx.restore();
+  };
+
   // Handle Canvas Resize and Redraw
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -171,96 +286,7 @@ export default function QuestionReviewBoard({
     if (!Array.isArray(strokes) || strokes.length === 0) return;
 
     strokes.forEach(stroke => {
-      if (!stroke || !stroke.points || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
-
-      ctx.beginPath();
-      ctx.strokeStyle = stroke.color || '#ef4444';
-      ctx.lineWidth = stroke.width || 3;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      if (stroke.tool === 'highlighter') {
-        ctx.globalAlpha = 0.35;
-      } else {
-        ctx.globalAlpha = 1.0;
-      }
-
-      const p0 = stroke.points[0];
-      if (!p0) return;
-
-      if (stroke.tool === 'pen' || stroke.tool === 'highlighter' || stroke.tool === 'eraser') {
-        if (stroke.tool === 'eraser') {
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.lineWidth = (stroke.width || 3) * 4;
-        } else {
-          ctx.globalCompositeOperation = 'source-over';
-        }
-
-        ctx.moveTo(p0.x, p0.y);
-        for (let i = 1; i < stroke.points.length; i++) {
-          const pt = stroke.points[i];
-          if (pt) ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.stroke();
-      } else if (stroke.tool === 'line') {
-        ctx.globalCompositeOperation = 'source-over';
-        const start = stroke.points[0];
-        const end = stroke.points[stroke.points.length - 1];
-        if (start && end) {
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-        }
-      } else if (stroke.tool === 'arrow') {
-        ctx.globalCompositeOperation = 'source-over';
-        const start = stroke.points[0];
-        const end = stroke.points[stroke.points.length - 1];
-        if (start && end) {
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-
-          // Arrow head
-          const headlen = 14;
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const angle = Math.atan2(dy, dx);
-          ctx.beginPath();
-          ctx.moveTo(end.x, end.y);
-          ctx.lineTo(end.x - headlen * Math.cos(angle - Math.PI / 6), end.y - headlen * Math.sin(angle - Math.PI / 6));
-          ctx.moveTo(end.x, end.y);
-          ctx.lineTo(end.x - headlen * Math.cos(angle + Math.PI / 6), end.y - headlen * Math.sin(angle + Math.PI / 6));
-          ctx.stroke();
-        }
-      } else if (stroke.tool === 'rect') {
-        ctx.globalCompositeOperation = 'source-over';
-        const start = stroke.points[0];
-        const end = stroke.points[stroke.points.length - 1];
-        if (start && end) {
-          ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-        }
-      } else if (stroke.tool === 'circle') {
-        ctx.globalCompositeOperation = 'source-over';
-        const start = stroke.points[0];
-        const end = stroke.points[stroke.points.length - 1];
-        if (start && end) {
-          const rx = Math.abs(end.x - start.x) / 2;
-          const ry = Math.abs(end.y - start.y) / 2;
-          const cx = Math.min(start.x, end.x) + rx;
-          const cy = Math.min(start.y, end.y) + ry;
-          ctx.beginPath();
-          ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-          ctx.stroke();
-        }
-      } else if (stroke.tool === 'text' && stroke.text) {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillStyle = stroke.color || '#ef4444';
-        if (p0) ctx.fillText(stroke.text, p0.x, p0.y);
-      }
-
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1.0;
+      renderStroke(ctx, stroke);
     });
   }, [drawingsPerQuestion, currentIdx]);
 
@@ -279,12 +305,17 @@ export default function QuestionReviewBoard({
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    setHoverCursorPos({ x, y });
 
     if (activeTool === 'laser') {
-      setLaserPos({ x, y });
       return;
     }
 
@@ -292,7 +323,7 @@ export default function QuestionReviewBoard({
       const userText = prompt('Nhập chữ/ghi chú muốn dán vào bảng:');
       if (userText && userText.trim()) {
         const newStroke: DrawingStroke = {
-          id: String(Date.now()),
+          id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           tool: 'text',
           color: penColor,
           width: penWidth,
@@ -309,7 +340,7 @@ export default function QuestionReviewBoard({
 
     isDrawingRef.current = true;
     const stroke: DrawingStroke = {
-      id: String(Date.now()),
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       tool: activeTool,
       color: penColor,
       width: penWidth,
@@ -317,10 +348,34 @@ export default function QuestionReviewBoard({
     };
     currentStrokeRef.current = stroke;
 
-    setDrawingsPerQuestion(prev => ({
-      ...prev,
-      [currentIdx]: [...((prev && prev[currentIdx]) || []), stroke]
-    }));
+    // Immediate visual feedback on canvas
+    const ctx = canvas.getContext('2d');
+    if (ctx && (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser')) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = stroke.width;
+      ctx.strokeStyle = stroke.color;
+      if (activeTool === 'highlighter') {
+        ctx.globalAlpha = 0.35;
+        ctx.globalCompositeOperation = 'source-over';
+      } else if (activeTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = stroke.width * 4;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(ctx.lineWidth / 2, 0.75), 0, Math.PI * 2);
+      if (activeTool === 'eraser') {
+        ctx.fill();
+      } else {
+        ctx.fillStyle = stroke.color;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -330,36 +385,94 @@ export default function QuestionReviewBoard({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    setHoverCursorPos({ x, y });
+
     if (activeTool === 'laser') {
-      setLaserPos({ x, y });
       return;
-    } else {
-      if (laserPos) setLaserPos(null);
     }
 
     if (!isDrawingRef.current || !currentStrokeRef.current) return;
 
-    if (!currentStrokeRef.current.points) {
-      currentStrokeRef.current.points = [];
-    }
-    currentStrokeRef.current.points.push({ x, y });
+    const stroke = currentStrokeRef.current;
+    const pts = stroke.points;
+    const prevPt = pts[pts.length - 1];
 
-    setDrawingsPerQuestion(prev => {
-      const currentList = (prev && prev[currentIdx]) ? prev[currentIdx] : [];
-      const qStrokes = [...currentList];
-      if (qStrokes.length > 0) {
-        qStrokes[qStrokes.length - 1] = { ...currentStrokeRef.current! };
+    // Minimal distance threshold to avoid redundant duplicate points
+    if (prevPt && Math.hypot(x - prevPt.x, y - prevPt.y) < 0.5) {
+      return;
+    }
+
+    pts.push({ x, y });
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (stroke.tool === 'pen' || stroke.tool === 'highlighter' || stroke.tool === 'eraser') {
+      // 0ms latency hardware-accelerated direct line segment rendering
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = stroke.width;
+      ctx.strokeStyle = stroke.color;
+
+      if (stroke.tool === 'highlighter') {
+        ctx.globalAlpha = 0.35;
+        ctx.globalCompositeOperation = 'source-over';
+      } else if (stroke.tool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = stroke.width * 4;
       } else {
-        qStrokes.push({ ...currentStrokeRef.current! });
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
       }
-      return { ...prev, [currentIdx]: qStrokes };
-    });
+
+      ctx.beginPath();
+      if (prevPt) {
+        ctx.moveTo(prevPt.x, prevPt.y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else {
+      // For shapes (line, arrow, rect, circle), redraw saved strokes + preview
+      redrawCanvas();
+      renderStroke(ctx, stroke);
+    }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+
+    if (!isDrawingRef.current || !currentStrokeRef.current) {
+      isDrawingRef.current = false;
+      currentStrokeRef.current = null;
+      return;
+    }
+
+    // Safely snapshot completed stroke BEFORE resetting ref
+    const finishedStroke: DrawingStroke = {
+      ...currentStrokeRef.current,
+      points: [...currentStrokeRef.current.points]
+    };
+
+    // Ensure single points (fast tap, dots, accents) have at least two points or are clearly registered
+    if (finishedStroke.points.length === 1) {
+      const p0 = finishedStroke.points[0];
+      finishedStroke.points.push({ x: p0.x + 0.1, y: p0.y + 0.1 });
+    }
+
     isDrawingRef.current = false;
     currentStrokeRef.current = null;
-    // Clear redo history on new stroke
+
+    // Persist completed stroke to React state
+    setDrawingsPerQuestion(prev => ({
+      ...prev,
+      [currentIdx]: [...((prev && prev[currentIdx]) || []), finishedStroke]
+    }));
+
+    // Clear redo stack on new stroke
     setRedoStackPerQuestion(prev => ({ ...prev, [currentIdx]: [] }));
   };
 
@@ -827,10 +940,21 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
         <div className="flex items-center gap-2">
           {/* Colors */}
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
-            {['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#ffffff', '#000000'].map(c => (
+            {[
+              { color: '#ef4444', name: 'Đỏ' },
+              { color: '#f97316', name: 'Cam' },
+              { color: '#facc15', name: 'Vàng' },
+              { color: '#10b981', name: 'Xanh lá' },
+              { color: '#06b6d4', name: 'Xanh ngọc' },
+              { color: '#3b82f6', name: 'Xanh dương' },
+              { color: '#ec4899', name: 'Hồng' },
+              { color: '#ffffff', name: 'Trắng' },
+              { color: '#000000', name: 'Đen' }
+            ].map(({ color: c, name }) => (
               <button
                 key={c}
                 onClick={() => setPenColor(c)}
+                title={`Màu ${name}`}
                 className={`w-5 h-5 rounded-full border border-slate-700 transition transform ${
                   penColor === c ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-70 hover:opacity-100'
                 }`}
@@ -841,7 +965,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
           {/* Pen Width */}
           <div className="hidden sm:flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs text-slate-300">
-            {[2, 4, 8].map(w => (
+            {[0.75, 1, 1.5, 2, 4, 8].map(w => (
               <button
                 key={w}
                 onClick={() => setPenWidth(w)}
@@ -1052,16 +1176,17 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
                   className={`absolute inset-0 z-30 touch-none w-full h-full pointer-events-auto ${
-                    activeTool === 'laser' ? 'cursor-none' : 'cursor-crosshair'
+                    activeTool === 'laser' ? 'cursor-none' : activeTool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
                 />
 
                 {/* Laser Pointer Glow Effect */}
-                {laserPos && (
+                {hoverCursorPos && activeTool === 'laser' && (
                   <div 
-                    className="absolute z-40 w-4 h-4 rounded-full bg-rose-500 shadow-[0_0_20px_10px_rgba(244,63,94,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75"
-                    style={{ left: laserPos.x, top: laserPos.y }}
+                    className="absolute z-40 w-4 h-4 rounded-full bg-rose-500 shadow-[0_0_20px_10px_rgba(244,63,94,0.9)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75"
+                    style={{ left: hoverCursorPos.x, top: hoverCursorPos.y }}
                   />
                 )}
 
