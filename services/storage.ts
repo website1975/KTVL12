@@ -574,31 +574,58 @@ export const invalidateCache = (prefix?: string) => {
 
 // Cập nhật trực tiếp 1 đề thi vào Cache Memory mà không làm mất bộ đệm 70 đề khác
 export const updateQuizInCache = (updatedQuiz: Quiz) => {
+  const existingDetail = quizDetailCache.get(updatedQuiz.id);
+  const questionsToKeep = (updatedQuiz.questions && updatedQuiz.questions.length > 0)
+    ? updatedQuiz.questions
+    : (existingDetail?.questions && existingDetail.questions.length > 0 ? existingDetail.questions : []);
+
+  const count = questionsToKeep.length > 0
+    ? questionsToKeep.length
+    : (updatedQuiz.questionCount || existingDetail?.questionCount || 0);
+
   const metaItem: Quiz = {
     ...updatedQuiz,
-    questionCount: updatedQuiz.questions ? updatedQuiz.questions.length : (updatedQuiz.questionCount || 0),
+    questionCount: count,
     questions: []
   };
 
-  quizDetailCache.set(updatedQuiz.id, updatedQuiz);
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(`quiz_detail_${updatedQuiz.id}`, JSON.stringify(updatedQuiz));
-    }
-  } catch (e) {}
+  const fullQuizToCache: Quiz = {
+    ...updatedQuiz,
+    questions: questionsToKeep,
+    questionCount: count
+  };
+
+  if (questionsToKeep.length > 0) {
+    quizDetailCache.set(updatedQuiz.id, fullQuizToCache);
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(`quiz_detail_${updatedQuiz.id}`, JSON.stringify(fullQuizToCache));
+      }
+    } catch (e) {}
+  } else if (existingDetail) {
+    quizDetailCache.set(updatedQuiz.id, {
+      ...existingDetail,
+      ...updatedQuiz,
+      questions: existingDetail.questions,
+      questionCount: existingDetail.questions.length
+    });
+  }
 
   Object.keys(memoryCache).forEach(k => {
     if (k.startsWith('quizzes_meta_')) {
       const list = memoryCache[k].data as Quiz[];
       if (Array.isArray(list)) {
-        // Lọc bỏ đề cũ nếu có, sau đó thêm đề mới lên đầu (tạo mảng mới tránh mutation lỗi)
-        memoryCache[k].data = [metaItem, ...list.filter(q => q.id !== updatedQuiz.id)];
+        memoryCache[k].data = list.map(q => q.id === updatedQuiz.id ? { 
+          ...q, 
+          ...metaItem, 
+          questions: [],
+          questionCount: count 
+        } : q);
       }
     } else if (k.startsWith('quizzes_full_')) {
       const list = memoryCache[k].data as Quiz[];
       if (Array.isArray(list)) {
-        // Lọc bỏ đề cũ nếu có, sau đó thêm đề mới lên đầu
-        memoryCache[k].data = [updatedQuiz, ...list.filter(q => q.id !== updatedQuiz.id)];
+        memoryCache[k].data = list.map(q => q.id === updatedQuiz.id ? fullQuizToCache : q);
       }
     }
   });
@@ -763,18 +790,27 @@ const quizDetailCache = new Map<string, Quiz>();
 
 export const getQuizById = async (id: string, forceRefresh: boolean = false): Promise<Quiz | null> => {
     if (!supabase) return null;
+    
+    // Kiểm tra cache in-memory, CHỈ dùng nếu có chứa mảng câu hỏi hợp lệ
     if (!forceRefresh && quizDetailCache.has(id)) {
-        return quizDetailCache.get(id)!;
+        const cached = quizDetailCache.get(id)!;
+        if (cached && Array.isArray(cached.questions) && cached.questions.length > 0) {
+            return cached;
+        }
     }
 
-    // Kiểm tra sessionStorage để tải đề tức thì không tốn băng thông mạng
+    // Kiểm tra sessionStorage, CHỈ dùng nếu có chứa mảng câu hỏi hợp lệ
     try {
         if (!forceRefresh && typeof sessionStorage !== 'undefined') {
-            const cached = sessionStorage.getItem(`quiz_detail_${id}`);
-            if (cached) {
-                const parsed = JSON.parse(cached) as Quiz;
-                quizDetailCache.set(id, parsed);
-                return parsed;
+            const cachedStr = sessionStorage.getItem(`quiz_detail_${id}`);
+            if (cachedStr) {
+                const parsed = JSON.parse(cachedStr) as Quiz;
+                if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+                    quizDetailCache.set(id, parsed);
+                    return parsed;
+                } else {
+                    sessionStorage.removeItem(`quiz_detail_${id}`);
+                }
             }
         }
     } catch (e) {}
@@ -786,7 +822,7 @@ export const getQuizById = async (id: string, forceRefresh: boolean = false): Pr
       quizDetailCache.set(id, quiz);
 
       try {
-          if (typeof sessionStorage !== 'undefined') {
+          if (typeof sessionStorage !== 'undefined' && quiz.questions && quiz.questions.length > 0) {
               sessionStorage.setItem(`quiz_detail_${id}`, JSON.stringify(quiz));
           }
       } catch (e) {}
@@ -811,16 +847,58 @@ export const saveQuiz = async (quiz: Quiz): Promise<void> => {
 
 export const updateQuiz = async (enrichedQuiz: Quiz): Promise<void> => {
   if (!supabase) throw new Error("Mất kết nối Database");
-  // Khi chỉnh sửa đề thi (thêm/sửa câu hỏi, đổi nội dung...), đặt lại cờ isSyncedToBank: false
-  // để tính năng quét đồng bộ nhận diện được đây là đề có thay đổi cần quét cập nhật vào Ngân hàng
+  
+  // LỚP BẢO VỆ CHỐNG MẤT CÂU HỎI TUYỆT ĐỐI:
+  // Nếu enrichedQuiz không có mảng câu hỏi (do truyền từ card metadata),
+  // tuyệt đối không được ghi đè bằng rỗng! Phải tải bản ghi đầy đủ từ Database hoặc cache!
+  let fullQuiz: Quiz = enrichedQuiz;
+  if (!enrichedQuiz.questions || enrichedQuiz.questions.length === 0) {
+    const existing = await getQuizById(enrichedQuiz.id);
+    if (existing && existing.questions && existing.questions.length > 0) {
+      fullQuiz = {
+        ...existing,
+        ...enrichedQuiz,
+        questions: existing.questions,
+        questionCount: existing.questions.length
+      };
+    }
+  }
+
+  const qCount = fullQuiz.questions && fullQuiz.questions.length > 0
+    ? fullQuiz.questions.length
+    : (fullQuiz.questionCount || 0);
+
   const quiz = sanitizeForJsonB({ 
-    ...enrichedQuiz, 
-    questionCount: enrichedQuiz.questions.length,
+    ...fullQuiz, 
+    questionCount: qCount,
     isSyncedToBank: false 
   });
   updateQuizInCache(quiz);
-  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: enrichedQuiz.grade }).eq('id', enrichedQuiz.id);
+  const { error } = await supabase.from('quizzes').update({ data: quiz, grade: fullQuiz.grade }).eq('id', fullQuiz.id);
   handleSupabaseError(error, "Cập nhật đề thi");
+};
+
+// Cập nhật đổi tên đề thi (File) an toàn 100%, bảo toàn trọn vẹn danh sách câu hỏi
+export const updateQuizTitle = async (
+  quizId: string, 
+  newTitle: string
+): Promise<Quiz> => {
+  if (!supabase) throw new Error("Mất kết nối Database");
+  const { data, error } = await supabase.from('quizzes').select('id, grade, data').eq('id', quizId).single();
+  if (error || !data) throw new Error("Không tìm thấy đề thi trên hệ thống");
+  const currentQuiz = data.data as Quiz;
+  const cleanTitle = newTitle.trim().toUpperCase();
+  const updatedQuiz: Quiz = {
+    ...currentQuiz,
+    title: cleanTitle
+  };
+  updateQuizInCache(updatedQuiz);
+  const { error: updateErr } = await supabase.from('quizzes').update({
+    data: updatedQuiz,
+    grade: data.grade
+  }).eq('id', quizId);
+  handleSupabaseError(updateErr, "Đổi tên đề thi");
+  return updatedQuiz;
 };
 
 // Helper tính toán Niên khóa / Năm học hiện hành theo lịch Việt Nam (tháng 9 bắt đầu năm học mới)
