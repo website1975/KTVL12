@@ -91,7 +91,7 @@ export default function QuestionReviewBoard({
           setCurrentIdx(0);
         } else {
           setIsLoadingQuiz(true);
-          getQuizById(selectedQuizId).then(fullQuiz => {
+          getQuizById(selectedQuizId, true).then(fullQuiz => {
             if (isMounted) {
               if (fullQuiz && fullQuiz.questions && fullQuiz.questions.length > 0) {
                 setQuestions(fullQuiz.questions);
@@ -129,7 +129,7 @@ export default function QuestionReviewBoard({
           setCurrentIdx(0);
         } else {
           setIsLoadingQuiz(true);
-          getQuizById(matched.id).then(full => {
+          getQuizById(matched.id, true).then(full => {
             if (isMounted) {
               if (full && full.questions) {
                 setQuestions(full.questions);
