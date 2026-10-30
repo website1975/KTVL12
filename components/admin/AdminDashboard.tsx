@@ -123,6 +123,29 @@ export default function AdminDashboard() {
     } catch (e) {}
   }, [qAcademicYearFilter, qGradeFilter, qChapterFilter, qSearch, qStatusFilter, qViewMode, qActiveFolderId]);
 
+  // Tự động quét và dọn sạch các cache rỗng cũ trong sessionStorage khi mở trang
+  useEffect(() => {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith('quiz_detail_')) {
+            try {
+              const val = JSON.parse(sessionStorage.getItem(k) || '{}');
+              if (!val.questions || !Array.isArray(val.questions) || val.questions.length === 0) {
+                keysToRemove.push(k);
+              }
+            } catch {
+              keysToRemove.push(k);
+            }
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      }
+    } catch (e) {}
+  }, []);
+
   // Data states với preload từ cache local để hiển thị ngay lập tức (0ms)
   const [quizzes, setQuizzes] = useState<Quiz[]>(() => {
     try {
@@ -589,7 +612,7 @@ export default function AdminDashboard() {
   const handleEditQuiz = async (quiz: Quiz) => {
     setIsDataLoading(true);
     try {
-        const fullQuiz = await getQuizById(quiz.id);
+        const fullQuiz = await getQuizById(quiz.id, true);
         if (fullQuiz) {
             setEditingQuizId(fullQuiz.id); 
             setQuizTitle(fullQuiz.title); 
@@ -622,7 +645,7 @@ export default function AdminDashboard() {
   const handlePreviewQuiz = async (quiz: Quiz) => {
     setIsDataLoading(true);
     try {
-        const fullQuiz = await getQuizById(quiz.id);
+        const fullQuiz = await getQuizById(quiz.id, true);
         if (fullQuiz) setPreviewQuiz(fullQuiz);
     } finally {
         setIsDataLoading(false);
@@ -634,7 +657,7 @@ export default function AdminDashboard() {
     try {
         const [fullResult, fullQuiz] = await Promise.all([
             getResultById(res.id),
-            getQuizById(res.quizId)
+            getQuizById(res.quizId, true)
         ]);
         if (fullResult && fullQuiz) {
             setSelectedResultDetail({ result: fullResult, quiz: fullQuiz });
@@ -650,14 +673,14 @@ export default function AdminDashboard() {
   };
 
   const handleSyncAllQuizzes = async () => {
-    if (!confirm("Hệ thống sẽ quét lại toàn bộ đề thi để cập nhật chính xác số câu hỏi. Tiếp tục?")) return;
     setIsSyncing(true);
     try {
+      clearAllLocalCaches();
       const count = await syncAllQuizzesMetadata();
-      alert(`Đã đồng bộ thành công ${count} đề thi!`);
-      loadTabData('quizzes');
-    } catch (e) {
-      alert("Lỗi khi đồng bộ dữ liệu.");
+      await loadTabData('quizzes', true);
+      showAlert("Đã khôi phục thành công", `Toàn bộ ${count} đề thi đã được quét và tải lại trọn vẹn từ Cloud CSDL. Các câu hỏi đều hiển thị bình thường!`, "success");
+    } catch (e: any) {
+      showAlert("Thông báo", "Lỗi khi đồng bộ: " + (e.message || "Không xác định"), "error");
     } finally {
       setIsSyncing(false);
     }
@@ -1518,7 +1541,7 @@ export default function AdminDashboard() {
                         className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-200 text-slate-500 rounded-xl font-black uppercase text-[10px] shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50"
                       >
                          {isSyncing ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>}
-                         CẬP NHẬT SỐ CÂU
+                         CẬP NHẬT & KHÔI PHỤC ĐỀ
                       </button>
                       <button onClick={handleCreateQuiz} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all">
                           <Plus size={16}/> TẠO ĐỀ MỚI
