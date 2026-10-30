@@ -12,7 +12,7 @@ import QuickAssignModal from './QuickAssignModal';
 import FolderModal from './FolderModal';
 import FolderMoveModal from './FolderMoveModal';
 import ZaloNoticeModal, { generateZaloNoticeText } from './ZaloNoticeModal';
-import { getQuizById, getCurrentAcademicYear, updateQuiz } from '../../services/storage';
+import { getQuizById, getCurrentAcademicYear, updateQuiz, updateQuizTitle } from '../../services/storage';
 import { exportQuizToJson, exportQuizzesBatchToJson } from '../../services/quizExport';
 
 export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
@@ -128,14 +128,12 @@ export default function QuizList({
     const handleRenameQuiz = async (quiz: Quiz, e: React.MouseEvent) => {
         e.stopPropagation();
         const newTitle = prompt("Nhập tên mới cho đề thi (File):", quiz.title);
-        if (newTitle && newTitle.trim() && newTitle !== quiz.title) {
+        if (newTitle && newTitle.trim() && newTitle.trim().toUpperCase() !== quiz.title.trim().toUpperCase()) {
             setRenamingQuizId(quiz.id);
             try {
-                const updated = { ...quiz, title: newTitle.trim().toUpperCase() };
+                const updated = await updateQuizTitle(quiz.id, newTitle.trim());
                 if (onUpdateQuiz) {
                     await onUpdateQuiz(updated);
-                } else {
-                    await updateQuiz(updated);
                 }
             } catch (err: any) {
                 alert("Lỗi đổi tên đề thi: " + (err.message || "Không xác định"));
