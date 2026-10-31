@@ -46,6 +46,7 @@ export default function InsertImageModal({
   // Options
   const [layoutMode, setLayoutMode] = useState<'grid' | 'stacked'>('grid');
   const [imageHeight, setImageHeight] = useState<number>(250);
+  const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
   
   // URL tab
   const [directUrl, setDirectUrl] = useState('');
@@ -128,9 +129,6 @@ export default function InsertImageModal({
   const handleUpdateCaption = (id: string, caption: string) => {
     setUploadItems(prev => prev.map(item => item.id === id ? { ...item, caption } : item));
   };
-
-  // Storage mode selection
-  const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
 
   // Perform upload and insert for Upload Tab
   const handleExecuteUploadAndInsert = async () => {

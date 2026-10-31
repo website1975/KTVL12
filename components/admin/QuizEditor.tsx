@@ -2602,18 +2602,20 @@ export default function QuizEditor(props: QuizEditorProps) {
             />
 
             {/* Modal Chèn Hình Ảnh Trực Tiếp vào Lời dẫn / Câu hỏi (hỗ trợ 1 hoặc nhiều ảnh, xếp cạnh nhau) */}
-            <InsertImageModal
-                isOpen={isInsertImageModalOpen}
-                onClose={() => {
-                    setIsInsertImageModalOpen(false);
-                    setInsertImageTargetQId(null);
-                }}
-                targetField={insertImageTargetField}
-                targetQuestionId={insertImageTargetQId}
-                targetQuestionLabel={insertImageTargetLabel}
-                questions={props.questions}
-                onInsert={handleInsertImageToField}
-            />
+            {isInsertImageModalOpen && (
+                <InsertImageModal
+                    isOpen={isInsertImageModalOpen}
+                    onClose={() => {
+                        setIsInsertImageModalOpen(false);
+                        setInsertImageTargetQId(null);
+                    }}
+                    targetField={insertImageTargetField}
+                    targetQuestionId={insertImageTargetQId}
+                    targetQuestionLabel={insertImageTargetLabel}
+                    questions={props.questions}
+                    onInsert={handleInsertImageToField}
+                />
+            )}
         </div>
     );
 }

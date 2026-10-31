@@ -1348,16 +1348,18 @@ export default function QuizList({
             />
 
             {/* Modal Gán phòng thi */}
-            <QuickAssignModal
-                isOpen={isAssignModalOpen}
-                onClose={() => {
-                    setIsAssignModalOpen(false);
-                    setAssignModalQuizzes([]);
-                }}
-                onSave={handleSaveQuickAssign}
-                targetQuizzes={assignModalQuizzes}
-                classes={classes}
-            />
+            {isAssignModalOpen && (
+                <QuickAssignModal
+                    isOpen={isAssignModalOpen}
+                    onClose={() => {
+                        setIsAssignModalOpen(false);
+                        setAssignModalQuizzes([]);
+                    }}
+                    onSave={handleSaveQuickAssign}
+                    targetQuizzes={assignModalQuizzes}
+                    classes={classes}
+                />
+            )}
 
             {/* Modal Xác nhận Xóa Thư mục (An toàn dữ liệu, không dùng popup mặc định) */}
             {folderToDelete && (

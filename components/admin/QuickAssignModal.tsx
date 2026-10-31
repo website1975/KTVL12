@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Quiz, ClassRoom, Grade } from '../../types';
 import { X, GraduationCap, Globe, Check, Loader2, Search, AlertCircle, Building2 } from 'lucide-react';
 
@@ -17,32 +17,32 @@ export default function QuickAssignModal({
   classes,
   onSave
 }: QuickAssignModalProps) {
-  if (!isOpen || targetQuizzes.length === 0) return null;
-
   const isSingle = targetQuizzes.length === 1;
   const singleQuiz = isSingle ? targetQuizzes[0] : null;
 
   // Khởi tạo targetType và assignedClassIds
-  const [targetType, setTargetType] = useState<'all' | 'classes'>(() => {
-    if (singleQuiz) {
-      return singleQuiz.targetType === 'classes' ? 'classes' : 'all';
-    }
-    return 'classes'; // Khi gán hàng loạt đề cũ, thường người dùng muốn gom vào phòng tạm/lớp
-  });
-
-  const [selectedClassIds, setSelectedClassIds] = useState<string[]>(() => {
-    if (singleQuiz && singleQuiz.assignedClassIds) {
-      return [...singleQuiz.assignedClassIds];
-    }
-    return [];
-  });
-
+  const [targetType, setTargetType] = useState<'all' | 'classes'>('classes');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [classSearch, setClassSearch] = useState('');
-  const [gradeFilter, setGradeFilter] = useState<Grade | 'all'>(() => {
-    if (singleQuiz) return singleQuiz.grade;
-    return 'all';
-  });
+  const [gradeFilter, setGradeFilter] = useState<Grade | 'all'>('all');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Cập nhật state khi mở modal hoặc thay đổi danh sách đề được chọn
+  useEffect(() => {
+    if (isOpen && targetQuizzes.length > 0) {
+      if (singleQuiz) {
+        setTargetType(singleQuiz.targetType === 'classes' ? 'classes' : 'all');
+        setSelectedClassIds(singleQuiz.assignedClassIds ? [...singleQuiz.assignedClassIds] : []);
+        setGradeFilter(singleQuiz.grade || 'all');
+      } else {
+        setTargetType('classes');
+        setSelectedClassIds([]);
+        setGradeFilter('all');
+      }
+      setClassSearch('');
+      setIsSaving(false);
+    }
+  }, [isOpen, targetQuizzes, singleQuiz]);
 
   // Lọc danh sách lớp học
   const filteredClasses = useMemo(() => {
@@ -54,6 +54,8 @@ export default function QuickAssignModal({
       return matchGrade && matchSearch;
     });
   }, [classes, gradeFilter, classSearch]);
+
+  if (!isOpen || targetQuizzes.length === 0) return null;
 
   const toggleClass = (classId: string) => {
     setSelectedClassIds(prev => 

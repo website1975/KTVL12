@@ -15,6 +15,12 @@ interface ResultDetailModalProps {
 }
 
 export default function ResultDetailModal({ isOpen, result, quiz, onClose }: ResultDetailModalProps) {
+    // Khôi phục chính xác thứ tự câu hỏi đã xáo trộn riêng cho lượt làm bài này của học sinh
+    const orderedQuestions = useMemo(() => {
+        if (!quiz || !result) return [];
+        return restoreQuestionsOrder(quiz.questions, result.questionOrder);
+    }, [quiz, result]);
+
     if (!isOpen || !result || !quiz) return null;
 
     const userAnswers = result.userAnswers || {};
@@ -27,11 +33,6 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
 
     // Cho phép xem đáp án nếu là bài Luyện tập HOẶC bài Kiểm tra được giáo viên bật quyền xem
     const showDetailAnswers = quiz.type === 'practice' || (quiz.allowReview !== undefined ? quiz.allowReview : isEnded);
-
-    // Khôi phục chính xác thứ tự câu hỏi đã xáo trộn riêng cho lượt làm bài này của học sinh
-    const orderedQuestions = useMemo(() => {
-        return restoreQuestionsOrder(quiz.questions, result.questionOrder);
-    }, [quiz.questions, result.questionOrder]);
 
     const renderQuestionDetail = (q: Question, idx: number) => {
         const ans = userAnswers[q.id];

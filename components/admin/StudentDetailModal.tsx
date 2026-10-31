@@ -28,11 +28,10 @@ interface StudentDetailModalProps {
 }
 
 export default function StudentDetailModal({ student, results, quizzes, onClose, onViewResult }: StudentDetailModalProps) {
-    if (!student) return null;
-
     const [chartType, setChartType] = useState<'timeline' | 'distribution'>('timeline');
 
     const studentResults = useMemo(() => {
+        if (!student) return [];
         return results.filter(r => 
             r.studentId === student.id || 
             (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase())
@@ -41,6 +40,7 @@ export default function StudentDetailModal({ student, results, quizzes, onClose,
 
     // Đề thi được phân cho học sinh này
     const assignedQuizzes = useMemo(() => {
+        if (!student) return [];
         return quizzes.filter(q => {
             const matchGrade = q.grade === student.grade || q.grade === 'all';
             if (!matchGrade) return false;
@@ -175,6 +175,8 @@ export default function StudentDetailModal({ student, results, quizzes, onClose,
 
         return { timelineData: timeline, distributionData: distribution };
     }, [assignedQuizzes, studentResults, quizzes]);
+
+    if (!student) return null;
 
     return (
         <div className="fixed inset-0 bg-slate-900/90 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
