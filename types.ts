@@ -36,6 +36,17 @@ export interface Chapter {
   order: number;
 }
 
+export interface Lesson {
+  id: string;
+  grade: Grade;
+  chapterId: string;
+  chapterName: string;
+  title: string; // Tên bài học (VD: "Bài 13: Tổng hợp và phân tích lực")
+  url: string;   // Đường dẫn web bài học
+  defaultKeyConcept?: string; // Khung kiến thức trọng tâm / công thức cốt lõi mặc định
+}
+
+
 export interface QuizFolder {
   id: string;
   name: string; // e.g. "Đề củng cố Bài học", "Đề ôn chương", "Đề tổng hợp"
@@ -73,6 +84,9 @@ export interface Question {
   quizCategory?: string;
   chapterId?: string;
   chapterName?: string;
+  keyConcept?: string; // Khung kiến thức trọng tâm / công thức cốt lõi (hỗ trợ KaTeX)
+  lessonUrl?: string; // Link bài học Vercel/HTML (VD: https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-1780405969910)
+  lessonTitle?: string; // Tên bài học liên quan (VD: "Bài 13: Tổng hợp và phân tích lực")
 }
 
 export interface Quiz {

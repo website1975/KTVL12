@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, Question, User, ExamSession } from '../types';
 import { ChevronRight, ChevronLeft, CheckCircle2, XCircle, HelpCircle, Lightbulb, Home, Brain, Zap, ArrowRight, BookOpen, Bookmark } from 'lucide-react';
 import LatexText from './LatexText';
+import KeyConceptCard from './KeyConceptCard';
+import LessonViewerModal from './LessonViewerModal';
 import { saveExamSession, deleteExamSession } from '../services/storage';
 import { shuffleQuestionsByParts } from '../services/quizShuffler';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,6 +23,7 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
   const [isAnswered, setIsAnswered] = useState(false);
   const [showContent, setShowContent] = useState(true);
   const [memoryTimer, setMemoryTimer] = useState(10); 
+  const [activeLesson, setActiveLesson] = useState<{ url: string; title?: string } | null>(null); 
 
   const practiceQuestions = useMemo(() => {
     return shuffleQuestionsByParts(quiz.questions);
@@ -309,12 +312,24 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
                   </h3>
                </div>
 
-               <div className={`p-4 rounded-xl border-2 mb-4 text-center ${isCorrect ? 'bg-slate-50 border-slate-100' : isPartial ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
+               <div className={`p-4 rounded-xl border-2 mb-3 text-center ${isCorrect ? 'bg-slate-50 border-slate-100' : isPartial ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
                   <p className="font-black text-slate-700 text-xs">
                     {isCorrect ? 'Tuyệt vời! Bạn đã làm rất tốt.' : isPartial ? 'Khá tốt! Bạn đã trả lời đúng một số ý.' : 'Đừng nản chí, hãy xem lại lời giải nhé!'}
                   </p>
                   <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Đáp án đúng: {currentQuestion.correctAnswer || '(Xem phía dưới)'}</p>
                </div>
+
+               {/* Khung kiến thức trọng tâm & Nút bài học Vercel */}
+               {(currentQuestion.keyConcept || currentQuestion.lessonUrl) && (
+                 <div className="mb-4">
+                   <KeyConceptCard
+                     keyConcept={currentQuestion.keyConcept}
+                     lessonUrl={currentQuestion.lessonUrl}
+                     lessonTitle={currentQuestion.lessonTitle}
+                     onOpenLesson={(url, title) => setActiveLesson({ url, title })}
+                   />
+                 </div>
+               )}
 
                <div className="flex-1 bg-emerald-50/50 p-5 rounded-xl border-2 border-emerald-100 relative overflow-hidden">
                   <div className="absolute top-4 right-4 text-emerald-100 opacity-50"><BookOpen size={32}/></div>
@@ -340,6 +355,13 @@ export default function QuickPractice({ quiz, student, onExit }: QuickPracticePr
       <div className="max-w-7xl mx-auto w-full mt-4 text-center">
          <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest italic">Luyện tập thông minh cùng EduQuiz System</p>
       </div>
+
+      <LessonViewerModal
+        isOpen={!!activeLesson}
+        lessonUrl={activeLesson?.url || ''}
+        lessonTitle={activeLesson?.title}
+        onClose={() => setActiveLesson(null)}
+      />
     </div>
   );
 }

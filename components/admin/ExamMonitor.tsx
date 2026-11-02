@@ -129,13 +129,26 @@ export default function ExamMonitor() {
         if (resultsToPublish.length === 0) return alert("Vui lòng chọn ít nhất 1 học sinh.");
 
         const quiz = quizzes.find(q => q.id === selectedQuizId);
+        // Tối ưu băng thông: Bảng Vàng chỉ cần họ tên, mã số, điểm số và thời gian, không cần mảng userAnswers nặng nề
+        const lightResults: Result[] = resultsToPublish.map(r => ({
+            id: r.id,
+            quizId: r.quizId,
+            studentId: r.studentId,
+            studentName: r.studentName,
+            studentCode: r.studentCode,
+            score: r.score,
+            totalQuestions: r.totalQuestions,
+            submittedAt: r.submittedAt,
+            durationSeconds: r.durationSeconds
+        } as Result));
+
         const pub: PublishedResult = {
             id: uuidv4(), 
             quizId: selectedQuizId, 
             quizTitle: quiz?.title || '',
             publishedAt: new Date().toISOString(),
-            studentCodes: resultsToPublish.map(r => r.studentCode || ''),
-            results: resultsToPublish
+            studentCodes: resultsToPublish.map(r => (r.studentCode || '').trim().toUpperCase()),
+            results: lightResults
         };
         await savePublishedResult(pub);
         setSelectedResultIds(new Set());

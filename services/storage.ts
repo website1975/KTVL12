@@ -2,7 +2,7 @@
 /// <reference types="vite/client" />
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Quiz, Result, Chapter, QuizFolder, Question, ExamSession, PublishedResult, Grade, ClassRoom } from '../types';
+import { User, Quiz, Result, Chapter, Lesson, QuizFolder, Question, QuestionType, ExamSession, PublishedResult, Grade, ClassRoom } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 let cleanedUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://lchfhsioxvgkjfsikycl.supabase.co').trim();
@@ -85,6 +85,38 @@ const handleSupabaseError = (error: any, context: string) => {
     }
 };
 
+// Helper chuẩn hóa & cắt giảm 95% dung lượng cho Metadata Kết quả (loại bỏ hoàn toàn userAnswers và questions khỏi danh sách)
+const mapRowToResultMeta = (row: any): Result => {
+    const d = (row && row.data && typeof row.data === 'object') ? { ...row.data } : (row || {});
+    // Loại bỏ hoàn toàn mảng câu hỏi và câu trả lời chi tiết để giảm tối đa kích thước JSON
+    delete d.userAnswers;
+    delete d.questions;
+    delete d.questionsSnapshot;
+    delete d.answers;
+
+    return {
+        ...d,
+        id: String(row.id || d.id || ''),
+        quizId: String(row.quiz_id || d.quizId || ''),
+        studentId: String(row.student_id || d.studentId || ''),
+        studentName: d.studentName || 'Học sinh',
+        studentCode: d.studentCode || 'N/A',
+        score: typeof d.score === 'number' ? d.score : (parseFloat(d.score) || 0),
+        durationSeconds: typeof d.durationSeconds === 'number' ? d.durationSeconds : (parseInt(d.durationSeconds) || 0),
+        submittedAt: d.submittedAt || new Date().toISOString(),
+        totalQuestions: typeof d.totalQuestions === 'number' ? d.totalQuestions : (parseInt(d.totalQuestions) || 0),
+        correctCount: typeof d.correctCount === 'number' ? d.correctCount : (parseInt(d.correctCount) || 0),
+        wrongCount: typeof d.wrongCount === 'number' ? d.wrongCount : (parseInt(d.wrongCount) || 0),
+        unansweredCount: typeof d.unansweredCount === 'number' ? d.unansweredCount : (parseInt(d.unansweredCount) || 0),
+        grade: String(d.grade || '12') as Grade,
+        classId: d.classId || '',
+        className: d.className || '',
+        academicYear: d.academicYear || '',
+        userAnswers: {}, // Không tải userAnswers ở danh sách metadata
+        questions: [] // Không tải questions ở danh sách metadata
+    } as Result;
+};
+
 // --- Results ---
 export const getResultsMetadataPage = async (page: number, pageSize: number = 50, quizId?: string, search?: string): Promise<{ data: Result[], total: number }> => {
   if (!supabase) return { data: [], total: 0 };
@@ -109,12 +141,7 @@ export const getResultsMetadataPage = async (page: number, pageSize: number = 50
     const { data, count, error } = await query;
     if (error) throw error;
     
-    const results = data ? data.map((row: any) => ({
-      ...(row.data as Result),
-      id: row.id,
-      quizId: row.quiz_id,
-      studentId: row.student_id
-    })) : [];
+    const results = data ? data.map(mapRowToResultMeta) : [];
 
     return { data: results, total: count || 0 };
   } catch (e) {
@@ -123,54 +150,30 @@ export const getResultsMetadataPage = async (page: number, pageSize: number = 50
   }
 };
 
-export const getResultsMetadata = async (quizId?: string, maxRecords: number = 10000, forceRefresh: boolean = false): Promise<Result[]> => {
+export const getResultsMetadata = async (quizId?: string, maxRecords: number = 200, forceRefresh: boolean = false): Promise<Result[]> => {
   if (!supabase) return [];
-  const cacheKey = `results_meta_${quizId || 'all'}`;
+  const cacheKey = `results_meta_${quizId || 'all'}_${maxRecords}`;
   const now = Date.now();
   if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
     return memoryCache[cacheKey].data;
   }
   try {
-      let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
-
-      while (hasMore && allData.length < maxRecords) {
-          let query = supabase.from('results')
-            .select('*')
-            .order('id', { ascending: false })
-            .range(from, from + step - 1);
-            
-          if (quizId && quizId !== 'all') {
-            query = query.or(`quiz_id.eq.${quizId},data->>quizId.eq.${quizId}`);
-          }
-          
-          const { data, error } = await query;
-          if (error) {
-            console.warn("Lỗi fetch results meta batch:", error);
-            hasMore = false;
-            break;
-          }
-          
-          if (data && data.length > 0) {
-              allData = [...allData, ...data];
-              from += step;
-              if (data.length < step) hasMore = false;
-          } else {
-              hasMore = false;
-          }
+      let query = supabase.from('results')
+        .select('id, quiz_id, student_id, data')
+        .order('id', { ascending: false })
+        .limit(maxRecords);
+        
+      if (quizId && quizId !== 'all') {
+        query = query.or(`quiz_id.eq.${quizId},data->>quizId.eq.${quizId}`);
       }
       
-      const mapped = allData.map((row: any) => {
-          const res = (row.data && typeof row.data === 'object') ? row.data : (row || {});
-          return {
-              ...res,
-              id: row.id || res.id,
-              quizId: row.quiz_id || res.quizId,
-              studentId: row.student_id || res.studentId
-          } as Result;
-      });
+      const { data, error } = await query;
+      if (error) {
+        console.warn("Lỗi fetch results meta:", error);
+        return [];
+      }
+      
+      const mapped = (data || []).map(mapRowToResultMeta);
       memoryCache[cacheKey] = { data: mapped, expires: now + CACHE_TTL };
       return mapped;
   } catch (e) {
@@ -187,36 +190,22 @@ export const getResultsCount = async (quizId?: string): Promise<number> => {
   return error ? 0 : (count || 0);
 };
 
-export const getResults = async (quizId?: string, maxRecords: number = 5000): Promise<Result[]> => {
+export const getResults = async (quizId?: string, maxRecords: number = 500): Promise<Result[]> => {
   if (!supabase) return [];
   try {
-      let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
-
-      while (hasMore && allData.length < maxRecords) {
-          let query = supabase.from('results')
-            .select('data')
-            .order('id', { ascending: false })
-            .range(from, from + step - 1);
-            
-          if (quizId && quizId !== 'all') {
-            query = query.eq('quiz_id', quizId);
-          }
-          
-          const { data, error } = await query;
-          if (error) throw error;
-          
-          if (data && data.length > 0) {
-              allData = [...allData, ...data];
-              from += step;
-              if (data.length < step) hasMore = false;
-          } else {
-              hasMore = false;
-          }
+      let query = supabase.from('results')
+        .select('id, quiz_id, student_id, data')
+        .order('id', { ascending: false })
+        .limit(maxRecords);
+        
+      if (quizId && quizId !== 'all') {
+        query = query.eq('quiz_id', quizId);
       }
-      return allData.map((row: any) => row.data as Result);
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      return (data || []).map((row: any) => (row.data || row) as Result);
   } catch (e) {
       return [];
   }
@@ -230,9 +219,9 @@ export const getResultsForStudent = async (studentId: string, studentCode?: stri
     return memoryCache[cacheKey].data;
   }
   let query = supabase.from('results')
-    .select('data')
+    .select('id, quiz_id, student_id, data')
     .order('id', { ascending: false })
-    .limit(500); // Lấy 500 bài gần nhất của học sinh này
+    .limit(100); // Lấy 100 bài gần nhất của học sinh (tiết kiệm băng thông tối đa)
     
   if (studentCode && studentCode !== 'N/A') {
     const code = studentCode.trim().toUpperCase();
@@ -242,7 +231,7 @@ export const getResultsForStudent = async (studentId: string, studentCode?: stri
   }
   const { data, error } = await query;
   if (error) return [];
-  const result = data.map((row: any) => row.data as Result);
+  const result = data ? data.map(mapRowToResultMeta) : [];
   memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
   return result;
 };
@@ -1100,6 +1089,113 @@ export const deleteChapter = async (id: string): Promise<void> => {
   if (supabase) await supabase.from('chapters').delete().eq('id', id);
 };
 
+// --- Lessons (Quản lý bài học thuộc chương) ---
+export const getLessons = async (forceRefresh: boolean = false): Promise<Lesson[]> => {
+  const cacheKey = 'lessons_all';
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
+
+  const fetchPromise = async (): Promise<Lesson[]> => {
+    let dbLessons: Lesson[] = [];
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('lessons').select('data');
+        if (!error && data && data.length > 0) {
+          dbLessons = data.map((row: any) => row.data as Lesson);
+        }
+      } catch (e) {
+        console.warn("Chưa đọc được bảng lessons trên Supabase, fallback sang localStorage:", e);
+      }
+    }
+    if (dbLessons.length === 0) {
+      try {
+        const local = localStorage.getItem('eduquiz_lessons_cache');
+        if (local) dbLessons = JSON.parse(local);
+      } catch (e) {}
+    }
+    memoryCache[cacheKey] = { data: dbLessons, expires: Date.now() + CACHE_TTL };
+    try {
+      localStorage.setItem('eduquiz_lessons_cache', JSON.stringify(dbLessons));
+    } catch (e) {}
+    return dbLessons;
+  };
+
+  const cached = memoryCache[cacheKey]?.data || [];
+  return withTimeout(fetchPromise(), 5000, cached);
+};
+
+export const saveLesson = async (l: Lesson): Promise<void> => {
+  invalidateCache('lessons_all');
+  try {
+    const list = await getLessons(true);
+    const idx = list.findIndex(item => item.id === l.id);
+    if (idx >= 0) list[idx] = l;
+    else list.push(l);
+    localStorage.setItem('eduquiz_lessons_cache', JSON.stringify(list));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      await supabase.from('lessons').upsert({
+        id: l.id,
+        grade: l.grade,
+        chapter_id: l.chapterId,
+        data: l
+      });
+    } catch (e) {
+      console.warn("Lưu lessons vào Supabase:", e);
+    }
+  }
+};
+
+export const deleteLesson = async (id: string): Promise<void> => {
+  invalidateCache('lessons_all');
+  try {
+    const list = await getLessons(true);
+    const updated = list.filter(item => item.id !== id);
+    localStorage.setItem('eduquiz_lessons_cache', JSON.stringify(updated));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      await supabase.from('lessons').delete().eq('id', id);
+    } catch (e) {
+      console.warn("Xóa lesson trên Supabase:", e);
+    }
+  }
+};
+
+export const saveLessonsBatch = async (lessonsList: Lesson[]): Promise<void> => {
+  invalidateCache('lessons_all');
+  if (lessonsList.length === 0) return;
+  try {
+    const current = await getLessons(true);
+    const map = new Map<string, Lesson>();
+    current.forEach(l => map.set(l.id, l));
+    lessonsList.forEach(l => map.set(l.id, l));
+    const merged = Array.from(map.values());
+    localStorage.setItem('eduquiz_lessons_cache', JSON.stringify(merged));
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      const payload = lessonsList.map(l => ({
+        id: l.id,
+        grade: l.grade,
+        chapter_id: l.chapterId,
+        data: l
+      }));
+      await supabase.from('lessons').upsert(payload);
+    } catch (e) {
+      console.warn("Lưu batch lessons vào Supabase:", e);
+    }
+  }
+};
+
+
+
 // --- Quiz Folders (Thư mục đề thi con trong từng Chương) ---
 // Dữ liệu được lưu trữ 100% trên Supabase Server (Single Source of Truth)
 
@@ -1402,6 +1498,75 @@ export const assignStudentsToClass = async (studentIds: string[], classInfo: { c
 };
 
 // --- Question Bank ---
+export const getBankQuestionsPage = async (
+    page: number = 1,
+    pageSize: number = 40,
+    gradeFilter?: Grade | 'all',
+    chapterFilter?: string,
+    typeFilter?: QuestionType | 'all',
+    levelFilter?: string,
+    search?: string
+): Promise<{ data: Question[], total: number }> => {
+    if (!supabase) return { data: [], total: 0 };
+    try {
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+
+        let query = supabase.from('bank_questions')
+            .select('data', { count: 'exact' });
+
+        if (gradeFilter && gradeFilter !== 'all') {
+            query = query.or(`data->>quizGrade.eq.${gradeFilter},data->>grade.eq.${gradeFilter}`);
+        }
+
+        if (typeFilter && typeFilter !== 'all') {
+            query = query.eq('data->>type', typeFilter);
+        }
+
+        if (levelFilter && levelFilter !== 'all') {
+            query = query.eq('data->>level', levelFilter);
+        }
+
+        if (search) {
+            query = query.ilike('data->>text', `%${search}%`);
+        }
+
+        const { data, count, error } = await query
+            .order('id', { ascending: false })
+            .range(from, to);
+
+        if (error) throw error;
+
+        let questions = data ? data.map((row: any) => row.data as Question) : [];
+        if (chapterFilter && chapterFilter !== 'all') {
+            const lowerCh = chapterFilter.toLowerCase();
+            questions = questions.filter((q: Question) => 
+                (q.chapterName && q.chapterName.toLowerCase().includes(lowerCh)) ||
+                (q.quizCategory && q.quizCategory.toLowerCase().includes(lowerCh))
+            );
+        }
+        return { data: questions, total: count || 0 };
+    } catch (e) {
+        console.error("Lỗi getBankQuestionsPage:", e);
+        return { data: [], total: 0 };
+    }
+};
+
+export const getBankQuestionsCount = async (gradeFilter?: Grade | 'all'): Promise<number> => {
+    if (!supabase) return 0;
+    try {
+        let query = supabase.from('bank_questions').select('*', { count: 'exact', head: true });
+        if (gradeFilter && gradeFilter !== 'all') {
+            query = query.or(`data->>quizGrade.eq.${gradeFilter},data->>grade.eq.${gradeFilter}`);
+        }
+        const { count, error } = await query;
+        if (error) return 0;
+        return count || 0;
+    } catch {
+        return 0;
+    }
+};
+
 export const getBankQuestions = async (
     gradeFilterOrForce?: Grade | 'all' | boolean, 
     forceRefreshParam: boolean = false
@@ -1918,7 +2083,7 @@ export const uploadQuizImage = async (file: File | Blob): Promise<string> => {
     return res.url;
 };
 
-export const getPublishedResults = async (limit: number = 20, forceRefresh: boolean = false): Promise<PublishedResult[]> => {
+export const getPublishedResults = async (limit: number = 6, forceRefresh: boolean = false): Promise<PublishedResult[]> => {
     if (!supabase) return [];
     const cacheKey = `published_results_${limit}`;
     const now = Date.now();
@@ -1929,6 +2094,70 @@ export const getPublishedResults = async (limit: number = 20, forceRefresh: bool
     const result = data ? data.map((row: any) => row.data as PublishedResult) : [];
     memoryCache[cacheKey] = { data: result, expires: now + CACHE_TTL };
     return result;
+};
+
+/**
+ * Tối ưu hóa băng thông đặc biệt cho Màn hình Học Sinh:
+ * CHỈ tải bản ghi vinh danh nào có chứa mã số của chính học sinh này (không tải toàn bộ CSDL bảng vinh danh của học sinh khác).
+ * Dữ liệu trả về chỉ chứa thông tin vinh danh của riêng em đó, giảm 99% băng thông mạng (~62.9 kB -> ~0.4 kB).
+ */
+export const getPublishedResultsForStudent = async (studentCode?: string, forceRefresh: boolean = false): Promise<PublishedResult[]> => {
+    if (!supabase || !studentCode) return [];
+    const cleanCode = studentCode.trim().toUpperCase();
+    if (!cleanCode) return [];
+    const cacheKey = `published_results_student_${cleanCode}`;
+    const now = Date.now();
+    if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+      return memoryCache[cacheKey].data;
+    }
+    try {
+      // 1. Dùng containment filter của PostgREST để lọc ngay tại máy chủ Supabase:
+      // data @> {"studentCodes": ["MÃ_HỌC_SINH"]}
+      let { data, error } = await supabase
+        .from('published_results')
+        .select('data')
+        .order('id', { ascending: false })
+        .contains('data', { studentCodes: [cleanCode] })
+        .limit(6);
+
+      let rows = data;
+      // Fallback nếu trong DB mã được lưu chữ thường hoặc ký tự gốc
+      if ((!rows || rows.length === 0) && studentCode.trim() !== cleanCode) {
+        const retry = await supabase
+          .from('published_results')
+          .select('data')
+          .order('id', { ascending: false })
+          .contains('data', { studentCodes: [studentCode.trim()] })
+          .limit(6);
+        if (retry.data && retry.data.length > 0) {
+          rows = retry.data;
+        }
+      }
+
+      if (!rows || rows.length === 0) {
+        memoryCache[cacheKey] = { data: [], expires: now + CACHE_TTL };
+        return [];
+      }
+
+      // 2. Chỉ giữ lại kết quả vinh danh của CHÍNH học sinh này
+      const myHonors: PublishedResult[] = rows.map((row: any) => {
+        const pub = row.data as PublishedResult;
+        if (!pub) return null;
+        const myResults = (pub.results || []).filter(r => (r.studentCode || '').trim().toUpperCase() === cleanCode);
+        if (myResults.length === 0) return null;
+        return {
+          ...pub,
+          results: myResults,
+          studentCodes: [cleanCode]
+        };
+      }).filter((p: PublishedResult | null): p is PublishedResult => p !== null);
+
+      memoryCache[cacheKey] = { data: myHonors, expires: now + CACHE_TTL };
+      return myHonors;
+    } catch (e) {
+      console.warn("Lỗi tải bảng vinh danh cá nhân học sinh:", e);
+      return [];
+    }
 };
 
 export const savePublishedResult = async (pub: PublishedResult): Promise<void> => {

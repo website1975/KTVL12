@@ -1,16 +1,17 @@
 
 import React, { useState, useMemo } from 'react';
-import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom, QuizFolder } from '../../types';
+import { Quiz, Question, Grade, QuestionType, Chapter, QuizType, ClassRoom, QuizFolder, Lesson } from '../../types';
 import { 
   Save, FileUp, Database, CheckCircle2, HelpCircle, AlignLeft, Trash2, 
   Target as TargetIcon, Plus, ImageIcon, Loader2, Lightbulb, Eye, ImageMinus, 
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
   Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste,
-  FolderTree, AlertTriangle, ArrowLeft, RotateCcw, ImagePlus
+  FolderTree, AlertTriangle, ArrowLeft, RotateCcw, ImagePlus, BookOpen, ExternalLink
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
+import LessonViewerModal from '../LessonViewerModal';
 import { parseQuestionsFromJSON, autoCategorizeChaptersWithAI, autoClassifyLevelsWithAI, generateSolutionForQuestionWithAI, batchGenerateSolutionsWithAI } from '../../services/gemini';
 import QuizImageGalleryModal from './QuizImageGalleryModal';
 import PdfImageExtractorModal from './PdfImageExtractorModal';
@@ -76,6 +77,8 @@ interface QuizEditorProps {
     isAiLoading?: boolean;
     onCancel?: () => void;
     onResetQuiz?: () => void;
+    lessons?: Lesson[];
+    onSaveLesson?: (lesson: Lesson) => Promise<void> | void;
 }
 
 const safeParseScore = (val: any): number => {
@@ -108,6 +111,9 @@ interface QuestionSectionProps {
     solvingQId?: string | null;
     isSolvingBatch?: boolean;
     onOpenInsertImageModal?: (qId: string, field: 'context' | 'text' | 'solution', label?: string) => void;
+    lessons?: Lesson[];
+    onSaveLesson?: (lesson: Lesson) => Promise<void> | void;
+    quizGrade?: Grade;
 }
 
 const QuestionSection: React.FC<QuestionSectionProps> = ({ 
@@ -130,11 +136,15 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     onBatchSolveSection,
     solvingQId,
     isSolvingBatch,
-    onOpenInsertImageModal
+    onOpenInsertImageModal,
+    lessons = [],
+    onSaveLesson,
+    quizGrade = '10'
 }) => {
     const [quickPoints, setQuickPoints] = useState(type === 'mcq' ? "0.25" : "1.0");
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
     const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
+    const [previewLesson, setPreviewLesson] = useState<{ url: string; title?: string } | null>(null);
     const sectionQuestions = questions.filter(q => q.type === type);
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
@@ -879,8 +889,254 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                             <div className="w-full p-5 bg-white rounded-[2rem] border-2 border-slate-100 min-h-[100px] text-sm italic text-slate-500 overflow-auto shadow-inner"><LatexText text={q.solution || '*Chưa có lời giải*'} /></div>
                         </div>
                     </div>
+
+                    {/* KHUNG KIẾN THỨC TRỌNG TÂM & LINK BÀI HỌC VERCEL/SGK */}
+                    <div className="mt-8 pt-6 border-t-2 border-amber-200/80 bg-gradient-to-br from-amber-50/50 via-orange-50/20 to-transparent p-6 rounded-[2rem] border border-amber-100">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                            <div className="flex items-center gap-2">
+                                <span className="w-7 h-7 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-xs shadow-xs">
+                                    📌
+                                </span>
+                                <div>
+                                    <h4 className="font-black text-amber-950 text-xs uppercase tracking-tight">
+                                        Kiến thức trọng tâm & Bài học SGK (Phương án 1)
+                                    </h4>
+                                    <p className="text-[10px] text-amber-700 font-medium">
+                                        Hiển thị khung công thức cốt lõi đập vào mắt học sinh khi làm sai + Nút mở bài học Vercel
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const nl = [...questions];
+                                    const i = nl.findIndex(x => x.id === q.id);
+                                    if (i !== -1) {
+                                        nl[i].lessonTitle = nl[i].lessonTitle || 'Bài 13: Tổng hợp lực';
+                                        nl[i].lessonUrl = nl[i].lessonUrl || 'https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-1780405969910';
+                                        if (!nl[i].keyConcept) {
+                                            nl[i].keyConcept = 'Công thức tổng hợp lực: $F = \\sqrt{F_1^2 + F_2^2 + 2F_1F_2\\cos\\alpha}$.\n- Khi hai lực cùng chiều ($\\alpha = 0^\\circ$): $F = F_1 + F_2$.\n- Khi hai lực ngược chiều ($\\alpha = 180^\\circ$): $F = |F_1 - F_2|$.';
+                                        }
+                                        setQuestions(nl);
+                                    }
+                                }}
+                                className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-[10px] font-black uppercase transition-all shadow-xs self-start sm:self-auto active:scale-95 flex items-center gap-1.5"
+                                title="Điền nhanh link và công thức mẫu về Tổng hợp lực để thử nghiệm"
+                            >
+                                <Sparkles size={12} className="text-amber-700" />
+                                <span>Gắn mẫu Vercel (Tổng hợp lực)</span>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Cột 1: Soạn Khung kiến thức trọng tâm (KaTeX) */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black text-amber-800 uppercase flex items-center gap-1.5">
+                                        <span>Khung công thức / Định lý cốt lõi:</span>
+                                    </label>
+                                    <span className="text-[9px] font-bold text-amber-600 bg-amber-100/70 px-2 py-0.5 rounded-md">
+                                        KaTeX: $...$
+                                    </span>
+                                </div>
+                                <textarea
+                                    className="w-full p-4 bg-white border-2 border-amber-200/90 rounded-2xl text-xs font-medium outline-none min-h-[95px] focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition-all placeholder:text-slate-300 leading-relaxed"
+                                    value={q.keyConcept || ''}
+                                    onChange={e => {
+                                        const nl = [...questions];
+                                        const i = nl.findIndex(x => x.id === q.id);
+                                        nl[i].keyConcept = e.target.value;
+                                        setQuestions(nl);
+                                    }}
+                                    placeholder="VD: $F = \sqrt{F_1^2 + F_2^2 + 2F_1F_2\cos\alpha}$. Khi $\alpha=0^\circ \Rightarrow F = F_1 + F_2$..."
+                                />
+                                {q.keyConcept && (
+                                    <div className="p-3 bg-white/95 rounded-xl border border-amber-200 text-xs text-slate-700 shadow-xs">
+                                        <div className="text-[9px] font-black uppercase text-amber-700 mb-1 flex items-center gap-1">
+                                            <span>Xem trước hiển thị:</span>
+                                        </div>
+                                        <LatexText text={q.keyConcept} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Cột 2: Gắn Link bài học Vercel & Tên bài */}
+                            <div className="space-y-3">
+                                {/* Hộp chọn nhanh bài học từ Thư viện đã lưu */}
+                                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black text-blue-900 uppercase flex items-center gap-1.5">
+                                            <BookOpen size={13} className="text-blue-600" />
+                                            <span>Chọn bài học đã lưu (Khỏi copy link):</span>
+                                        </label>
+                                        {lessons.length > 0 && (
+                                            <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                                                {lessons.length} bài có sẵn
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <select
+                                        className="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-600 transition-all cursor-pointer"
+                                        value={lessons.find(l => l.url === q.lessonUrl || (q.lessonTitle && l.title === q.lessonTitle))?.id || ''}
+                                        onChange={e => {
+                                            const chosenId = e.target.value;
+                                            if (!chosenId) return;
+                                            const chosen = lessons.find(l => l.id === chosenId);
+                                            if (chosen) {
+                                                const nl = [...questions];
+                                                const i = nl.findIndex(x => x.id === q.id);
+                                                if (i !== -1) {
+                                                    nl[i].lessonTitle = chosen.title;
+                                                    nl[i].lessonUrl = chosen.url;
+                                                    if (!nl[i].keyConcept && chosen.defaultKeyConcept) {
+                                                        nl[i].keyConcept = chosen.defaultKeyConcept;
+                                                    }
+                                                    setQuestions(nl);
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <option value="">-- Bấm để chọn bài học thuộc chương ({lessons.length} bài) --</option>
+                                        {/* Gom nhóm bài học theo Khối & Chương */}
+                                        {Array.from(new Set(lessons.map(l => `Khối ${l.grade} • ${l.chapterName}`))).map(groupKey => {
+                                            const groupLessons = lessons.filter(l => `Khối ${l.grade} • ${l.chapterName}` === groupKey);
+                                            return (
+                                                <optgroup key={groupKey} label={groupKey}>
+                                                    {groupLessons.map(l => (
+                                                        <option key={l.id} value={l.id}>
+                                                            {l.title}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            );
+                                        })}
+                                    </select>
+
+                                    {/* Trạng thái liên kết */}
+                                    {q.lessonUrl && (
+                                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 truncate max-w-[260px]">
+                                                <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                                                <span className="truncate">Đã liên kết: {q.lessonTitle || 'Bài học'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewLesson({ url: q.lessonUrl!, title: q.lessonTitle })}
+                                                    className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    <span>Xem thử</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const nl = [...questions];
+                                                        const i = nl.findIndex(x => x.id === q.id);
+                                                        if (i !== -1) {
+                                                            nl[i].lessonTitle = undefined;
+                                                            nl[i].lessonUrl = undefined;
+                                                            setQuestions(nl);
+                                                        }
+                                                    }}
+                                                    className="text-[9px] font-bold text-red-600 hover:underline"
+                                                >
+                                                    Gỡ link
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black text-blue-900 uppercase block mb-1">
+                                        Tên bài học liên quan:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2.5 bg-white border-2 border-blue-200/80 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-all placeholder:text-slate-300"
+                                        value={q.lessonTitle || ''}
+                                        onChange={e => {
+                                            const nl = [...questions];
+                                            const i = nl.findIndex(x => x.id === q.id);
+                                            nl[i].lessonTitle = e.target.value;
+                                            setQuestions(nl);
+                                        }}
+                                        placeholder="VD: Bài 13: Tổng hợp và phân tích lực"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black text-blue-900 uppercase block mb-1">
+                                        Đường dẫn bài học (Link Vercel / HTML):
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            className="flex-1 px-4 py-2.5 bg-white border-2 border-blue-200/80 rounded-xl text-xs font-semibold text-blue-700 outline-none focus:border-blue-500 transition-all placeholder:text-slate-300"
+                                            value={q.lessonUrl || ''}
+                                            onChange={e => {
+                                                const nl = [...questions];
+                                                const i = nl.findIndex(x => x.id === q.id);
+                                                nl[i].lessonUrl = e.target.value;
+                                                setQuestions(nl);
+                                            }}
+                                            placeholder="https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-..."
+                                        />
+                                        {q.lessonUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewLesson({ url: q.lessonUrl!, title: q.lessonTitle })}
+                                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-sm active:scale-95 shrink-0"
+                                                title="Mở xem thử bài học trực tiếp trong modal"
+                                            >
+                                                <ExternalLink size={13} />
+                                                <span>Xem thử</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Nút lưu nhanh bài học mới vào Danh mục nếu chưa có trong lessons */}
+                                {q.lessonTitle && q.lessonUrl && onSaveLesson && !lessons.some(l => l.url === q.lessonUrl) && (
+                                    <div className="pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const newLesson: Lesson = {
+                                                    id: uuidv4(),
+                                                    grade: quizGrade,
+                                                    chapterId: q.chapterId || `ch_${quizGrade}`,
+                                                    chapterName: q.chapterName || `Chương Khối ${quizGrade}`,
+                                                    title: q.lessonTitle!,
+                                                    url: q.lessonUrl!,
+                                                    defaultKeyConcept: q.keyConcept
+                                                };
+                                                await onSaveLesson(newLesson);
+                                                alert(`Đã lưu "${newLesson.title}" vào Danh mục bài học để dùng lại cho các câu khác!`);
+                                            }}
+                                            className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1.5"
+                                            title="Lưu bài học này vào menu Bài học để các câu sau có thể chọn ngay"
+                                        >
+                                            <Plus size={12} />
+                                            <span>Lưu bài này vào Thư viện bài học</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             ))}
+
+            <LessonViewerModal
+                isOpen={!!previewLesson}
+                lessonUrl={previewLesson?.url || ''}
+                lessonTitle={previewLesson?.title}
+                onClose={() => setPreviewLesson(null)}
+            />
         </div>
     );
 };
@@ -2503,6 +2759,9 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onBatchSolveSection={() => handleBatchSolveSection('mcq')}
                 solvingQId={solvingQId}
                 isSolvingBatch={isSolvingBatchSection === 'mcq'}
+                lessons={props.lessons}
+                onSaveLesson={props.onSaveLesson}
+                quizGrade={props.grade}
             />
             <QuestionSection 
                 sectionTitle="PHẦN II. TRẮC NGHIỆM ĐÚNG SAI" 
@@ -2525,6 +2784,9 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onBatchSolveSection={() => handleBatchSolveSection('group-tf')}
                 solvingQId={solvingQId}
                 isSolvingBatch={isSolvingBatchSection === 'group-tf'}
+                lessons={props.lessons}
+                onSaveLesson={props.onSaveLesson}
+                quizGrade={props.grade}
             />
             <QuestionSection 
                 sectionTitle="PHẦN III. TRẢ LỜI NGẮN" 
@@ -2547,6 +2809,9 @@ export default function QuizEditor(props: QuizEditorProps) {
                 onBatchSolveSection={() => handleBatchSolveSection('short')}
                 solvingQId={solvingQId}
                 isSolvingBatch={isSolvingBatchSection === 'short'}
+                lessons={props.lessons}
+                onSaveLesson={props.onSaveLesson}
+                quizGrade={props.grade}
             />
 
             {/* Modal Quản lý và Tái sử dụng kho ảnh đề thi */}

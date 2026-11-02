@@ -2,9 +2,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Quiz, User, Result, Question, ExamSession } from '../types';
 import { saveResult, addPointsToUser, saveExamSession, deleteExamSession, verifyResultExists } from '../services/storage';
+import { saveOfflinePendingResult } from '../services/offlineStorage';
 import { shuffleQuestionsByParts, restoreQuestionsOrder } from '../services/quizShuffler';
 import { v4 as uuidv4 } from 'uuid';
-import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark, CheckCircle2 } from 'lucide-react';
+import { Clock, Send, XCircle, ShieldAlert, Loader2, Trophy, Home, SearchCheck, Bookmark, CheckCircle2, Wifi, WifiOff, CloudCheck } from 'lucide-react';
 import LatexText from './LatexText';
 import { getContextGroupInfo } from '../services/vietnameseFixer';
 import { addMinutes, differenceInSeconds } from 'date-fns';
@@ -105,10 +106,23 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'queuing' | 'saving' | 'verifying' | 'done' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [finalResult, setFinalResult] = useState<Result | null>(null);
+    const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+    const [isOfflineSaved, setIsOfflineSaved] = useState<boolean>(false);
     
     const currentAnswersRef = useRef(currentAnswers);
     const spentRef = useRef(spent);
     const violationsRef = useRef(violations);
+
+    useEffect(() => {
+        const handleOn = () => setIsOnline(true);
+        const handleOff = () => setIsOnline(false);
+        window.addEventListener('online', handleOn);
+        window.addEventListener('offline', handleOff);
+        return () => {
+            window.removeEventListener('online', handleOn);
+            window.removeEventListener('offline', handleOff);
+        };
+    }, []);
 
     useEffect(() => {
         currentAnswersRef.current = currentAnswers;
@@ -120,6 +134,7 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     }, [currentAnswers, spent, violations, submitStatus]);
 
     const updateMonitorStatus = async (violationCount: number, isFinished = false) => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return; // Bỏ qua heartbeat khi ngoại tuyến
         try {
             const session: ExamSession = {
                 id: sessionIdRef.current,
@@ -252,6 +267,29 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             questionOrder: orderedQuestions.map(q => q.id) // GHI NHỚ THỨ TỰ CÂU HỎI ĐÃ XÁO TRỘN CỦA LƯỢT THI NÀY
         };
 
+        // Kiểm tra xem thiết bị có đang offline không
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+        if (isOffline) {
+            // Chế độ hoàn toàn ngoại tuyến: Lưu bài thi trực tiếp vào bộ nhớ máy an toàn
+            try {
+                await saveOfflinePendingResult(result, quiz.title);
+                localStorage.removeItem(backupKey);
+                localStorage.removeItem(sessionStartKey);
+                localStorage.removeItem(orderStorageKey);
+                setIsOfflineSaved(true);
+                setFinalResult(result);
+                setSubmitStatus('done');
+            } catch (offlineErr: any) {
+                console.error("Lỗi lưu bài ngoại tuyến:", offlineErr);
+                setErrorMessage("Không thể lưu bài thi vào bộ nhớ máy: " + (offlineErr?.message || 'Lỗi'));
+                setSubmitStatus('error');
+            } finally {
+                setIsSubmitting(false);
+            }
+            return;
+        }
+
         try {
             await saveResult(result);
             setSubmitStatus('verifying');
@@ -268,12 +306,25 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             localStorage.removeItem(sessionStartKey);
             localStorage.removeItem(orderStorageKey);
             
+            setIsOfflineSaved(false);
             setFinalResult(result);
             setSubmitStatus('done');
         } catch (error: any) {
-            console.error("Lỗi nộp bài:", error);
-            setErrorMessage(error.message || "Lỗi không xác định");
-            setSubmitStatus('error');
+            console.warn("Lưu lên máy chủ thất bại, tự động chuyển sang chế độ lưu ngoại tuyến an toàn:", error);
+            // TỰ ĐỘNG CỨU HỘ NGOẠI TUYẾN: Nếu mạng chập chờn khi nộp, lưu ngay vào hàng đợi offline để không bao giờ mất điểm!
+            try {
+                await saveOfflinePendingResult(result, quiz.title);
+                localStorage.removeItem(backupKey);
+                localStorage.removeItem(sessionStartKey);
+                localStorage.removeItem(orderStorageKey);
+                setIsOfflineSaved(true);
+                setFinalResult(result);
+                setSubmitStatus('done');
+            } catch (fallbackErr: any) {
+                console.error("Lỗi nộp bài:", error);
+                setErrorMessage(error.message || "Lỗi không xác định");
+                setSubmitStatus('error');
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -305,20 +356,45 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
     if (submitStatus === 'done' && finalResult) {
         return (
             <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 animate-fade-in">
-                <div className="max-w-md w-full bg-white rounded-[3.5rem] p-12 text-center shadow-2xl space-y-8 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
-                    <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={48} className="animate-bounce"/></div>
-                    <div className="space-y-2">
-                        <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Nộp bài thành công!</h2>
-                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest italic">Dữ liệu đã được lưu trên Cloud</p>
+                <div className="max-w-md w-full bg-white rounded-[3.5rem] p-10 sm:p-12 text-center shadow-2xl space-y-6 relative overflow-hidden">
+                    <div className={`absolute top-0 left-0 w-full h-2.5 ${isOfflineSaved ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                    
+                    <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto shadow-inner ${
+                        isOfflineSaved ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                    }`}>
+                        {isOfflineSaved ? <CloudCheck size={48} className="animate-bounce" /> : <Trophy size={48} className="animate-bounce" />}
                     </div>
-                    <div className="bg-slate-50 rounded-[2rem] p-8 space-y-4 border border-slate-100">
+
+                    <div className="space-y-1.5">
+                        <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tight">Nộp bài thành công!</h2>
+                        {isOfflineSaved ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-full text-[10px] font-black uppercase">
+                                <WifiOff size={12} /> Đã lưu ngoại tuyến an toàn
+                            </span>
+                        ) : (
+                            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest italic">Dữ liệu đã được lưu trên Cloud</p>
+                        )}
+                    </div>
+
+                    <div className="bg-slate-50 rounded-[2rem] p-6 space-y-3 border border-slate-100">
                         <div className="flex justify-between items-center px-4">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Điểm số</span>
-                            <span className="text-4xl font-black text-emerald-600 italic">{finalResult.score.toFixed(2)}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Điểm số đạt được</span>
+                            <span className="text-4xl font-black text-emerald-600 italic">{finalResult.score.toFixed(2)}đ</span>
                         </div>
                     </div>
-                    <button onClick={onExit} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
+
+                    {isOfflineSaved && (
+                        <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl text-left space-y-1.5">
+                            <p className="text-[11px] font-black uppercase text-amber-900 flex items-center gap-1.5">
+                                <span>📶</span> Tự động đồng bộ khi có mạng
+                            </p>
+                            <p className="text-[10px] text-amber-800 leading-relaxed font-medium">
+                                Kết quả bài thi của bạn đã được ghi nhớ vĩnh viễn trên máy này. Hệ thống sẽ tự động gửi lên máy chủ cho giáo viên ngay khi thiết bị kết nối Wifi/4G trở lại.
+                            </p>
+                        </div>
+                    )}
+
+                    <button onClick={onExit} className="w-full py-4.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95">
                         <Home size={18}/> Về trang chủ
                     </button>
                 </div>
@@ -400,6 +476,26 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                                 Nộp bài ngay
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Offline Status Warning Banner */}
+            {!isOnline && (
+                <div className="max-w-7xl w-full mx-auto px-4 mt-3 -mb-4 z-40">
+                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md animate-pulse">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                                <WifiOff size={18} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-tight">Trạng thái ngoại tuyến (Offline)</p>
+                                <p className="text-[11px] text-amber-100 font-medium">Bạn đang làm bài ngoại tuyến hoàn toàn. Đáp án được tự động lưu an toàn trên máy và sẽ tự động đồng bộ lên máy chủ khi có mạng lại.</p>
+                            </div>
+                        </div>
+                        <span className="px-3 py-1 bg-white/20 rounded-xl text-[9px] font-black uppercase shrink-0 hidden sm:inline-block">
+                            Offline Safe
+                        </span>
                     </div>
                 </div>
             )}

@@ -7,9 +7,6 @@ interface AIRendererProps {
     grade: Grade;
     setGrade: (val: Grade) => void;
     chapters?: Chapter[];
-    bankQuestions?: Question[];
-    isBankLoading?: boolean;
-    onLoadBank?: (grade?: Grade | 'all') => Promise<void> | void;
     onGenerate: (config: {
         topic: string;
         p1: number;
@@ -36,9 +33,6 @@ export default function AIRenderer({
     grade, 
     setGrade, 
     chapters = [], 
-    bankQuestions = [], 
-    isBankLoading = false,
-    onLoadBank,
     onGenerate, 
     onGenerateFromMatrix,
     isLoading, 
@@ -124,7 +118,7 @@ export default function AIRenderer({
         <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-20">
             {/* TAB CHỌN CHẾ ĐỘ SOẠN ĐỀ */}
             <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 bg-slate-200/80 rounded-3xl max-w-2xl mx-auto border border-slate-300 shadow-inner">
-                <button
+                 <button
                     type="button"
                     onClick={() => setActiveMode('matrix')}
                     className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-xs font-black uppercase transition-all ${
@@ -134,8 +128,8 @@ export default function AIRenderer({
                     }`}
                 >
                     <Grid3X3 size={16} />
-                    <span>Lấy từ Ngân hàng (Ma trận)</span>
-                    <span className="hidden sm:inline-block text-[9px] bg-white/20 px-1.5 py-0.5 rounded-full">Siêu tốc</span>
+                    <span>Tạo đề theo Ma trận (AI)</span>
+                    <span className="hidden sm:inline-block text-[9px] bg-white/20 px-1.5 py-0.5 rounded-full">Soạn mới</span>
                 </button>
 
                 <button
@@ -165,15 +159,12 @@ export default function AIRenderer({
                 </button>
             </div>
 
-            {/* CHẾ ĐỘ 1: TẠO TỪ NGÂN HÀNG THEO MA TRẬN */}
+            {/* CHẾ ĐỘ 1: TẠO ĐỀ THEO MA TRẬN BẰNG AI */}
             {activeMode === 'matrix' && (
                 <MatrixQuizGenerator
                     grade={grade}
                     setGrade={setGrade}
                     chapters={chapters}
-                    bankQuestions={bankQuestions}
-                    isBankLoading={isBankLoading}
-                    onLoadBank={onLoadBank}
                     hasQuestionsInEditor={hasQuestionsInEditor}
                     onGenerateSuccess={(createdQuestions, quizTitle, targetType, durationMinutes, chosenAction) => {
                         if (onGenerateFromMatrix) {

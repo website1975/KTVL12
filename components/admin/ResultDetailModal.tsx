@@ -1,8 +1,10 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, CheckCircle2, XCircle, HelpCircle, Info, Lock, Bookmark } from 'lucide-react';
 import { Result, Quiz, Question } from '../../types';
 import LatexText from '../LatexText';
+import KeyConceptCard from '../KeyConceptCard';
+import LessonViewerModal from '../LessonViewerModal';
 import { restoreQuestionsOrder } from '../../services/quizShuffler';
 import { getContextGroupInfo } from '../../services/vietnameseFixer';
 import { isAfter, addMinutes } from 'date-fns';
@@ -15,6 +17,7 @@ interface ResultDetailModalProps {
 }
 
 export default function ResultDetailModal({ isOpen, result, quiz, onClose }: ResultDetailModalProps) {
+    const [activeLesson, setActiveLesson] = useState<{ url: string; title?: string } | null>(null);
     // Khôi phục chính xác thứ tự câu hỏi đã xáo trộn riêng cho lượt làm bài này của học sinh
     const orderedQuestions = useMemo(() => {
         if (!quiz || !result) return [];
@@ -170,8 +173,20 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
                     </div>
                 )}
 
+                {/* Khung kiến thức trọng tâm & Nút bài học Vercel */}
+                {showDetailAnswers && (q.keyConcept || q.lessonUrl) && (
+                    <div className="mt-6">
+                        <KeyConceptCard
+                            keyConcept={q.keyConcept}
+                            lessonUrl={q.lessonUrl}
+                            lessonTitle={q.lessonTitle}
+                            onOpenLesson={(url, title) => setActiveLesson({ url, title })}
+                        />
+                    </div>
+                )}
+
                 {showDetailAnswers && q.solution && (
-                    <div className="mt-10 pt-8 border-t border-dashed border-slate-100 bg-blue-50/30 -mx-10 -mb-10 p-10 rounded-b-[2.5rem]">
+                    <div className="mt-8 pt-8 border-t border-dashed border-slate-100 bg-blue-50/30 -mx-10 -mb-10 p-10 rounded-b-[2.5rem]">
                         <div className="flex items-center gap-2 mb-4 text-blue-600">
                             <Info size={18}/>
                             <h5 className="text-[10px] font-black uppercase tracking-widest">Lời giải chi tiết</h5>
@@ -249,6 +264,13 @@ export default function ResultDetailModal({ isOpen, result, quiz, onClose }: Res
                     </div>
                 </div>
             </div>
+
+            <LessonViewerModal
+                isOpen={!!activeLesson}
+                lessonUrl={activeLesson?.url || ''}
+                lessonTitle={activeLesson?.title}
+                onClose={() => setActiveLesson(null)}
+            />
         </div>
     );
 }
