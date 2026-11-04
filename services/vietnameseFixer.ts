@@ -321,8 +321,8 @@
             return repairVietnameseTextOnly(wrapped);
         }
 
-        // Tách chuỗi thành các phần LaTeX ($...$) và văn bản thường
-        const parts = wrapped.split(/(\$.*?\$)/g);
+        // Tách chuỗi thành các phần LaTeX ($$...$$ hoặc $...$) và văn bản thường
+        const parts = wrapped.split(/(\${2}[\s\S]*?\${2}|\$[^\$\n]+?\$)/g);
         
         return parts.map(part => {
             if (part.startsWith('$') && part.endsWith('$')) {

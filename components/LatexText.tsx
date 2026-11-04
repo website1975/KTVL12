@@ -1,89 +1,111 @@
 import React, { useMemo, useState } from 'react';
 import { normalizeFullText } from '../services/vietnameseFixer';
-import { X, ZoomIn } from 'lucide-react';
+import { X } from 'lucide-react';
 
 declare const katex: any;
 
 interface LatexTextProps {
   text: string;
+  className?: string;
 }
 
-export default function LatexText({ text }: LatexTextProps) {
+export default function LatexText({ text, className = '' }: LatexTextProps) {
   const [zoomImg, setZoomImg] = useState<string | null>(null);
 
   if (!text) return null;
 
-  // Chuẩn hóa tiếng Việt (sửa vỡ dấu), giữ nguyên 100% công thức trong $...$
+  // Chuẩn hóa tiếng Việt (sửa vỡ dấu), giữ nguyên 100% công thức trong $...$ và $$...$$
   const cleanText = useMemo(() => normalizeFullText(text), [text]);
 
-  // Tách text theo cú pháp LaTeX $...$
-  const parts = useMemo(() => cleanText.split(/(\$.*?\$)/g), [cleanText]);
+  const renderedContent = useMemo(() => {
+    if (!cleanText) return null;
 
-  // Lấy đối tượng KaTeX an toàn
-  const getKatexInstance = () => {
-    if (typeof katex !== 'undefined') return katex;
-    if (typeof window !== 'undefined' && (window as any).katex) return (window as any).katex;
-    return null;
-  };
+    // Tách chuỗi theo: Thẻ ảnh <img...>, Display Math $$...$$, Inline Math $...$
+    const parts = cleanText.split(/(<img[^>]*>|\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
 
-  const k = getKatexInstance();
+    return parts.map((part, index) => {
+      if (!part) return null;
 
-  const handleContainerClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target && target.tagName === 'IMG') {
-      const src = (target as HTMLImageElement).src;
-      if (src) {
-        setZoomImg(src);
+      // 1. Xử lý thẻ ảnh <img>
+      if (part.startsWith('<img') && part.endsWith('>')) {
+        const srcMatch = part.match(/src=["'](.*?)["']/);
+        const altMatch = part.match(/alt=["'](.*?)["']/);
+        const src = srcMatch ? srcMatch[1] : '';
+        const alt = altMatch ? altMatch[1] : 'Hình ảnh';
+
+        return (
+          <span key={index} className="inline-block my-2 max-w-full">
+            <img
+              src={src}
+              alt={alt}
+              className="max-h-72 max-w-full object-contain rounded-xl border border-slate-200 shadow-sm cursor-zoom-in hover:opacity-95 transition-all"
+              onClick={() => setZoomImg(src)}
+            />
+          </span>
+        );
       }
-    }
-  };
+
+      // 2. Xử lý Display Math: $$...$$
+      if (part.startsWith('$$') && part.endsWith('$$') && part.length > 4) {
+        const formula = part.slice(2, -2).trim();
+        try {
+          const k = typeof katex !== 'undefined' ? katex : (typeof window !== 'undefined' ? (window as any).katex : null);
+          if (k) {
+            const html = k.renderToString(formula, {
+              displayMode: true,
+              throwOnError: false,
+            });
+            return (
+              <span
+                key={index}
+                className="block my-2 overflow-x-auto text-center"
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            );
+          }
+          return <span key={index} className="block my-2 font-mono text-center">{formula}</span>;
+        } catch {
+          return <span key={index} className="block my-2 font-mono text-red-500">{formula}</span>;
+        }
+      }
+
+      // 3. Xử lý Inline Math: $...$
+      if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+        const formula = part.slice(1, -1).trim();
+        try {
+          const k = typeof katex !== 'undefined' ? katex : (typeof window !== 'undefined' ? (window as any).katex : null);
+          if (k) {
+            const html = k.renderToString(formula, {
+              displayMode: false,
+              throwOnError: false,
+            });
+            return (
+              <span
+                key={index}
+                className="inline-block mx-0.5"
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            );
+          }
+          return <span key={index} className="font-mono">{formula}</span>;
+        } catch {
+          return <span key={index} className="font-mono text-red-500">{formula}</span>;
+        }
+      }
+
+      // 4. Văn bản thường: giữ nguyên ngắt dòng và thụt lề
+      return (
+        <span key={index} className="whitespace-pre-wrap">
+          {part}
+        </span>
+      );
+    });
+  }, [cleanText]);
 
   return (
     <>
-      <span onClick={handleContainerClick} className="quiz-rendered-text">
-        {parts.map((part, i) => {
-          if (!part) return null;
-          if (part.startsWith('$') && part.endsWith('$')) {
-            const latex = part.slice(1, -1);
-            
-            // Hỗ trợ trường hợp gõ $\\$ hoặc $\\\\$ để xuống dòng
-            if (latex.trim() === '\\' || latex.trim() === '\\\\' || latex.trim() === '') {
-              return <br key={i} className="my-0.5" />;
-            }
-
-            try {
-              if (k) {
-                const html = k.renderToString(latex, { 
-                  throwOnError: false,
-                  output: 'html',
-                  displayMode: false
-                });
-                return (
-                  <span 
-                    key={i} 
-                    dangerouslySetInnerHTML={{ __html: html }} 
-                    data-latex={latex}
-                    className="latex-item inline-block mx-0.5 align-baseline" 
-                  />
-                );
-              }
-              return <code key={i} className="bg-gray-100 px-1 py-0.5 rounded text-blue-600 font-mono text-sm">{latex}</code>;
-            } catch (e) {
-              return <span key={i} className="text-red-400">{part}</span>;
-            }
-          }
-
-          // Hỗ trợ chuyển đổi Markdown image ![mô tả](url) thành thẻ <img> đẹp mắt
-          let formattedPart = part.replace(
-            /!\[(.*?)\]\((https?:\/\/[^\s\)]+|data:image\/[^\s\)]+)\)/g,
-            '<img src="$2" alt="$1" class="quiz-inline-img my-2.5 max-h-72 max-w-full rounded-xl border border-slate-200 shadow-sm mx-auto block cursor-zoom-in" style="max-height: 280px; object-fit: contain;" loading="lazy" />'
-          );
-
-          // Cho phép render HTML (như thẻ <br/>, <b>, <img>...) và tự động chuyển phím Enter (\n) thành <br/>
-          formattedPart = formattedPart.replace(/\n/g, '<br/>');
-
-          return <span key={i} dangerouslySetInnerHTML={{ __html: formattedPart }} />;
-        })}
+      <span className={`quiz-rendered-text ${className}`}>
+        {renderedContent}
       </span>
 
       {/* Modal Phóng to xem ảnh lớn khi click vào bất kỳ ảnh nào trong đề hoặc lời dẫn */}

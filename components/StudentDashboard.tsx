@@ -807,11 +807,6 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     });
   }, [filteredQuizzes, getQuizTiming]);
 
-  // 3. Đề thi đã làm (Học sinh đã nộp ít nhất 1 lần)
-  const completedTestQuizzes = useMemo(() => {
-    const attemptedQuizIds = new Set(results.map(r => r.quizId));
-    return filteredQuizzes.filter(q => q.type === 'test' && attemptedQuizIds.has(q.id));
-  }, [filteredQuizzes, results]);
 
   // 4. Kho đề luyện tập
   const practiceQuizzes = useMemo(() => {
@@ -993,7 +988,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                         : 'bg-slate-50 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-                <span>Tất cả ({openTestQuizzes.length + upcomingTestQuizzes.length + completedTestQuizzes.length + practiceQuizzes.length})</span>
+                <span>Tất cả ({openTestQuizzes.length + upcomingTestQuizzes.length + practiceQuizzes.length})</span>
             </button>
             <button
                 onClick={() => setQuizStatusTab('open')}
@@ -1018,15 +1013,15 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                 <span>Sắp làm ({upcomingTestQuizzes.length})</span>
             </button>
             <button
-                onClick={() => setQuizStatusTab('completed')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'completed'
-                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
-                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                }`}
+                onClick={() => {
+                    const el = document.getElementById('student-results-history');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 group"
+                title="Xem danh sách bài thi đã làm & kết quả chi tiết ở bảng bên dưới"
             >
-                <CheckCircle2 size={12} />
-                <span>Đã làm ({completedTestQuizzes.length})</span>
+                <CheckCircle2 size={12} className="text-emerald-600 group-hover:scale-110 transition-transform" />
+                <span>Đã làm ({results.length})</span>
             </button>
             <button
                 onClick={() => setQuizStatusTab('practice')}
@@ -1686,84 +1681,6 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
               </div>
           )}
 
-          {/* 3. ĐỀ THI ĐÃ LÀM (DANH SÁCH CÁC ĐỀ ĐÃ NỘP BÀI) */}
-          {(quizStatusTab === 'completed' || (quizStatusTab === 'all' && completedTestQuizzes.length > 0)) && (
-              <div>
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <CheckCircle2 size={16} className="text-emerald-600"/>
-                          <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Đề thi đã làm (Kết quả của bạn)</h2>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black text-[9px] rounded-full uppercase">
-                              {completedTestQuizzes.length} đề đã nộp
-                          </span>
-                      </div>
-                      <div className="h-px flex-1 bg-emerald-100"></div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {completedTestQuizzes.map(q => {
-                          const timing = getQuizTiming(q);
-                          const latestAttempt = timing.myAttempts[0];
-                          const totalQuestions = q.questionCount || (q.questions ? q.questions.length : (latestAttempt?.totalQuestions || 0));
-                          const completedQuestions = latestAttempt ? (countCompletedQuestions(latestAttempt.userAnswers, totalQuestions) || (latestAttempt.score > 0 ? totalQuestions : 0)) : 0;
-
-                          return (
-                              <div key={q.id} className="bg-white rounded-[1.5rem] border border-slate-200 p-6 flex flex-col transition-all border-b-4 border-b-emerald-500 shadow-sm hover:shadow-md">
-                                  <div className="flex justify-between items-start mb-3">
-                                      <div className="px-2.5 py-1 rounded-xl text-[8px] font-black uppercase flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                          <CheckCircle2 size={10}/>
-                                          {timing.isFrozen ? `ĐÃ THI XONG (${timing.attemptCount}/${timing.maxAttempts})` : `ĐÃ NỘP BÀI (${timing.attemptCount}/${timing.maxAttempts})`}
-                                      </div>
-                                      <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
-                                  </div>
-                                  {q.category && <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                                  <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
-
-                                  <div className="mb-3.5">
-                                      <QuizProgressIndicator
-                                          completed={completedQuestions}
-                                          total={totalQuestions}
-                                          variant="card"
-                                      />
-                                  </div>
-
-                                  <div className="bg-emerald-50/50 rounded-xl p-3 grid grid-cols-2 gap-2 mb-4 text-center border border-emerald-100">
-                                      <div>
-                                          <p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Số lần làm</p>
-                                          <p className="text-xs font-black text-slate-800">{timing.attemptCount} / {timing.maxAttempts}</p>
-                                      </div>
-                                      <div>
-                                          <p className="text-[7px] font-black text-emerald-600 uppercase mb-0.5">Điểm cao nhất</p>
-                                          <p className="text-base font-black text-emerald-600">{timing.bestScore !== null ? `${timing.bestScore.toFixed(1)}đ` : '-'}</p>
-                                      </div>
-                                  </div>
-
-                                  <div className="mt-auto space-y-2">
-                                      {latestAttempt && (
-                                          <button 
-                                              onClick={() => handleViewResult(latestAttempt)} 
-                                              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-black uppercase text-[8px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                                          >
-                                              <Eye size={12}/> Xem lại bài làm & Lời giải
-                                          </button>
-                                      )}
-
-                                      {/* Nếu chưa hết số lần làm bài và đề vẫn còn trong thời gian mở -> Cho phép thi lại lần 2 */}
-                                      {!timing.isFrozen && timing.isStarted && !timing.isEnded && !timing.isExpired && (
-                                          <button 
-                                              onClick={() => handleStartQuiz(q)} 
-                                              className="w-full py-2 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 font-black uppercase text-[8px] flex items-center justify-center gap-1.5 transition-colors"
-                                          >
-                                              <Zap size={11}/> Thi lại (Lần {timing.attemptCount + 1}/{timing.maxAttempts})
-                                          </button>
-                                      )}
-                                  </div>
-                              </div>
-                          );
-                      })}
-                  </div>
-              </div>
-          )}
 
           {/* 4. KHO ĐỀ LUYỆN TẬP (ÔN TẬP TỰ DO) */}
           {(quizStatusTab === 'all' || quizStatusTab === 'practice') && practiceQuizzes.length > 0 && (
@@ -1930,7 +1847,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       )}
 
       {/* Danh sách các đề đã làm & Lịch sử nộp bài (Bao gồm các đề đã hết hạn mở) */}
-      <section className="pt-10">
+      <section id="student-results-history" className="pt-10 scroll-mt-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner shrink-0">

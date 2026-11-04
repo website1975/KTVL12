@@ -19,10 +19,14 @@ interface QuestionBankProps {
     setBChapterFilter: (val: string) => void;
     bTypeFilter: QuestionType | 'all';
     setBTypeFilter: (val: QuestionType | 'all') => void;
+    bLevelFilter?: QuestionLevel | 'all';
+    setBLevelFilter?: (val: QuestionLevel | 'all') => void;
     bSearch: string;
     setBSearch: (val: string) => void;
     bPage?: number;
     setBPage?: (val: number) => void;
+    totalCount?: number;
+    isLoading?: boolean;
     onAddMultiple: (qs: Question[]) => void;
     onOpenMatrixGenerator?: () => void;
     onAddNew?: () => void;
@@ -93,7 +97,9 @@ const getQuestionImageUrl = (q: any): string | null => {
 };
 
 export default function QuestionBank({ 
-    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, bSearch, setBSearch, bPage, setBPage, onAddMultiple, onOpenMatrixGenerator, onAddNew, onEdit, onDelete
+    questions, chapters, bGradeFilter, setBGradeFilter, bChapterFilter, setBChapterFilter, bTypeFilter, setBTypeFilter, 
+    bLevelFilter: bLevelFilterProp, setBLevelFilter: setBLevelFilterProp,
+    bSearch, setBSearch, bPage, setBPage, totalCount, isLoading, onAddMultiple, onOpenMatrixGenerator, onAddNew, onEdit, onDelete
 }: QuestionBankProps) {
     // Sử dụng Map<string, Question> để lưu TOÀN BỘ đối tượng câu hỏi đã chọn từ mọi mức độ (Biết, Hiểu, Vận dụng...)
     const [selectedMap, setSelectedMap] = useState<Map<string, Question>>(new Map());
@@ -101,13 +107,19 @@ export default function QuestionBank({
     const currentPage = bPage ?? localPage;
     const setCurrentPage = setBPage ?? setLocalPage;
 
-    const [bLevelFilter, setBLevelFilter] = useState<QuestionLevel | 'all'>('all');
+    const [localLevel, setLocalLevel] = useState<QuestionLevel | 'all'>('B');
+    const bLevelFilter = bLevelFilterProp ?? localLevel;
+    const setBLevelFilter = setBLevelFilterProp ?? setLocalLevel;
+
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [alwaysShowOptions, setAlwaysShowOptions] = useState(false);
     const [onlyShowSelected, setOnlyShowSelected] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+    const isServerPaged = totalCount !== undefined;
+
     const filteredQuestions = useMemo(() => {
+        if (isServerPaged) return questions;
         return questions.filter((q, idx) => {
             const qKey = getQKey(q, idx);
             // Nếu bật chế độ chỉ xem câu đã chọn
@@ -149,9 +161,10 @@ export default function QuestionBank({
             
             return matchGrade && matchChapter && matchType && matchLevel && matchSearch;
         });
-    }, [questions, bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, onlyShowSelected, selectedMap]);
+    }, [isServerPaged, questions, bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, onlyShowSelected, selectedMap]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / PAGE_SIZE));
+    const totalItems = isServerPaged ? totalCount : filteredQuestions.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
 
     useEffect(() => {
         if (currentPage > totalPages && totalPages > 0) {
@@ -160,9 +173,12 @@ export default function QuestionBank({
     }, [totalPages, currentPage, setCurrentPage]);
 
     const visibleQuestions = useMemo(() => {
+        if (isServerPaged) {
+            return questions;
+        }
         const start = (currentPage - 1) * PAGE_SIZE;
         return filteredQuestions.slice(start, start + PAGE_SIZE);
-    }, [filteredQuestions, currentPage]);
+    }, [isServerPaged, questions, filteredQuestions, currentPage]);
 
     const pageNumbers = useMemo(() => {
         if (totalPages <= 7) {
@@ -217,17 +233,17 @@ export default function QuestionBank({
         setSelectedMap(next);
     };
 
-    // Kiểm tra xem tất cả các câu trong danh sách lọc hiện tại đã chọn chưa
-    const allFilteredSelected = filteredQuestions.length > 0 && filteredQuestions.every((q, idx) => selectedMap.has(getQKey(q, idx)));
+    // Kiểm tra xem tất cả các câu trong danh sách hiển thị hiện tại đã chọn chưa
+    const allFilteredSelected = visibleQuestions.length > 0 && visibleQuestions.every((q, idx) => selectedMap.has(getQKey(q, idx)));
 
     const handleToggleSelectFiltered = () => {
         const next = new Map(selectedMap);
         if (allFilteredSelected) {
-            // Bỏ chọn các câu trong bộ lọc hiện tại, GIỮ NGUYÊN các câu đã chọn từ bộ lọc khác
-            filteredQuestions.forEach((q, idx) => next.delete(getQKey(q, idx)));
+            // Bỏ chọn các câu trong danh sách hiển thị hiện tại, GIỮ NGUYÊN các câu đã chọn từ bộ lọc khác
+            visibleQuestions.forEach((q, idx) => next.delete(getQKey(q, idx)));
         } else {
-            // Thêm tất cả các câu trong bộ lọc hiện tại vào danh sách chọn
-            filteredQuestions.forEach((q, idx) => next.set(getQKey(q, idx), q));
+            // Thêm tất cả các câu trong danh sách hiển thị hiện tại vào danh sách chọn
+            visibleQuestions.forEach((q, idx) => next.set(getQKey(q, idx), q));
         }
         setSelectedMap(next);
     };
@@ -253,15 +269,15 @@ export default function QuestionBank({
     };
 
     const renderPaginationBar = () => {
-        if (filteredQuestions.length === 0) return null;
+        if (totalItems === 0) return null;
         return (
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
                     <span className="font-black text-slate-800">
-                        Hiển thị {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredQuestions.length)} - {Math.min(currentPage * PAGE_SIZE, filteredQuestions.length)}
+                        Hiển thị {totalItems > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0} - {Math.min(currentPage * PAGE_SIZE, totalItems)}
                     </span>
                     <span className="text-slate-400">/</span>
-                    <span className="text-slate-500 font-extrabold">{filteredQuestions.length} câu</span>
+                    <span className="text-slate-500 font-extrabold">{totalItems} câu</span>
                     {bChapterFilter !== 'all' && (
                         <span className="hidden md:inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg text-[10px] font-black border border-purple-200 truncate max-w-[280px]" title={`Chương hiện hành: ${bChapterFilter}`}>
                             <FolderTree size={12} className="shrink-0 text-purple-600" />
@@ -406,25 +422,25 @@ export default function QuestionBank({
                             <option value="short">P.III (Trả lời ngắn)</option>
                         </select>
                         <select 
-                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500" 
+                            className="bg-slate-50 border px-3 py-1.5 rounded-lg text-[9px] font-black uppercase outline-none focus:border-blue-500 font-bold" 
                             value={bLevelFilter} 
                             onChange={e => {
                                 setBLevelFilter(e.target.value as any);
                                 setCurrentPage(1);
                             }}
                         >
-                            <option value="all">Mức độ: Tất cả</option>
                             <option value="B">🟢 [B] Biết</option>
                             <option value="H">🔵 [H] Hiểu</option>
                             <option value="VD">🟠 [VD] Vận dụng</option>
                             <option value="VDC">🔴 [VDC] Vận dụng cao</option>
+                            <option value="all">Mức độ: Tất cả</option>
                         </select>
                         <button 
                             onClick={() => { 
-                                setBGradeFilter('all'); 
-                                setBChapterFilter('all'); 
-                                setBTypeFilter('all'); 
-                                setBLevelFilter('all'); 
+                                setBGradeFilter('12'); 
+                                setBChapterFilter('Chương 1: vật lý nhiệt'); 
+                                setBTypeFilter('mcq'); 
+                                setBLevelFilter('B'); 
                                 setBSearch(''); 
                                 setOnlyShowSelected(false); 
                                 setCurrentPage(1);

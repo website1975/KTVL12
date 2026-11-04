@@ -7,7 +7,8 @@ import {
   ShieldAlert, ShieldCheck, Sparkles, Zap, Type as TypeIcon, X, Link as LinkIcon, 
   EyeOff, FileCode, GraduationCap, CheckSquare, Square, Users, Copy, Check,
   Link2, Layers, Image as ImageLucide, FileText, Bookmark, Quote, ClipboardPaste,
-  FolderTree, AlertTriangle, ArrowLeft, RotateCcw, ImagePlus, BookOpen, ExternalLink
+  FolderTree, AlertTriangle, ArrowLeft, RotateCcw, ImagePlus, BookOpen, ExternalLink,
+  Search
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import LatexText from '../LatexText';
@@ -90,6 +91,26 @@ const safeParseScore = (val: any): number => {
     } catch { return 0; }
 };
 
+export const getChapterSortNumber = (chName?: string): number => {
+    if (!chName) return 999;
+    const match = chName.match(/chương\s*(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const lower = chName.toLowerCase();
+    if (lower.includes('kttx') || lower.includes('ktgk 1')) return 100;
+    if (lower.includes('ktck 1')) return 101;
+    if (lower.includes('ktgk 2')) return 102;
+    if (lower.includes('ktck 2')) return 103;
+    if (lower.includes('ltđh') || lower.includes('ltdh')) return 104;
+    return 500;
+};
+
+export const getLessonSortNumber = (title?: string): number => {
+    if (!title) return 999;
+    const match = title.match(/bài\s*(\d+)/i) || title.match(/^(\d+)/);
+    if (match) return parseInt(match[1], 10);
+    return 500;
+};
+
 interface QuestionSectionProps {
     sectionTitle: string;
     type: QuestionType;
@@ -145,6 +166,72 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
     const [copiedUrlQId, setCopiedUrlQId] = useState<string | null>(null);
     const [storageMode, setStorageMode] = useState<'auto' | 'base64' | 'imgbb'>('auto');
     const [previewLesson, setPreviewLesson] = useState<{ url: string; title?: string } | null>(null);
+    const [lessonGradeFilter, setLessonGradeFilter] = useState<'current' | 'all'>('current');
+    const [activeTreePickerQId, setActiveTreePickerQId] = useState<string | null>(null);
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
+    const [treePickerGrade, setTreePickerGrade] = useState<string>(quizGrade || '12');
+
+    // Tổ chức danh sách bài học theo Cây thư mục: Khối -> Chương (thứ tự chuẩn) -> Bài học (thứ tự bài 1, 2, 3...)
+    const organizedLessonsTree = useMemo(() => {
+        const targetLessons = lessons.filter(l => {
+            if (lessonGradeFilter === 'current') {
+                return String(l.grade) === String(quizGrade);
+            }
+            return true;
+        });
+
+        const groupsMap = new Map<string, {
+            key: string;
+            grade: Grade;
+            chapterName: string;
+            chapterOrder: number;
+            lessons: Lesson[];
+        }>();
+
+        targetLessons.forEach(l => {
+            const chName = l.chapterName || 'Chương chung';
+            const groupKey = `Khối ${l.grade} • ${chName}`;
+            if (!groupsMap.has(groupKey)) {
+                const matchedSysChapter = relevantChapters.find(c => c.name === chName);
+                const order = matchedSysChapter?.order !== undefined 
+                    ? matchedSysChapter.order 
+                    : getChapterSortNumber(chName);
+
+                groupsMap.set(groupKey, {
+                    key: groupKey,
+                    grade: l.grade,
+                    chapterName: chName,
+                    chapterOrder: order,
+                    lessons: []
+                });
+            }
+            groupsMap.get(groupKey)!.lessons.push(l);
+        });
+
+        const groups = Array.from(groupsMap.values());
+
+        // Ưu tiên Khối đang soạn lên đầu tiên, sau đó theo số thứ tự chương
+        groups.sort((a, b) => {
+            if (a.grade === quizGrade && b.grade !== quizGrade) return -1;
+            if (b.grade === quizGrade && a.grade !== quizGrade) return 1;
+            if (a.grade !== b.grade) return a.grade.localeCompare(b.grade, undefined, { numeric: true });
+            if (a.chapterOrder !== b.chapterOrder) return a.chapterOrder - b.chapterOrder;
+            return a.chapterName.localeCompare(b.chapterName, undefined, { numeric: true });
+        });
+
+        // Sắp xếp các bài học trong từng chương theo thứ tự Bài 1, Bài 2, Bài 3...
+        groups.forEach(g => {
+            g.lessons.sort((a, b) => {
+                const numA = getLessonSortNumber(a.title);
+                const numB = getLessonSortNumber(b.title);
+                if (numA !== numB) return numA - numB;
+                return a.title.localeCompare(b.title, undefined, { numeric: true });
+            });
+        });
+
+        return groups;
+    }, [lessons, lessonGradeFilter, quizGrade, relevantChapters]);
+
     const sectionQuestions = questions.filter(q => q.type === type);
     const Icon = type === 'mcq' ? CheckCircle2 : type === 'group-tf' ? HelpCircle : AlignLeft;
 
@@ -930,18 +1017,19 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Cột 1: Soạn Khung kiến thức trọng tâm (KaTeX) */}
+                            {/* Cột 1: Soạn Khung kiến thức trọng tâm (Có hỗ trợ LaTeX $...$) */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black text-amber-800 uppercase flex items-center gap-1.5">
-                                        <span>Khung công thức / Định lý cốt lõi:</span>
+                                        <span>Khung kiến thức trọng tâm & Công thức cốt lõi:</span>
                                     </label>
-                                    <span className="text-[9px] font-bold text-amber-600 bg-amber-100/70 px-2 py-0.5 rounded-md">
-                                        KaTeX: $...$
+                                    <span className="text-[9px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md">
+                                        Hỗ trợ LaTeX ($...$, $$...$$)
                                     </span>
                                 </div>
+
                                 <textarea
-                                    className="w-full p-4 bg-white border-2 border-amber-200/90 rounded-2xl text-xs font-medium outline-none min-h-[95px] focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition-all placeholder:text-slate-300 leading-relaxed"
+                                    className="w-full p-3.5 bg-white border-2 border-amber-200/90 rounded-2xl text-xs font-medium outline-none min-h-[105px] focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition-all placeholder:text-slate-400 leading-relaxed font-mono"
                                     value={q.keyConcept || ''}
                                     onChange={e => {
                                         const nl = [...questions];
@@ -949,14 +1037,18 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                         nl[i].keyConcept = e.target.value;
                                         setQuestions(nl);
                                     }}
-                                    placeholder="VD: $F = \sqrt{F_1^2 + F_2^2 + 2F_1F_2\cos\alpha}$. Khi $\alpha=0^\circ \Rightarrow F = F_1 + F_2$..."
+                                    placeholder="Ví dụ: Công thức nhiệt lượng: $Q = m \cdot c \cdot \Delta T$&#10;Định luật Gay-Lussac: $p/T = \text{const}$"
                                 />
+
                                 {q.keyConcept && (
-                                    <div className="p-3 bg-white/95 rounded-xl border border-amber-200 text-xs text-slate-700 shadow-xs">
-                                        <div className="text-[9px] font-black uppercase text-amber-700 mb-1 flex items-center gap-1">
+                                    <div className="p-3.5 bg-white/95 rounded-2xl border-2 border-amber-200/90 text-xs text-slate-800 shadow-sm max-h-60 overflow-y-auto">
+                                        <div className="text-[9px] font-black uppercase text-amber-800 mb-1.5 flex items-center gap-1">
+                                            <Sparkles size={11} className="text-amber-600" />
                                             <span>Xem trước hiển thị:</span>
                                         </div>
-                                        <LatexText text={q.keyConcept} />
+                                        <div className="p-2.5 bg-amber-50/40 rounded-xl border border-amber-100">
+                                            <LatexText text={q.keyConcept} />
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -964,21 +1056,43 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                             {/* Cột 2: Gắn Link bài học Vercel & Tên bài */}
                             <div className="space-y-3">
                                 {/* Hộp chọn nhanh bài học từ Thư viện đã lưu */}
-                                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
-                                    <div className="flex items-center justify-between">
+                                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2.5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <label className="text-[10px] font-black text-blue-900 uppercase flex items-center gap-1.5">
                                             <BookOpen size={13} className="text-blue-600" />
-                                            <span>Chọn bài học đã lưu (Khỏi copy link):</span>
+                                            <span>Chọn bài học củng cố kiến thức:</span>
                                         </label>
-                                        {lessons.length > 0 && (
-                                            <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
-                                                {lessons.length} bài có sẵn
-                                            </span>
-                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setLessonGradeFilter(prev => prev === 'current' ? 'all' : 'current')}
+                                                className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
+                                                    lessonGradeFilter === 'current'
+                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                                title={`Chuyển đổi lọc: chỉ Khối ${quizGrade} đang soạn hoặc Tất cả khối`}
+                                            >
+                                                {lessonGradeFilter === 'current' ? `Khối ${quizGrade} (${lessons.filter(l => String(l.grade) === String(quizGrade)).length})` : `Tất cả (${lessons.length})`}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveTreePickerQId(q.id);
+                                                    setTreeSearchQuery('');
+                                                    setTreePickerGrade(quizGrade);
+                                                }}
+                                                className="px-2.5 py-1 bg-white hover:bg-blue-600 hover:text-white border border-blue-300 text-blue-700 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 transition-all shadow-xs"
+                                                title="Mở cây thư mục bài học trực quan để duyệt và chọn"
+                                            >
+                                                <FolderTree size={12} />
+                                                <span>Cây bài học</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <select
-                                        className="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-600 transition-all cursor-pointer"
+                                        className="w-full px-3 py-2.5 bg-white border-2 border-blue-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-600 transition-all cursor-pointer shadow-xs"
                                         value={lessons.find(l => l.url === q.lessonUrl || (q.lessonTitle && l.title === q.lessonTitle))?.id || ''}
                                         onChange={e => {
                                             const chosenId = e.target.value;
@@ -998,17 +1112,28 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                                             }
                                         }}
                                     >
-                                        <option value="">-- Bấm để chọn bài học thuộc chương ({lessons.length} bài) --</option>
-                                        {/* Gom nhóm bài học theo Khối & Chương */}
-                                        {Array.from(new Set(lessons.map(l => `Khối ${l.grade} • ${l.chapterName}`))).map(groupKey => {
-                                            const groupLessons = lessons.filter(l => `Khối ${l.grade} • ${l.chapterName}` === groupKey);
+                                        <option value="">
+                                            -- Bấm chọn bài học (Khối {quizGrade}: {lessons.filter(l => String(l.grade) === String(quizGrade)).length} bài) --
+                                        </option>
+                                        {organizedLessonsTree.map(group => {
+                                            const isCurrentQChapter = q.chapterName && (
+                                                q.chapterName === group.chapterName || 
+                                                group.chapterName.toLowerCase().includes(q.chapterName.toLowerCase())
+                                            );
                                             return (
-                                                <optgroup key={groupKey} label={groupKey}>
-                                                    {groupLessons.map(l => (
-                                                        <option key={l.id} value={l.id}>
-                                                            {l.title}
-                                                        </option>
-                                                    ))}
+                                                <optgroup 
+                                                    key={group.key} 
+                                                    label={`${isCurrentQChapter ? '⭐ [ĐÚNG CHƯƠNG] ' : '📂 '}${group.key.toUpperCase()} (${group.lessons.length} BÀI)`}
+                                                >
+                                                    {group.lessons.map((l, lIdx) => {
+                                                        const isLast = lIdx === group.lessons.length - 1;
+                                                        const prefix = isLast ? '└── ' : '├── ';
+                                                        return (
+                                                            <option key={l.id} value={l.id}>
+                                                                {prefix} {l.title}
+                                                            </option>
+                                                        );
+                                                    })}
                                                 </optgroup>
                                             );
                                         })}
@@ -1137,6 +1262,270 @@ const QuestionSection: React.FC<QuestionSectionProps> = ({
                 lessonTitle={previewLesson?.title}
                 onClose={() => setPreviewLesson(null)}
             />
+
+            {/* Modal Cây Thư Mục Bài Học Củng Cố Kiến Thức Trực Quan */}
+            {activeTreePickerQId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-900 to-indigo-900 text-white">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-blue-300">
+                                    <FolderTree size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-tight">
+                                        Cây bài học củng cố kiến thức
+                                    </h3>
+                                    <p className="text-[10px] text-blue-200/80 font-bold uppercase mt-0.5">
+                                        Đang chọn cho câu hỏi: #{questions.findIndex(x => x.id === activeTreePickerQId) + 1} • Đề Khối {quizGrade}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTreePickerQId(null)}
+                                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Search & Filter Bar */}
+                        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setTreePickerGrade(quizGrade)}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${
+                                        treePickerGrade === quizGrade
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                    }`}
+                                >
+                                    Khối {quizGrade} (Đang soạn: {lessons.filter(l => String(l.grade) === String(quizGrade)).length} bài)
+                                </button>
+                                {['10', '11', '12'].filter(g => g !== quizGrade).map(g => (
+                                    <button
+                                        key={g}
+                                        type="button"
+                                        onClick={() => setTreePickerGrade(g)}
+                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${
+                                            treePickerGrade === g
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                        }`}
+                                    >
+                                        Khối {g}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => setTreePickerGrade('all')}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${
+                                        treePickerGrade === 'all'
+                                            ? 'bg-slate-900 text-white shadow-sm'
+                                            : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                    }`}
+                                >
+                                    Tất cả ({lessons.length})
+                                </button>
+                            </div>
+
+                            <div className="relative w-full sm:w-64">
+                                <input
+                                    type="text"
+                                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-blue-500 transition-all placeholder:text-slate-400"
+                                    value={treeSearchQuery}
+                                    onChange={e => setTreeSearchQuery(e.target.value)}
+                                    placeholder="Tìm tên bài, công thức..."
+                                />
+                                <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                                {treeSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTreeSearchQuery('')}
+                                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Tree Content */}
+                        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                            {(() => {
+                                const qTarget = questions.find(x => x.id === activeTreePickerQId);
+                                const filteredForModal = lessons.filter(l => {
+                                    const matchG = treePickerGrade === 'all' || String(l.grade) === String(treePickerGrade);
+                                    const q = treeSearchQuery.toLowerCase().trim();
+                                    const matchQ = !q || l.title.toLowerCase().includes(q) || (l.chapterName && l.chapterName.toLowerCase().includes(q)) || (l.defaultKeyConcept && l.defaultKeyConcept.toLowerCase().includes(q));
+                                    return matchG && matchQ;
+                                });
+
+                                if (filteredForModal.length === 0) {
+                                    return (
+                                        <div className="py-12 text-center space-y-3">
+                                            <BookOpen size={36} className="mx-auto text-slate-300" />
+                                            <p className="text-xs font-bold text-slate-500 uppercase">
+                                                Chưa có bài học nào phù hợp bộ lọc
+                                            </p>
+                                        </div>
+                                    );
+                                }
+
+                                const groupsMap = new Map<string, { key: string; grade: Grade; chapterName: string; chapterOrder: number; lessons: Lesson[] }>();
+                                filteredForModal.forEach(l => {
+                                    const chName = l.chapterName || 'Chương chung';
+                                    const groupKey = `Khối ${l.grade} • ${chName}`;
+                                    if (!groupsMap.has(groupKey)) {
+                                        const matchedSys = relevantChapters.find(c => c.name === chName);
+                                        const order = matchedSys?.order !== undefined ? matchedSys.order : getChapterSortNumber(chName);
+                                        groupsMap.set(groupKey, {
+                                            key: groupKey,
+                                            grade: l.grade,
+                                            chapterName: chName,
+                                            chapterOrder: order,
+                                            lessons: []
+                                        });
+                                    }
+                                    groupsMap.get(groupKey)!.lessons.push(l);
+                                });
+
+                                const groups = Array.from(groupsMap.values());
+                                groups.sort((a, b) => {
+                                    if (a.grade === quizGrade && b.grade !== quizGrade) return -1;
+                                    if (b.grade === quizGrade && a.grade !== quizGrade) return 1;
+                                    if (a.grade !== b.grade) return a.grade.localeCompare(b.grade, undefined, { numeric: true });
+                                    if (a.chapterOrder !== b.chapterOrder) return a.chapterOrder - b.chapterOrder;
+                                    return a.chapterName.localeCompare(b.chapterName, undefined, { numeric: true });
+                                });
+
+                                groups.forEach(g => {
+                                    g.lessons.sort((a, b) => {
+                                        const numA = getLessonSortNumber(a.title);
+                                        const numB = getLessonSortNumber(b.title);
+                                        if (numA !== numB) return numA - numB;
+                                        return a.title.localeCompare(b.title, undefined, { numeric: true });
+                                    });
+                                });
+
+                                return groups.map(group => {
+                                    const isCurrentQChapter = qTarget?.chapterName && (
+                                        qTarget.chapterName === group.chapterName || 
+                                        group.chapterName.toLowerCase().includes(qTarget.chapterName.toLowerCase())
+                                    );
+
+                                    return (
+                                        <div key={group.key} className={`rounded-2xl border overflow-hidden transition-all ${
+                                            isCurrentQChapter ? 'border-blue-400 bg-blue-50/20 shadow-sm' : 'border-slate-200 bg-white'
+                                        }`}>
+                                            <div className={`p-3 border-b flex items-center justify-between ${
+                                                isCurrentQChapter ? 'bg-blue-100/60 text-blue-950 font-black' : 'bg-slate-100/80 text-slate-800 font-bold'
+                                            }`}>
+                                                <div className="flex items-center gap-2">
+                                                    <FolderTree size={14} className={isCurrentQChapter ? 'text-blue-600' : 'text-slate-500'} />
+                                                    <span className="text-xs uppercase">{group.key}</span>
+                                                    {isCurrentQChapter && (
+                                                        <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-black rounded-md uppercase">
+                                                            Đúng chương câu này
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-500">
+                                                    {group.lessons.length} bài
+                                                </span>
+                                            </div>
+
+                                            <div className="p-3 divide-y divide-slate-100">
+                                                {group.lessons.map(l => {
+                                                    const isSelected = qTarget?.lessonUrl === l.url || qTarget?.lessonTitle === l.title;
+                                                    return (
+                                                        <div key={l.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 px-2 rounded-xl transition-colors">
+                                                            <div className="space-y-1 min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <BookOpen size={13} className={isSelected ? 'text-emerald-600' : 'text-blue-600'} />
+                                                                    <span className="text-xs font-black text-slate-800">
+                                                                        {l.title}
+                                                                    </span>
+                                                                    {isSelected && (
+                                                                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[8px] font-black rounded-md uppercase">
+                                                                            Đang gắn
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-[10px] text-blue-600 truncate font-mono">
+                                                                    {l.url}
+                                                                </div>
+                                                                {l.defaultKeyConcept && (
+                                                                    <div className="text-[10px] text-slate-500 line-clamp-1 italic bg-amber-50/50 p-1 rounded-md border border-amber-100">
+                                                                        💡 {l.defaultKeyConcept}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPreviewLesson({ url: l.url, title: l.title })}
+                                                                    className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[10px] font-bold flex items-center gap-1"
+                                                                    title="Xem thử link bài học"
+                                                                >
+                                                                    <ExternalLink size={11} />
+                                                                    <span>Xem thử</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const nl = [...questions];
+                                                                        const i = nl.findIndex(x => x.id === activeTreePickerQId);
+                                                                        if (i !== -1) {
+                                                                            nl[i].lessonTitle = l.title;
+                                                                            nl[i].lessonUrl = l.url;
+                                                                            if (!nl[i].keyConcept && l.defaultKeyConcept) {
+                                                                                nl[i].keyConcept = l.defaultKeyConcept;
+                                                                            }
+                                                                            setQuestions(nl);
+                                                                        }
+                                                                        setActiveTreePickerQId(null);
+                                                                    }}
+                                                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs ${
+                                                                        isSelected
+                                                                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                                            : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+                                                                    }`}
+                                                                >
+                                                                    <Check size={12} />
+                                                                    <span>{isSelected ? 'Đang chọn' : 'Chọn cho câu này'}</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
+                            <span className="text-[10px] text-slate-500 font-bold">
+                                💡 Nhấn "Chọn cho câu này" để tự động điền Tên bài, Link bài học và Kiến thức trọng tâm.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTreePickerQId(null)}
+                                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-[10px] font-black uppercase"
+                            >
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

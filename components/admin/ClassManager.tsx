@@ -7,7 +7,8 @@ import {
   Clock, TrendingUp, AlertCircle, Copy, CheckCheck, BookOpen, 
   Star, Filter, ArrowLeft, Lightbulb, CheckCircle2, XCircle,
   BarChart2, LineChart as LineChartIcon, Sparkles, Trophy,
-  Folder, FileText, Eye, EyeOff, Printer, Loader2, FileSpreadsheet
+  Folder, FileText, Eye, EyeOff, Printer, Loader2, FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,8 +28,26 @@ import {
 } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
-import { getQuizById } from '../../services/storage';
+import { getQuizById, getResultsMetadata } from '../../services/storage';
 import QuizPreviewModal from './QuizPreviewModal';
+
+// Hàm chuẩn hóa so khớp học sinh thuộc lớp chính xác & linh hoạt
+export const isStudentInClass = (s: User, c: ClassRoom): boolean => {
+  if (!s || !c) return false;
+  // 1. Khớp chính xác ID lớp
+  if (s.classId && c.id && s.classId === c.id) return true;
+
+  // 2. Khớp theo tên lớp (không phân biệt hoa thường và khoảng trắng)
+  const sName = (s.className || '').trim().toUpperCase();
+  const cName = (c.name || '').trim().toUpperCase();
+  if (sName && cName && sName === cName) {
+    if (s.academicYear && c.academicYear) {
+      return s.academicYear.trim() === c.academicYear.trim();
+    }
+    return true;
+  }
+  return false;
+};
 
 interface ClassManagerProps {
   classes: ClassRoom[];
@@ -36,6 +55,7 @@ interface ClassManagerProps {
   quizzes?: Quiz[];
   results?: Result[];
   chapters?: Chapter[];
+  isLoading?: boolean;
   onSaveClass: (c: ClassRoom) => Promise<void>;
   onDeleteClass: (id: string, name: string) => Promise<void>;
   onAssignStudents: (studentIds: string[], classInfo: { classId?: string; className?: string; academicYear?: string; grade?: Grade } | null) => Promise<void>;
@@ -51,9 +71,11 @@ export default function ClassManager({
   quizzes = [],
   results = [],
   chapters = [],
+  isLoading = false,
   onSaveClass,
   onDeleteClass,
   onAssignStudents,
+  onRefresh,
   onPreviewQuiz
 }: ClassManagerProps) {
   // Main view state
@@ -159,16 +181,17 @@ export default function ClassManager({
 
   // Count unassigned students
   const unassignedStudentsCount = useMemo(() => {
-    return students.filter(s => !s.classId && !s.className).length;
-  }, [students]);
+    return students.filter(s => {
+      if (!s.classId && !s.className) return true;
+      const belongs = classes.some(c => isStudentInClass(s, c));
+      return !belongs;
+    }).length;
+  }, [students, classes]);
 
   // Students belonging to the currently selected class
   const classStudents = useMemo(() => {
     if (!selectedClass) return [];
-    return students.filter(s => 
-      s.classId === selectedClass.id || 
-      (s.className === selectedClass.name && s.academicYear === selectedClass.academicYear)
-    );
+    return students.filter(s => isStudentInClass(s, selectedClass));
   }, [students, selectedClass]);
 
   // Filtered students for Tab 1
@@ -216,6 +239,73 @@ export default function ClassManager({
     return filteredClassQuizzes[0];
   }, [filteredClassQuizzes, selectedQuizId]);
 
+  // Tab 2: Dữ liệu kết quả chi tiết của riêng đề thi đang chọn (chỉ tải khi giáo viên mở Tab 2)
+  const [currentQuizResults, setCurrentQuizResults] = useState<Result[]>([]);
+  const [isQuizResultsLoading, setIsQuizResultsLoading] = useState(false);
+
+  // Tab 3: Dữ liệu kết quả tổng hợp của lớp (chỉ tải khi giáo viên mở Tab 3)
+  const [classProgressResults, setClassProgressResults] = useState<Result[]>([]);
+  const [isClassProgressLoading, setIsClassProgressLoading] = useState(false);
+
+  React.useEffect(() => {
+    let isCancelled = false;
+    // TIẾT KIỆM BĂNG THÔNG TUYỆT ĐỐI:
+    // Tuyệt đối không tải kết quả khi chỉ xem danh sách các thẻ lớp (View 1) hoặc đang ở Tab 1 (Danh sách HS)!
+    // Chỉ tải khi giáo viên đã click chọn lớp và đang chủ động mở Tab 2 (Thống kê đề thi).
+    if (!selectedClass || activeTab !== 'stats' || !currentQuiz?.id) {
+      setCurrentQuizResults([]);
+      return;
+    }
+
+    const fetchQuizResults = async () => {
+      setIsQuizResultsLoading(true);
+      try {
+        const fullQuizResults = await getResultsMetadata(currentQuiz.id, 500, true);
+        if (!isCancelled) {
+          setCurrentQuizResults(fullQuizResults || []);
+        }
+      } catch (err) {
+        console.warn("Lỗi tải kết quả đề thi cho lớp:", err);
+      } finally {
+        if (!isCancelled) setIsQuizResultsLoading(false);
+      }
+    };
+
+    fetchQuizResults();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedClass?.id, activeTab, currentQuiz?.id]);
+
+  React.useEffect(() => {
+    let isCancelled = false;
+    // Chỉ tải kết quả tổng hợp lớp khi giáo viên chủ động mở Tab 3 (Kết quả rèn luyện)
+    if (!selectedClass || activeTab !== 'progress') {
+      return;
+    }
+
+    const fetchClassProgress = async () => {
+      setIsClassProgressLoading(true);
+      try {
+        const pResults = await getResultsMetadata(undefined, 1000, false);
+        if (!isCancelled) {
+          setClassProgressResults(pResults || []);
+        }
+      } catch (err) {
+        console.warn("Lỗi tải kết quả rèn luyện của lớp:", err);
+      } finally {
+        if (!isCancelled) setIsClassProgressLoading(false);
+      }
+    };
+
+    fetchClassProgress();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedClass?.id, activeTab]);
+
   // Tab 2: Detailed Quiz Performance based on FIRST ATTEMPT (Lần 1)
   const quizAttemptStats = useMemo(() => {
     if (!currentQuiz || !selectedClass) {
@@ -231,7 +321,11 @@ export default function ClassManager({
       };
     }
 
-    const quizResults = results.filter(r => r.quizId === currentQuiz.id);
+    // Ưu tiên dùng dữ liệu đầy đủ tải riêng theo đề thi hiện tại, nếu chưa nạp xong thì tạm thời dùng results tổng
+    const quizResults = currentQuizResults.length > 0 
+      ? currentQuizResults 
+      : results.filter(r => r.quizId === currentQuiz.id);
+
     const submittedList: Array<{
       student: User;
       firstAttempt: Result;
@@ -243,7 +337,8 @@ export default function ClassManager({
     classStudents.forEach(student => {
       const studentResults = quizResults.filter(r => 
         r.studentId === student.id || 
-        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase())
+        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
+        (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
       );
 
       if (studentResults.length > 0) {
@@ -309,19 +404,22 @@ export default function ClassManager({
       highestFirstScore: highest,
       lowestFirstScore: totalSub > 0 ? lowest : 0
     };
-  }, [currentQuiz, selectedClass, classStudents, results]);
+  }, [currentQuiz, selectedClass, classStudents, results, currentQuizResults]);
 
   const handleExportClassScoresCsv = () => {
     if (!currentQuiz || classStudents.length === 0) return;
 
-    const quizResults = results.filter(r => r.quizId === currentQuiz.id);
+    const quizResults = currentQuizResults.length > 0 
+      ? currentQuizResults 
+      : results.filter(r => r.quizId === currentQuiz.id);
     const headers = ["STT", "Họ và tên", "Mã học sinh", "Tài khoản", "Điểm lần 1", "Điểm cao nhất", "Số lần làm", "Trạng thái / Chú thích"];
     const rows: string[][] = [];
 
     classStudents.forEach((student, idx) => {
       const studentResults = quizResults.filter(r => 
         r.studentId === student.id || 
-        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase())
+        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
+        (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
       );
 
       let scoreFirst = "0.0";
@@ -367,9 +465,11 @@ export default function ClassManager({
 
   // Tab 3: Helper to calculate student progress statistics & automated feedback
   const getStudentTrainingData = (student: User) => {
-    const studentResults = results.filter(r => 
+    const activeResults = classProgressResults.length > 0 ? classProgressResults : results;
+    const studentResults = activeResults.filter(r => 
       r.studentId === student.id || 
-      (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase())
+      (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
+      (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
     );
 
     const totalSeconds = studentResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
@@ -736,7 +836,7 @@ export default function ClassManager({
   // Delete Class
   const handleDeleteClass = async (c: ClassRoom, e: React.MouseEvent) => {
     e.stopPropagation();
-    const count = students.filter(s => s.classId === c.id || (s.className === c.name && s.academicYear === c.academicYear)).length;
+    const count = students.filter(s => isStudentInClass(s, c)).length;
     const msg = count > 0 
       ? `Lớp "${c.name} (${c.academicYear})" hiện có ${count} học sinh.\nNếu xóa lớp, các học sinh sẽ trở về trạng thái "Chưa phân lớp" (tài khoản và điểm rèn luyện vẫn giữ nguyên).\nBạn có chắc chắn muốn xóa?`
       : `Bạn có chắc chắn muốn xóa lớp "${c.name} (${c.academicYear})"?`;
@@ -839,8 +939,7 @@ export default function ClassManager({
   const availableStudentsToAdd = useMemo(() => {
     if (!selectedClass) return [];
     return students.filter(s => {
-      const isAlreadyInThisClass = s.classId === selectedClass.id || 
-        (s.className === selectedClass.name && s.academicYear === selectedClass.academicYear);
+      const isAlreadyInThisClass = isStudentInClass(s, selectedClass);
       if (isAlreadyInThisClass) return false;
 
       if (!studentSearch.trim()) return true;
@@ -865,7 +964,15 @@ export default function ClassManager({
                 <GraduationCap size={24} className="text-indigo-300" />
               </div>
               <div>
-                <h2 className="text-lg font-black uppercase tracking-tight">Danh Sách Lớp Học & Niên Khóa</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black uppercase tracking-tight">Danh Sách Lớp Học & Niên Khóa</h2>
+                  {isLoading && (
+                    <span className="flex items-center gap-1 text-[10px] font-black uppercase text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-400/30">
+                      <Loader2 size={11} className="animate-spin" />
+                      Đang đồng bộ...
+                    </span>
+                  )}
+                </div>
                 <p className="text-slate-400 text-xs font-medium">
                   Quản lý học viên, giao đề thi phân hóa & theo dõi kết quả rèn luyện từng lớp
                 </p>
@@ -885,6 +992,14 @@ export default function ClassManager({
                 <span className="text-[9px] font-black text-amber-300 uppercase block">Chưa phân lớp</span>
                 <span className="text-base font-black text-amber-400">{unassignedStudentsCount} HS</span>
               </div>
+              <button
+                onClick={onRefresh}
+                disabled={isLoading}
+                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase shadow-xs transition-all flex items-center justify-center border border-white/15 disabled:opacity-50"
+                title="Tải lại danh sách lớp & học sinh từ máy chủ"
+              >
+                <RefreshCw size={15} className={isLoading ? "animate-spin" : ""} />
+              </button>
               <button
                 onClick={handleOpenCreate}
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-500 shadow-md transition-all active:scale-95"
@@ -938,10 +1053,7 @@ export default function ClassManager({
           {filteredClasses.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
               {filteredClasses.map(c => {
-                const count = students.filter(s => 
-                  s.classId === c.id || 
-                  (s.className === c.name && s.academicYear === c.academicYear)
-                ).length;
+                const count = students.filter(s => isStudentInClass(s, c)).length;
 
                 return (
                   <div
@@ -1044,6 +1156,12 @@ export default function ClassManager({
                     <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
                       Lớp {selectedClass.name}
                     </h2>
+                    {isLoading && (
+                      <span className="flex items-center gap-1 text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                        <Loader2 size={11} className="animate-spin" />
+                        Đang đồng bộ...
+                      </span>
+                    )}
                     <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-black rounded-lg text-[10px] uppercase border border-indigo-100">
                       Khối {selectedClass.grade}
                     </span>
@@ -1313,7 +1431,7 @@ export default function ClassManager({
                     >
                       {filteredClassQuizzes.map(q => (
                         <option key={q.id} value={q.id}>
-                          {q.title} ({q.type === 'test' ? 'Đề thi' : 'Luyện tập'} - {q.questions?.length || 0} câu)
+                          {q.title} ({q.type === 'test' ? 'Đề thi' : 'Luyện tập'} - {q.questionCount || (q.questions ? q.questions.length : 0)} câu)
                         </option>
                       ))}
                     </select>
@@ -1467,7 +1585,10 @@ export default function ClassManager({
 
                       {/* Đã nộp bài */}
                       <div className="bg-white/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Đã nộp bài</span>
+                        <span className="text-[9px] font-black uppercase text-slate-400 block mb-0.5 flex items-center justify-between">
+                          <span>Đã nộp bài</span>
+                          {isQuizResultsLoading && <Loader2 size={11} className="animate-spin text-indigo-500" />}
+                        </span>
                         <span className="font-black text-emerald-700 flex items-center gap-1.5 text-xs">
                           <Users size={13} className="text-emerald-500" />
                           {quizAttemptStats.submittedStudents.length} / {classStudents.length} HS ({classStudents.length > 0 ? Math.round((quizAttemptStats.submittedStudents.length / classStudents.length) * 100) : 0}%)

@@ -21,7 +21,7 @@ import {
 } from '../../services/storage';
 import { generateQuizFromPrompt, parseQuestionsFromPDF, parseQuestionsFromText } from '../../services/gemini';
 import { normalizeFullText } from '../../services/vietnameseFixer';
-import { Quiz, User, Result, Chapter, Question, QuestionType, Grade, QuizType, Role, ClassRoom, QuizFolder, Lesson } from '../../types';
+import { Quiz, User, Result, Chapter, Question, QuestionType, QuestionLevel, Grade, QuizType, Role, ClassRoom, QuizFolder, Lesson } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
@@ -177,102 +177,214 @@ export default function AdminDashboard() {
   const [isBankQuestionModalOpen, setIsBankQuestionModalOpen] = useState(false);
   const [selectedBankQuestion, setSelectedBankQuestion] = useState<Question | null>(null);
 
+  // Synchronize state references for immediate check without closure stale issues
+  const quizzesRef = useRef<Quiz[]>(quizzes);
+  quizzesRef.current = quizzes;
+  const classesRef = useRef<ClassRoom[]>(classes);
+  classesRef.current = classes;
+  const studentsRef = useRef<User[]>(students);
+  studentsRef.current = students;
+  const resultsRef = useRef<Result[]>(results);
+  resultsRef.current = results;
+  const chaptersRef = useRef<Chapter[]>(chapters);
+  chaptersRef.current = chapters;
+  const foldersRef = useRef<QuizFolder[]>(folders);
+  foldersRef.current = folders;
+  const lessonsRef = useRef<Lesson[]>(lessons);
+  lessonsRef.current = lessons;
+
   // Lazy loading data with memory cache & forceRefresh
+  // Nguyên tắc: Tab nào người dùng click trước thì nạp dữ liệu chung của tab đó trước.
+  // Các tab sau nếu đã có sẵn dữ liệu chung trong bộ nhớ thì tái sử dụng ngay lập tức (0ms, 0 byte băng thông).
   const loadTabData = useCallback(async (tab: AdminTab, forceRefresh: boolean = false) => {
     if (!isDatabaseConnected()) return;
     setIsDataLoading(true);
     try {
       if (tab === 'quizzes') {
+        const hasQuizzes = quizzesRef.current.length > 0;
+        const hasChapters = chaptersRef.current.length > 0;
+        const hasClasses = classesRef.current.length > 0;
+        const hasFolders = foldersRef.current.length > 0;
+        const hasLessons = lessonsRef.current.length > 0;
+
+        if (!forceRefresh && hasQuizzes && hasChapters && hasClasses && hasFolders && hasLessons) {
+          setIsDataLoading(false);
+          return;
+        }
+
         const initialGrade = qGradeFilterRef.current !== 'all' ? qGradeFilterRef.current : undefined;
         const [q, c, cls, fld, l] = await Promise.all([
-          getQuizzesMetadata(initialGrade, forceRefresh), 
-          getChapters(forceRefresh),
-          getClasses(forceRefresh),
-          getQuizFolders('all', forceRefresh),
-          getLessons(forceRefresh)
+          (forceRefresh || !hasQuizzes) ? getQuizzesMetadata(initialGrade, forceRefresh) : Promise.resolve(null), 
+          (forceRefresh || !hasChapters) ? getChapters(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasClasses) ? getClasses(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasFolders) ? getQuizFolders('all', forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasLessons) ? getLessons(forceRefresh) : Promise.resolve(null)
         ]);
-        if (q && q.length > 0) {
-          setQuizzes(q);
-        } else {
-          const full = await getQuizzes(initialGrade, forceRefresh);
-          if (full && full.length > 0) setQuizzes(full);
+
+        if (q) {
+          if (q.length > 0) {
+            setQuizzes(q);
+          } else {
+            const full = await getQuizzes(initialGrade, forceRefresh);
+            if (full && full.length > 0) setQuizzes(full);
+          }
         }
-        setChapters(c || []);
-        setClasses(cls || []);
-        setFolders(fld || []);
-        setLessons(l || []);
+        if (c) setChapters(c);
+        if (cls) setClasses(cls);
+        if (fld) setFolders(fld);
+        if (l) setLessons(l);
 
         // Tự động gán chương thuộc khối mặc định nếu chưa chọn chương cụ thể
-        if (c && c.length > 0 && qGradeFilterRef.current !== 'all') {
-          const matchedChapter = c.find((ch: Chapter) => String(ch.grade) === String(qGradeFilterRef.current));
+        const currentChapters = c || chaptersRef.current;
+        if (currentChapters && currentChapters.length > 0 && qGradeFilterRef.current !== 'all') {
+          const matchedChapter = currentChapters.find((ch: Chapter) => String(ch.grade) === String(qGradeFilterRef.current));
           if (matchedChapter?.name) {
             setQChapterFilter((prev: string) => {
-              const prevBelongs = c.some((ch: Chapter) => String(ch.grade) === String(qGradeFilterRef.current) && ch.name === prev);
+              const prevBelongs = currentChapters.some((ch: Chapter) => String(ch.grade) === String(qGradeFilterRef.current) && ch.name === prev);
               return prevBelongs ? prev : matchedChapter.name;
             });
           }
         }
       } else if (tab === 'classes') {
-        const [cls, c] = await Promise.all([
-          getClasses(forceRefresh),
-          getChapters(forceRefresh)
+        const hasClasses = classesRef.current.length > 0;
+        const hasStudents = studentsRef.current.length > 0;
+        const hasQuizzes = quizzesRef.current.length > 0;
+        const hasChapters = chaptersRef.current.length > 0;
+
+        // Nếu tất cả thông tin lớp học, học sinh, đề thi đã nạp sẵn -> tái sử dụng ngay lập tức
+        if (!forceRefresh && hasClasses && hasStudents && hasQuizzes && hasChapters) {
+          setIsDataLoading(false);
+          return;
+        }
+
+        const [cls, allUsers, q, c] = await Promise.all([
+          (forceRefresh || !hasClasses) ? getClasses(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasStudents) ? getUsers(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasQuizzes) ? getQuizzesMetadata('all', forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasChapters) ? getChapters(forceRefresh) : Promise.resolve(null)
         ]);
-        setClasses(cls || []);
-        setChapters(c || []);
+
+        if (cls) setClasses(cls);
+        if (allUsers) {
+          const sList = (allUsers || []).filter(user => user.role === 'student');
+          setStudents(sList);
+          setStudentsTotal(sList.length);
+        }
+        if (q) setQuizzes(q);
+        if (c) setChapters(c);
       } else if (tab === 'students') {
-        const [paged, cls] = await Promise.all([
-          getUsersPage(1, 50),
-          getClasses(forceRefresh)
+        const hasStudents = studentsRef.current.length > 0;
+        const hasClasses = classesRef.current.length > 0;
+        const hasResults = resultsRef.current.length > 0;
+
+        // Nếu đã có sẵn danh sách học sinh, lớp và kết quả làm bài -> không gọi mạng lại, hiển thị tức thì
+        if (!forceRefresh && hasStudents && hasClasses && hasResults) {
+          setIsDataLoading(false);
+          return;
+        }
+
+        const [allUsers, cls, res] = await Promise.all([
+          (forceRefresh || !hasStudents) ? getUsers(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasClasses) ? getClasses(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasResults) ? getResultsMetadata('all', 2000, forceRefresh) : Promise.resolve(null)
         ]);
         
-        setStudents(paged.data.filter(user => user.role === 'student'));
-        setStudentsTotal(paged.total);
-        setStudentsPage(1);
-        setClasses(cls || []);
-      } else if (tab === 'results') {
-        const [paged, q, cls] = await Promise.all([
-          getResultsMetadataPage(1, 50),
-          getQuizzesMetadata('all', forceRefresh),
-          getClasses(forceRefresh)
-        ]);
-        setResults(paged.data);
-        setResultsTotal(paged.total);
-        setResultsPage(1);
-        setQuizzes(q || []);
-        setClasses(cls || []);
-      } else if (tab === 'bank') {
-        const targetGrade = bGradeFilter !== 'all' ? bGradeFilter : '12';
-        const [b, c] = await Promise.all([
-          getBankQuestions(targetGrade, forceRefresh),
-          getChapters(forceRefresh)
-        ]);
-        setBankQuestions(b || []);
-        setChapters(c || []);
-        // Tự động chọn chương đầu tiên của khối nếu chưa khớp
-        if (c && c.length > 0) {
-          const gradeChapters = c.filter((ch: Chapter) => String(ch.grade) === String(targetGrade));
-          if (gradeChapters.length > 0 && (!bChapterFilter || bChapterFilter === 'all')) {
-            setBChapterFilter(gradeChapters[0].name);
-          }
+        if (allUsers) {
+          const studentList = allUsers.filter(user => user.role === 'student');
+          setStudents(studentList);
+          setStudentsTotal(studentList.length);
+          setStudentsPage(1);
         }
+        if (cls) setClasses(cls);
+        if (res) {
+          setResults(res);
+          setResultsTotal(res.length);
+        }
+      } else if (tab === 'results') {
+        const hasResults = resultsRef.current.length > 0;
+        const hasQuizzes = quizzesRef.current.length > 0;
+        const hasClasses = classesRef.current.length > 0;
+        const hasStudents = studentsRef.current.length > 0;
+        const hasChapters = chaptersRef.current.length > 0;
+
+        // Nếu đã có kết quả và thông tin chung -> tái sử dụng ngay lập tức
+        if (!forceRefresh && hasResults && hasQuizzes && hasClasses && hasStudents && hasChapters) {
+          setIsDataLoading(false);
+          return;
+        }
+
+        const [res, q, cls, allUsers, c] = await Promise.all([
+          (forceRefresh || !hasResults) ? getResultsMetadata('all', 2000, forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasQuizzes) ? getQuizzesMetadata('all', forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasClasses) ? getClasses(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasStudents) ? getUsers(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasChapters) ? getChapters(forceRefresh) : Promise.resolve(null)
+        ]);
+
+        if (res) {
+          setResults(res);
+          setResultsTotal(res.length);
+          setResultsPage(1);
+        }
+        if (q) setQuizzes(q);
+        if (cls) setClasses(cls);
+        if (allUsers) {
+          const studentList = allUsers.filter(user => user.role === 'student');
+          setStudents(studentList);
+          setStudentsTotal(studentList.length);
+        }
+        if (c) setChapters(c);
+      } else if (tab === 'bank') {
+        const c = chaptersRef.current.length > 0 ? chaptersRef.current : await getChapters(forceRefresh);
+        if (c && c.length > 0) setChapters(c);
+
+        // Thống nhất bộ lọc chuẩn mặc định: Khối 12, Chương 1: vật lý nhiệt, Trắc nghiệm MCQ, Mức độ Biết [B]
+        const targetGrade = '12';
+        setBGradeFilter('12');
+
+        const g12Ch1 = c?.find((ch: Chapter) => String(ch.grade) === '12' && (/nhiệt/i.test(ch.name || '') || ch.name?.includes('1')));
+        const targetChapter = g12Ch1?.name || 'Chương 1: vật lý nhiệt';
+        setBChapterFilter(targetChapter);
+        setBTypeFilter('mcq');
+        setBLevelFilter('B');
+        setBSearch('');
+        setBPage(1);
+        lastBankQueryRef.current = `12_${targetChapter}_mcq_B__1`;
+
+        // Chỉ nạp đúng 1 trang 40 câu cho bộ lọc mặc định này (chỉ ~20 KB thay vì nạp cả ngàn câu)
+        const paged = await getBankQuestionsPage(1, 40, '12', targetChapter, 'mcq', 'B', '');
+        setBankQuestions(paged.data);
+        setBankTotal(paged.total);
       } else if (tab === 'ai') {
         // Soạn đề AI: HOÀN TOÀN KHÔNG NẠP DỮ LIỆU NGÂN HÀNG KHI MỞ MENU ĐỂ TIẾT KIỆM 100% BĂNG THÔNG!
         const c = await getChapters(forceRefresh);
         setChapters(c || []);
       } else if (tab === 'chapters') {
+        const hasChapters = chaptersRef.current.length > 0;
+        const hasLessons = lessonsRef.current.length > 0;
+        if (!forceRefresh && hasChapters && hasLessons) {
+          setIsDataLoading(false);
+          return;
+        }
         const [c, l] = await Promise.all([
-          getChapters(forceRefresh),
-          getLessons(forceRefresh)
+          (forceRefresh || !hasChapters) ? getChapters(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasLessons) ? getLessons(forceRefresh) : Promise.resolve(null)
         ]);
-        setChapters(c || []);
-        setLessons(l || []);
+        if (c) setChapters(c);
+        if (l) setLessons(l);
       } else if (tab === 'lessons') {
+        const hasLessons = lessonsRef.current.length > 0;
+        const hasChapters = chaptersRef.current.length > 0;
+        if (!forceRefresh && hasLessons && hasChapters) {
+          setIsDataLoading(false);
+          return;
+        }
         const [l, c] = await Promise.all([
-          getLessons(forceRefresh),
-          getChapters(forceRefresh)
+          (forceRefresh || !hasLessons) ? getLessons(forceRefresh) : Promise.resolve(null),
+          (forceRefresh || !hasChapters) ? getChapters(forceRefresh) : Promise.resolve(null)
         ]);
-        setLessons(l || []);
-        setChapters(c || []);
+        if (l) setLessons(l);
+        if (c) setChapters(c);
       }
     } catch (e) {
       console.error("Lỗi tải dữ liệu tab:", tab, e);
@@ -488,11 +600,12 @@ export default function AdminDashboard() {
   }, [sSearch, activeTab]);
 
   const [bGradeFilter, setBGradeFilter] = useState<Grade | 'all'>('12');
-  const [bChapterFilter, setBChapterFilter] = useState('Chương 1: Vật lí nhiệt');
+  const [bChapterFilter, setBChapterFilter] = useState('Chương 1: vật lý nhiệt');
   const [bTypeFilter, setBTypeFilter] = useState<QuestionType | 'all'>('mcq');
-  const [bLevelFilter, setBLevelFilter] = useState<string>('H');
+  const [bLevelFilter, setBLevelFilter] = useState<QuestionLevel | 'all'>('B');
   const [bSearch, setBSearch] = useState('');
   const [bPage, setBPage] = useState(1);
+  const lastBankQueryRef = useRef<string>('');
 
   // Alert and Confirmation Modal State
   const [alertModal, setAlertModal] = useState<{
@@ -568,54 +681,59 @@ export default function AdminDashboard() {
 
   const loadBankDataIfNeeded = useCallback(async (grade?: Grade | 'all', forceRefresh: boolean = false) => {
     if (!isDatabaseConnected()) return;
-    const targetGrade = grade || quizGrade || (bGradeFilter !== 'all' ? bGradeFilter : 'all');
+    const targetGrade = grade || quizGrade || (bGradeFilter !== 'all' ? bGradeFilter : '12');
     setIsBankLoading(true);
     try {
-      const [b, c] = await Promise.all([
-        getBankQuestions(targetGrade === 'all' ? 'all' : targetGrade, forceRefresh),
-        getChapters(forceRefresh)
+      const [paged, c] = await Promise.all([
+        getBankQuestionsPage(1, 40, targetGrade, bChapterFilter, bTypeFilter, bLevelFilter, bSearch),
+        chaptersRef.current.length > 0 ? Promise.resolve(chaptersRef.current) : getChapters(forceRefresh)
       ]);
-      setBankQuestions(prev => {
-        const map = new Map<string, Question>();
-        prev.forEach((item, idx) => map.set(item.id || `q_prev_${idx}`, item));
-        b.forEach((item, idx) => map.set(item.id || `q_new_${idx}`, item));
-        return Array.from(map.values());
-      });
+      setBankQuestions(paged.data);
+      setBankTotal(paged.total);
       if (c && c.length > 0) setChapters(c);
     } catch (e) {
       console.error("Lỗi tải ngân hàng câu hỏi:", e);
     } finally {
       setIsBankLoading(false);
     }
-  }, [bGradeFilter, quizGrade]);
+  }, [bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, quizGrade]);
 
   const allAvailableQuestions = useMemo(() => {
-    const map = new Map<string, Question>();
-    // 1. Toàn bộ câu hỏi từ bảng ngân hàng bank_questions
-    bankQuestions.forEach((item, idx) => {
-      map.set(item.id || `bank_${idx}`, item);
-    });
-    // 2. Tự động hợp nhất toàn bộ câu hỏi từ tất cả các đề thi trong CSDL (>1000 câu)
-    quizzes.forEach(quiz => {
-      if (quiz.questions && Array.isArray(quiz.questions)) {
-        quiz.questions.forEach((q, idx) => {
-          const key = q.id || `quiz_${quiz.id}_${idx}`;
-          if (!map.has(key)) {
-            map.set(key, {
-              ...q,
-              quizGrade: q.quizGrade || quiz.grade,
-              chapterName: q.chapterName || quiz.category,
-              quizTitle: q.quizTitle || quiz.title
-            });
-          }
-        });
-      }
-    });
-    return Array.from(map.values());
-  }, [bankQuestions, quizzes]);
+    return bankQuestions;
+  }, [bankQuestions]);
 
-  // Đã tối ưu hóa tải trong loadTabData tránh gọi trùng lặp
-  useEffect(() => {}, [bGradeFilter]);
+  // Lazy-loading: Tự động nạp đúng 40 câu theo bộ lọc khi người dùng đổi Khối, Chương, Dạng, Mức độ hoặc Số trang
+  useEffect(() => {
+    if (activeTab !== 'bank' && !isBankOpen) return;
+    if (!isDatabaseConnected()) return;
+
+    const currentKey = `${bGradeFilter}_${bChapterFilter}_${bTypeFilter}_${bLevelFilter}_${bSearch}_${bPage}`;
+    if (lastBankQueryRef.current === currentKey) return;
+
+    const timer = setTimeout(async () => {
+      lastBankQueryRef.current = currentKey;
+      setIsDataLoading(true);
+      try {
+        const paged = await getBankQuestionsPage(
+          bPage,
+          40,
+          bGradeFilter,
+          bChapterFilter,
+          bTypeFilter,
+          bLevelFilter,
+          bSearch
+        );
+        setBankQuestions(paged.data);
+        setBankTotal(paged.total);
+      } catch (e) {
+        console.error("Lỗi lazy load ngân hàng câu hỏi:", e);
+      } finally {
+        setIsDataLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, isBankOpen, bGradeFilter, bChapterFilter, bTypeFilter, bLevelFilter, bSearch, bPage]);
 
   // Quiz Handlers
   const handleCreateQuiz = () => {
@@ -1305,7 +1423,7 @@ export default function AdminDashboard() {
         academicYear: studentForm.academicYear,
         points: selectedStudent?.points || 0
       };
-      await saveUser(newUser); setIsStudentModalOpen(false); loadTabData('students');
+      await saveUser(newUser); setIsStudentModalOpen(false); await loadTabData('students', true);
       showAlert("Thành công", `Đã lưu học sinh ${studentForm.fullName} thành công!`, "success");
     } catch (e: any) { 
       showAlert("Lỗi", "Lỗi lưu học sinh trên Cloud", "error"); 
@@ -1327,7 +1445,7 @@ export default function AdminDashboard() {
       } else {
         await assignStudentsToClass(studentIds, null);
       }
-      await loadTabData('students');
+      await loadTabData('students', true);
       showAlert("Thành công", `Đã cập nhật phân lớp cho ${studentIds.length} học sinh!`, "success");
     } catch (e: any) {
       showAlert("Lỗi", "Không thể phân lớp: " + (e.message || "Lỗi không xác định"), "error");
@@ -1350,7 +1468,7 @@ export default function AdminDashboard() {
     setIsDataLoading(true);
     try {
         await Promise.all(resultsToDelete.map(r => deleteResult(r.id)));
-        await loadTabData('results');
+        await loadTabData('results', true);
         showAlert("Thành công", `Đã xóa thành công ${resultsToDelete.length} bản ghi kết quả thi.`, "success");
     } catch (e: any) {
         showAlert("Lỗi", "Lỗi khi xóa kết quả: " + e.message, "error");
@@ -1363,7 +1481,7 @@ export default function AdminDashboard() {
     setIsDataLoading(true);
     try {
         await Promise.all(studentIds.map(id => deleteUser(id)));
-        await loadTabData('students');
+        await loadTabData('students', true);
         showAlert("Thành công", `Đã xóa thành công ${studentIds.length} học sinh.`, "success");
     } catch (e: any) {
         showAlert("Lỗi", "Lỗi khi xóa học sinh: " + e.message, "error");
@@ -1383,7 +1501,7 @@ export default function AdminDashboard() {
           const success = await changePassword(student.id, defaultPass);
           if (success) {
             showAlert("Thành công", `Đã đặt lại mật khẩu cho ${student.fullName} thành công về "123"!`, "success");
-            loadTabData('students');
+            loadTabData('students', true);
           } else {
             showAlert("Thất bại", "Có lỗi xảy ra khi đặt lại mật khẩu trên Cloud.", "error");
           }
@@ -1633,9 +1751,10 @@ export default function AdminDashboard() {
               quizzes={quizzes}
               results={results}
               chapters={chapters}
+              isLoading={isDataLoading}
               onSaveClass={async (c) => {
                 await saveClass(c);
-                await loadTabData('classes');
+                await loadTabData('classes', true);
               }}
               onDeleteClass={async (id, name) => {
                 showConfirm(
@@ -1643,15 +1762,15 @@ export default function AdminDashboard() {
                   `Bạn có chắc chắn muốn xóa lớp "${name}" không? Học sinh thuộc lớp này sẽ không bị xóa khỏi hệ thống mà chỉ gỡ liên kết lớp.`,
                   async () => {
                     await deleteClass(id);
-                    await loadTabData('classes');
+                    await loadTabData('classes', true);
                   }
                 );
               }}
               onAssignStudents={async (studentIds, classInfo) => {
                 await assignStudentsToClass(studentIds, classInfo);
-                await loadTabData('classes');
+                await loadTabData('classes', true);
               }}
-              onRefresh={() => loadTabData('classes')}
+              onRefresh={() => loadTabData('classes', true)}
               onPreviewQuiz={handlePreviewQuiz}
             />
           )}
@@ -1685,7 +1804,7 @@ export default function AdminDashboard() {
                 <StudentManager 
                     students={students} results={results} quizzes={quizzes} classes={classes}
                     sSearch={sSearch} setSSearch={setSSearch} sGradeFilter={sGradeFilter} setSGradeFilter={setSGradeFilter}
-                    onRefresh={() => loadTabData('students')}
+                    onRefresh={() => loadTabData('students', true)}
                     onAdd={() => { setSelectedStudent(null); setStudentForm({fullName: '', studentCode: '', grade: '12', password: '123', classId: '', className: '', academicYear: ''}); setIsStudentModalOpen(true); }}
                     onImportCsv={handleImportCsv} onViewDetail={setViewingStudent}
                     onEdit={(u) => { setSelectedStudent(u); setStudentForm({fullName: u.fullName, studentCode: u.studentCode || '', grade: u.grade || '12', password: u.password, classId: u.classId || '', className: u.className || '', academicYear: u.academicYear || ''}); setIsStudentModalOpen(true); }}
@@ -1717,7 +1836,7 @@ export default function AdminDashboard() {
                     rChapterFilter={rChapterFilter} setRChapterFilter={setRChapterFilter}
                     rQuizFilter={rQuizFilter} setRQuizFilter={setRQuizFilter}
                     rSearch={rSearch} setRSearch={setRSearch}
-                    onRefresh={() => loadTabData('results')}
+                    onRefresh={() => loadTabData('results', true)}
                     onClearCache={clearLocalCache}
                     onViewHistory={(name, code, title, history) => setHistoryData({ studentName: name, studentCode: code, quizTitle: title, history })}
                     onDeleteResult={handleDeleteResultBatch}
@@ -1765,10 +1884,15 @@ export default function AdminDashboard() {
                    </button>
                 </div>
                 <QuestionBank 
-                    questions={allAvailableQuestions} chapters={chapters} bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                    bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
-                    bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter} bSearch={bSearch} setBSearch={setBSearch}
+                    questions={allAvailableQuestions} chapters={chapters} 
+                    bGradeFilter={bGradeFilter} setBGradeFilter={(g) => { setBGradeFilter(g); setBPage(1); }}
+                    bChapterFilter={bChapterFilter} setBChapterFilter={(ch) => { setBChapterFilter(ch); setBPage(1); }}
+                    bTypeFilter={bTypeFilter} setBTypeFilter={(t) => { setBTypeFilter(t); setBPage(1); }}
+                    bLevelFilter={bLevelFilter} setBLevelFilter={(l) => { setBLevelFilter(l); setBPage(1); }}
+                    bSearch={bSearch} setBSearch={(s) => { setBSearch(s); setBPage(1); }}
                     bPage={bPage} setBPage={setBPage}
+                    totalCount={bankTotal}
+                    isLoading={isDataLoading}
                     onAddMultiple={(qs) => { 
                         setQuestions(prev => [...prev, ...qs]); 
                         setActiveTab('quizzes'); 
@@ -1859,11 +1983,14 @@ export default function AdminDashboard() {
                         <QuestionBank 
                             questions={allAvailableQuestions} 
                             chapters={chapters}
-                            bGradeFilter={bGradeFilter} setBGradeFilter={setBGradeFilter}
-                            bChapterFilter={bChapterFilter} setBChapterFilter={setBChapterFilter}
-                            bTypeFilter={bTypeFilter} setBTypeFilter={setBTypeFilter}
-                            bSearch={bSearch} setBSearch={setBSearch}
+                            bGradeFilter={bGradeFilter} setBGradeFilter={(g) => { setBGradeFilter(g); setBPage(1); }}
+                            bChapterFilter={bChapterFilter} setBChapterFilter={(ch) => { setBChapterFilter(ch); setBPage(1); }}
+                            bTypeFilter={bTypeFilter} setBTypeFilter={(t) => { setBTypeFilter(t); setBPage(1); }}
+                            bLevelFilter={bLevelFilter} setBLevelFilter={(l) => { setBLevelFilter(l); setBPage(1); }}
+                            bSearch={bSearch} setBSearch={(s) => { setBSearch(s); setBPage(1); }}
                             bPage={bPage} setBPage={setBPage}
+                            totalCount={bankTotal}
+                            isLoading={isDataLoading}
                             onAddMultiple={(qs) => { 
                                 setQuestions(prev => [...prev, ...qs]); 
                                 setIsBankOpen(false); 

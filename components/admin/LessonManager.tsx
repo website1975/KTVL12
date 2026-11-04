@@ -8,6 +8,82 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import LessonViewerModal from '../LessonViewerModal';
 import LatexText from '../LatexText';
+import { getChapterNumberFromName } from './MatrixQuizGenerator';
+
+// Chuẩn hóa tên chương để so khớp mềm dẻo không phân biệt:
+// - Viết hoa / viết thường
+// - Dấu gạch ngang, dấu hai chấm, khoảng trắng thừa
+// - Chính tả "lí" (i ngắn) vs "lý" (y dài) phổ biến trong tiếng Việt (Vật lí / Vật lý, Khí lí / Khí lý)
+export const normalizeChapterText = (str?: string): string => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/lý/g, 'lí')
+    .replace(/ký/g, 'kí')
+    .replace(/[.:,\-_/\\()[\]{}|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+export const matchLessonToChapterFilter = (
+  lesson: { grade: Grade; chapterId?: string; chapterName?: string },
+  filterVal: string,
+  allChapters: Chapter[]
+): boolean => {
+  if (!filterVal || filterVal === 'all') return true;
+
+  const lessonChId = lesson.chapterId || '';
+  const lessonChName = lesson.chapterName || '';
+
+  // 1. Khớp chính xác ID hoặc Name
+  if (lessonChId === filterVal || lessonChName === filterVal) return true;
+
+  // 2. Tra cứu đối tượng Chapter trong danh sách hệ thống theo ID hoặc Name
+  const targetChapter = allChapters.find(
+    c => c.id === filterVal || c.name === filterVal || (c as any).title === filterVal
+  );
+
+  if (targetChapter) {
+    if (lessonChId && lessonChId === targetChapter.id) return true;
+    const targetNorm = normalizeChapterText(targetChapter.name || (targetChapter as any).title);
+    const lessonNorm = normalizeChapterText(lessonChName);
+    if (targetNorm && lessonNorm) {
+      if (targetNorm === lessonNorm) return true;
+      if (targetNorm.includes(lessonNorm) || lessonNorm.includes(targetNorm)) return true;
+    }
+  }
+
+  // 3. Khớp chuỗi đã chuẩn hóa (khắc phục lí / lý, hoa / thường, dấu câu)
+  const filterNorm = normalizeChapterText(filterVal);
+  const lessonNorm = normalizeChapterText(lessonChName);
+  if (filterNorm && lessonNorm) {
+    if (filterNorm === lessonNorm) return true;
+    if (filterNorm.includes(lessonNorm) || lessonNorm.includes(filterNorm)) return true;
+  }
+
+  // 4. Khớp theo số thứ tự chương (VD: "Chương 1: vật lý nhiệt" và "Chương 1: Vật lí nhiệt")
+  const getChapterNum = (text: string) => {
+    const m = text.match(/chương\s*(\d+)/i);
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const numFilter = getChapterNum(filterVal);
+  const numLesson = getChapterNum(lessonChName);
+  if (numFilter !== null && numLesson !== null && numFilter === numLesson) {
+    return true;
+  }
+
+  // 5. Khớp theo chủ đề từ khóa chuẩn Vật lí
+  try {
+    const numF = getChapterNumberFromName(filterVal, lesson.grade);
+    const numL = getChapterNumberFromName(lessonChName, lesson.grade);
+    if (numF > 0 && numL > 0 && numF === numL) {
+      return true;
+    }
+  } catch (e) {}
+
+  return false;
+};
 
 interface LessonManagerProps {
   lessons: Lesson[];
@@ -26,7 +102,7 @@ const SAMPLE_VERCEL_LESSONS: Omit<Lesson, 'id'>[] = [
     chapterName: 'Chương 1: Mở đầu & Động học',
     title: 'Bài 1: Làm quen với Vật lí',
     url: 'https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-1780405969901',
-    defaultKeyConcept: 'Vật lí là ngành khoa học tự nhiên nghiên cứu các dạng vận động của vật chất và năng lượng. Sai số tuyệt đối: $\\Delta A = |\\bar{A} - A_i|$.'
+    defaultKeyConcept: '1/ Đối tượng nghiên cứu của Vật lí:\n- Các dạng vận động của vật chất và năng lượng.\n2/ Công thức sai số:\n- Sai số tuyệt đối: $\\Delta A = |\\bar{A} - A_i|$\n- Sai số tỉ đối: $\\delta A = \\frac{\\Delta A}{\\bar{A}} \\times 100\\%$'
   },
   {
     grade: '10',
@@ -34,7 +110,7 @@ const SAMPLE_VERCEL_LESSONS: Omit<Lesson, 'id'>[] = [
     chapterName: 'Chương 2: Động lực học',
     title: 'Bài 13: Tổng hợp và phân tích lực. Cân bằng lực',
     url: 'https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-1780405969910',
-    defaultKeyConcept: 'Công thức tổng hợp lực: $F = \\sqrt{F_1^2 + F_2^2 + 2F_1F_2\\cos\\alpha}$.\n- Khi hai lực cùng chiều ($\\alpha = 0^\\circ$): $F = F_1 + F_2$.\n- Khi hai lực ngược chiều ($\\alpha = 180^\\circ$): $F = |F_1 - F_2|$.\n- Khi hai lực vuông góc ($\\alpha = 90^\\circ$): $F = \\sqrt{F_1^2 + F_2^2}$.'
+    defaultKeyConcept: '1/ Công thức độ lớn hợp lực của hai lực đồng quy $\\vec{F}_1, \\vec{F}_2$:\n$$F = \\sqrt{F_1^2 + F_2^2 + 2F_1F_2\\cos\\alpha}$$\n- Cùng chiều ($\\alpha = 0^\\circ$): $F_{\\max} = F_1 + F_2$\n- Ngược chiều ($\\alpha = 180^\\circ$): $F_{\\min} = |F_1 - F_2|$\n- Vuông góc ($\\alpha = 90^\\circ$): $F = \\sqrt{F_1^2 + F_2^2}$'
   },
   {
     grade: '10',
@@ -42,7 +118,7 @@ const SAMPLE_VERCEL_LESSONS: Omit<Lesson, 'id'>[] = [
     chapterName: 'Chương 2: Động lực học',
     title: 'Bài 14: Định luật 1 Newton & Quán tính',
     url: 'https://hethonghoctap-nhc.vercel.app/student?subject=10&node=g10-1780405969911',
-    defaultKeyConcept: 'Nếu một vật không chịu tác dụng của lực nào hoặc chịu tác dụng của các lực có hợp lực bằng 0 thì vật đang đứng yên sẽ tiếp tục đứng yên, đang chuyển động sẽ tiếp tục chuyển động thẳng đều.'
+    defaultKeyConcept: '1/ Định luật I Newton (Quán tính):\nNếu một vật không chịu tác dụng của lực nào hoặc chịu tác dụng của các lực có hợp lực bằng không:\n$$\\Sigma \\vec{F} = \\vec{0} \\Rightarrow \\vec{a} = \\vec{0}$$\n- Vật đang đứng yên tiếp tục đứng yên; vật đang chuyển động sẽ tiếp tục chuyển động thẳng đều.'
   },
   {
     grade: '11',
@@ -50,7 +126,7 @@ const SAMPLE_VERCEL_LESSONS: Omit<Lesson, 'id'>[] = [
     chapterName: 'Chương 1: Dao động',
     title: 'Bài 1: Mô tả dao động điều hòa',
     url: 'https://hethonghoctap-nhc.vercel.app/student?subject=11&node=g11-dao-dong-dieu-hoa',
-    defaultKeyConcept: 'Phương trình dao động: $x = A\\cos(\\omega t + \\varphi)$.\n- Vận tốc: $v = x\' = -\\omega A\\sin(\\omega t + \\varphi)$.\n- Gia tốc: $a = v\' = -\\omega^2 x$. Chu kì: $T = \\frac{2\\pi}{\\omega}$.'
+    defaultKeyConcept: '1/ Phương trình dao động điều hòa:\n- Li độ: $x = A\\cos(\\omega t + \\varphi)$\n- Vận tốc: $v = -\\omega A\\sin(\\omega t + \\varphi)$\n- Gia tốc: $a = -\\omega^2 x$\n- Chu kì: $T = \\frac{2\\pi}{\\omega}$, tần số: $f = \\frac{1}{T}$'
   },
   {
     grade: '12',
@@ -58,7 +134,7 @@ const SAMPLE_VERCEL_LESSONS: Omit<Lesson, 'id'>[] = [
     chapterName: 'Chương 1: Vật lí nhiệt',
     title: 'Bài 1: Cấu trúc của chất. Sự chuyển thể',
     url: 'https://hethonghoctap-nhc.vercel.app/student?subject=12&node=g12-vat-li-nhiet-b1',
-    defaultKeyConcept: 'Nội năng của một vật là tổng động năng và thế năng của các phân tử cấu tạo nên vật: $U = E_d + E_t$.\nNhiệt lượng: $Q = mc\\Delta T$. Nhiệt nóng chảy: $Q = \\lambda m$.'
+    defaultKeyConcept: '1/ Mô hình động học phân tử về cấu tạo chất:\n- Các chất được cấu tạo từ các hạt riêng biệt là phân tử.\n- Các phân tử chuyển động hỗn loạn không ngừng.\n2/ Công thức nhiệt lượng:\n- Thay đổi nhiệt độ: $Q = m \\cdot c \\cdot \\Delta T$\n- Nhiệt nóng chảy: $Q = \\lambda \\cdot m$\n- Nhiệt hóa hơi: $Q = L \\cdot m$'
   }
 ];
 
@@ -191,8 +267,11 @@ export default function LessonManager({
     }
 
     const newLessons: Lesson[] = SAMPLE_VERCEL_LESSONS.map(s => {
-      // Tìm chương khớp tên nếu có
-      const matchedCh = chapters.find(c => String(c.grade) === String(s.grade) && (c.name.includes(s.chapterName) || s.chapterName.includes(c.name)));
+      // Tìm chương khớp tên mềm dẻo nếu có
+      const matchedCh = chapters.find(c => {
+        if (String(c.grade) !== String(s.grade)) return false;
+        return matchLessonToChapterFilter(s, c.name, chapters);
+      });
       return {
         ...s,
         id: uuidv4(),
@@ -221,41 +300,114 @@ export default function LessonManager({
     }
   };
 
-  // Lọc bài học theo Khối, Chương, và Từ khóa
+  // Lọc bài học theo Khối, Chương, và Từ khóa (so khớp mềm dẻo lí/lý, hoa/thường, ID/Tên)
   const filteredLessons = useMemo(() => {
     return lessons.filter(l => {
       const matchGrade = selectedGrade === 'all' || String(l.grade) === String(selectedGrade);
-      const matchChapter = selectedChapterFilter === 'all' || l.chapterName === selectedChapterFilter || l.chapterId === selectedChapterFilter;
+      const matchChapter = matchLessonToChapterFilter(l, selectedChapterFilter, chapters);
       const q = searchQuery.toLowerCase().trim();
       const matchSearch = !q || l.title.toLowerCase().includes(q) || l.url.toLowerCase().includes(q) || (l.defaultKeyConcept && l.defaultKeyConcept.toLowerCase().includes(q));
       return matchGrade && matchChapter && matchSearch;
     });
-  }, [lessons, selectedGrade, selectedChapterFilter, searchQuery]);
+  }, [lessons, selectedGrade, selectedChapterFilter, searchQuery, chapters]);
 
   // Gom nhóm bài học theo Khối & Chương để hiển thị theo cây khoa học
   const groupedLessons = useMemo(() => {
     const map = new Map<string, { grade: Grade; chapterName: string; chapterId: string; items: Lesson[] }>();
 
     filteredLessons.forEach(l => {
-      const key = `${l.grade}___${l.chapterName}`;
+      // Tìm tên chương chuẩn từ chapters nếu có để gom nhóm đồng nhất
+      const sysChapter = chapters.find(c => String(c.grade) === String(l.grade) && matchLessonToChapterFilter(l, c.name, chapters));
+      const groupDisplayName = sysChapter ? (sysChapter.name || (sysChapter as any).title) : l.chapterName;
+      const key = `${l.grade}___${normalizeChapterText(groupDisplayName)}`;
+
       if (!map.has(key)) {
         map.set(key, {
           grade: l.grade,
-          chapterName: l.chapterName,
-          chapterId: l.chapterId,
+          chapterName: groupDisplayName,
+          chapterId: sysChapter ? sysChapter.id : l.chapterId,
           items: []
         });
       }
       map.get(key)!.items.push(l);
     });
 
-    return Array.from(map.values());
-  }, [filteredLessons]);
+    const groups = Array.from(map.values());
+    // Sắp xếp bài học trong từng chương theo thứ tự Bài 1, Bài 2, Bài 3...
+    groups.forEach(g => {
+      g.items.sort((a, b) => {
+        const numA = (a.title.match(/bài\s*(\d+)/i) || a.title.match(/^(\d+)/))?.[1];
+        const numB = (b.title.match(/bài\s*(\d+)/i) || b.title.match(/^(\d+)/))?.[1];
+        if (numA && numB) return parseInt(numA, 10) - parseInt(numB, 10);
+        return a.title.localeCompare(b.title, undefined, { numeric: true });
+      });
+    });
 
-  // Danh sách chương của khối đang chọn để lọc
-  const activeGradeChapters = useMemo(() => {
-    return chapters.filter(c => selectedGrade === 'all' || String(c.grade) === String(selectedGrade));
-  }, [chapters, selectedGrade]);
+    // Sắp xếp các chương theo Khối và Chương 1, Chương 2, Chương 3...
+    groups.sort((a, b) => {
+      if (a.grade !== b.grade) return a.grade.localeCompare(b.grade, undefined, { numeric: true });
+      const numChA = (a.chapterName.match(/chương\s*(\d+)/i))?.[1];
+      const numChB = (b.chapterName.match(/chương\s*(\d+)/i))?.[1];
+      if (numChA && numChB) return parseInt(numChA, 10) - parseInt(numChB, 10);
+      return a.chapterName.localeCompare(b.chapterName, undefined, { numeric: true });
+    });
+
+    return groups;
+  }, [filteredLessons, chapters]);
+
+  // Danh sách các chương để đưa vào dropdown bộ lọc:
+  // Hợp nhất giữa bảng chapters của hệ thống và các chapterName thực tế đang có trong lessons
+  const filterChapterOptions = useMemo(() => {
+    type ChapterOption = {
+      id: string;
+      name: string;
+      lessonCount: number;
+    };
+
+    const gradeLessons = lessons.filter(l => selectedGrade === 'all' || String(l.grade) === String(selectedGrade));
+    const gradeChapters = chapters.filter(c => selectedGrade === 'all' || String(c.grade) === String(selectedGrade));
+
+    const options: ChapterOption[] = [];
+    const addedNorms = new Set<string>();
+
+    // 1. Thêm các chương từ danh mục chapters
+    gradeChapters.forEach(c => {
+      const name = c.name || (c as any).title || "Chương chưa đặt tên";
+      const norm = normalizeChapterText(name);
+      // Đếm số bài học thực tế thuộc chương này trong khối đang chọn
+      const count = gradeLessons.filter(l => matchLessonToChapterFilter(l, name, chapters) || (l.chapterId && l.chapterId === c.id)).length;
+      options.push({
+        id: c.id,
+        name: name,
+        lessonCount: count
+      });
+      if (norm) addedNorms.add(norm);
+    });
+
+    // 2. Bổ sung các chương có bài học trong lessons mà chưa có trong danh mục chapters
+    gradeLessons.forEach(l => {
+      if (!l.chapterName) return;
+      const norm = normalizeChapterText(l.chapterName);
+      if (!norm || addedNorms.has(norm)) return;
+
+      const exists = options.some(opt => {
+        const optNorm = normalizeChapterText(opt.name);
+        return optNorm === norm || (optNorm && norm && (optNorm.includes(norm) || norm.includes(optNorm)));
+      });
+
+      if (!exists) {
+        const count = gradeLessons.filter(item => matchLessonToChapterFilter(item, l.chapterName, chapters)).length;
+        options.push({
+          id: l.chapterId || l.chapterName,
+          name: l.chapterName,
+          lessonCount: count
+        });
+        addedNorms.add(norm);
+      }
+    });
+
+    return options;
+  }, [chapters, lessons, selectedGrade]);
 
   return (
     <div className="space-y-8 animate-fade-in pb-20">
@@ -323,14 +475,14 @@ export default function LessonManager({
 
             {/* Lọc chương */}
             <select
-              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-all max-w-xs"
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-all max-w-xs cursor-pointer shadow-2xs"
               value={selectedChapterFilter}
               onChange={e => setSelectedChapterFilter(e.target.value)}
             >
               <option value="all">📂 Tất cả chương học</option>
-              {activeGradeChapters.map(c => (
-                <option key={c.id} value={c.name || (c as any).title}>
-                  {c.name || (c as any).title || "Chương chưa đặt tên"}
+              {filterChapterOptions.map(opt => (
+                <option key={opt.id || opt.name} value={opt.name}>
+                  {opt.name} {opt.lessonCount > 0 ? `(${opt.lessonCount} bài)` : ''}
                 </option>
               ))}
             </select>
@@ -419,7 +571,7 @@ export default function LessonManager({
 
                 <button
                   onClick={() => {
-                    const ch = chapters.find(c => c.id === group.chapterId || c.name === group.chapterName);
+                    const ch = chapters.find(c => c.id === group.chapterId || matchLessonToChapterFilter({ grade: group.grade, chapterName: group.chapterName }, c.name, chapters));
                     handleOpenAddModal(ch || { id: group.chapterId, grade: group.grade, name: group.chapterName, order: 0 });
                   }}
                   className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-800 flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors"
@@ -664,26 +816,32 @@ export default function LessonManager({
                 </div>
 
                 {/* Kiến thức trọng tâm mặc định (tùy chọn) */}
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
                       Khung kiến thức cốt lõi (tùy chọn):
                     </label>
-                    <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                      KaTeX: $...$
+                    <span className="text-[9px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                      Hỗ trợ LaTeX ($...$)
                     </span>
                   </div>
+
                   <textarea
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 leading-relaxed min-h-[60px] max-h-[120px]"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 leading-relaxed min-h-[70px] max-h-[140px]"
                     rows={3}
-                    placeholder="VD: Công thức tổng hợp lực: $F = \sqrt{F_1^2 + F_2^2 + 2F_1F_2\cos\alpha}$..."
+                    placeholder="VD: Công thức: $F = \sqrt{F_1^2 + F_2^2 + 2F_1F_2\cos\alpha}$&#10;Ghi chú: Gia tốc luôn ngược pha với li độ..."
                     value={formDefaultKeyConcept}
                     onChange={e => setFormDefaultKeyConcept(e.target.value)}
                   />
                   {formDefaultKeyConcept && (
-                    <div className="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200 text-xs text-slate-700 shadow-2xs max-h-28 overflow-y-auto">
-                      <p className="text-[9px] font-black uppercase text-amber-800 mb-0.5">Xem trước công thức:</p>
-                      <LatexText text={formDefaultKeyConcept} />
+                    <div className="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200 text-xs text-slate-700 shadow-2xs max-h-36 overflow-y-auto">
+                      <p className="text-[9px] font-black uppercase text-amber-800 mb-1 flex items-center gap-1">
+                        <Sparkles size={10} className="text-amber-600" />
+                        <span>Xem trước hiển thị:</span>
+                      </p>
+                      <div className="p-2 bg-white rounded-lg border border-amber-100">
+                        <LatexText text={formDefaultKeyConcept} />
+                      </div>
                     </div>
                   )}
                 </div>
