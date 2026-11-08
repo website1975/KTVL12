@@ -30,6 +30,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { getQuizById, getResultsMetadata } from '../../services/storage';
 import QuizPreviewModal from './QuizPreviewModal';
+import * as XLSX from 'xlsx';
 
 // Hàm chuẩn hóa so khớp học sinh thuộc lớp chính xác & linh hoạt
 export const isStudentInClass = (s: User, c: ClassRoom): boolean => {
@@ -482,6 +483,188 @@ export default function ClassManager({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Xuất toàn bộ kết quả rèn luyện của lớp ra file Excel (.xlsx) với 2 Sheets chuyên nghiệp
+  const handleExportClassProgressExcel = () => {
+    if (!selectedClass || classStudents.length === 0) return;
+
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // ==========================================
+      // SHEET 1: BẢNG TỔNG HỢP KẾT QUẢ RÈN LUYỆN
+      // ==========================================
+      const summaryRows: any[][] = [
+        ["BÁO CÁO KẾT QUẢ RÈN LUYỆN & HỌC TẬP HỌC SINH"],
+        [
+          `Lớp: ${selectedClass.name}`,
+          `Khối: ${selectedClass.grade}`,
+          `Niên khóa: ${selectedClass.academicYear}`,
+          `Sĩ số: ${classStudents.length} học sinh`,
+          `Số đề đã giao: ${classAssignedQuizzes.length} đề`
+        ],
+        [`Thời gian xuất báo cáo: ${format(new Date(), 'dd/MM/yyyy HH:mm:ss')}`],
+        [], // Dòng trống ngăn cách
+        [
+          "STT",
+          "Họ và tên",
+          "Mã học sinh (MAHS)",
+          "Tài khoản đăng nhập",
+          "Khối",
+          "Lớp",
+          "Số đề đã làm",
+          "Tổng đề giao",
+          "Tỷ lệ hoàn thành (%)",
+          "ĐTB Tổng kết (0đ bài bỏ)",
+          "ĐTB Các bài đã nộp",
+          "Điểm tích lũy (⭐)",
+          "Điểm nỗ lực",
+          "Điểm thưởng",
+          "Tổng TG rèn luyện (giây)",
+          "Thời gian rèn luyện (chi tiết)",
+          "Đánh giá tiến bộ",
+          "Số đề chưa nộp",
+          "Nhận xét chi tiết từ hệ thống"
+        ]
+      ];
+
+      classStudents.forEach((student, idx) => {
+        const training = getStudentTrainingData(student);
+        const statusText = 
+          training.progressStatus === 'excellent' ? 'Tiến bộ vượt bậc' :
+          training.progressStatus === 'steady' ? 'Duy trì tốt' :
+          training.progressStatus === 'needs_effort' ? 'Cần rèn luyện thêm' : 'Chưa tham gia';
+
+        summaryRows.push([
+          idx + 1,
+          student.fullName,
+          student.studentCode || 'N/A',
+          student.username,
+          student.grade || selectedClass.grade,
+          selectedClass.name,
+          training.completedQuizzesCount,
+          training.totalAssignedCount,
+          Number(training.completionRate.toFixed(1)),
+          Number(training.finalOfficialScore.toFixed(2)),
+          training.avgSubmittedScore > 0 ? Number(training.avgSubmittedScore.toFixed(2)) : "",
+          Number(training.accumulatedPoints.toFixed(2)),
+          Number(training.effortPoints.toFixed(2)),
+          Number(training.bonusPoints.toFixed(2)),
+          training.totalSeconds,
+          formatStudyTime(training.totalSeconds),
+          statusText,
+          training.uncompletedCount,
+          training.progressFeedback
+        ]);
+      });
+
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+
+      // Căn chỉnh độ rộng cột chuẩn mực cho Sheet 1
+      wsSummary['!cols'] = [
+        { wch: 6 },   // STT
+        { wch: 26 },  // Họ và tên
+        { wch: 16 },  // MAHS
+        { wch: 16 },  // Tài khoản
+        { wch: 8 },   // Khối
+        { wch: 10 },  // Lớp
+        { wch: 14 },  // Số đề đã làm
+        { wch: 14 },  // Tổng đề giao
+        { wch: 18 },  // Tỷ lệ hoàn thành
+        { wch: 22 },  // ĐTB Tổng kết
+        { wch: 18 },  // ĐTB Đã nộp
+        { wch: 16 },  // Điểm tích lũy
+        { wch: 14 },  // Điểm nỗ lực
+        { wch: 14 },  // Điểm thưởng
+        { wch: 22 },  // TG rèn luyện (giây)
+        { wch: 24 },  // TG rèn luyện (chi tiết)
+        { wch: 20 },  // Đánh giá
+        { wch: 15 },  // Số đề chưa nộp
+        { wch: 50 },  // Nhận xét chi tiết
+      ];
+
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Tong_Hop_Ren_Luyen");
+
+      // ==========================================
+      // SHEET 2: BẢNG ĐIỂM CHI TIẾT TỪNG ĐỀ THI
+      // ==========================================
+      if (classAssignedQuizzes.length > 0) {
+        const detailHeaders = [
+          "STT",
+          "Họ và tên",
+          "Mã số (MAHS)",
+          "Tài khoản",
+          ...classAssignedQuizzes.map((q, qIdx) => `Đề ${qIdx + 1}: ${q.title} (${q.type === 'practice' ? 'Luyện tập' : 'Bài thi'})`),
+          "ĐTB Tổng kết (0đ bài bỏ)",
+          "Số đề đã làm / Tổng giao"
+        ];
+
+        const detailRows: any[][] = [
+          ["BẢNG ĐIỂM CHI TIẾT TỪNG ĐỀ THI CỦA HỌC SINH"],
+          [`Lớp: ${selectedClass.name} | Niên khóa: ${selectedClass.academicYear} | Sĩ số: ${classStudents.length} HS`],
+          [`Thời gian xuất: ${format(new Date(), 'dd/MM/yyyy HH:mm:ss')}`],
+          [],
+          detailHeaders
+        ];
+
+        classStudents.forEach((student, idx) => {
+          const training = getStudentTrainingData(student);
+          const studentQuizScores = classAssignedQuizzes.map(quiz => {
+            const studentResults = activeResults.filter(r => 
+              r.quizId === quiz.id && 
+              (r.studentId === student.id || 
+               (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
+               (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase()))
+            );
+
+            if (studentResults.length > 0) {
+              const bestScore = Math.max(...studentResults.map(r => r.score));
+              return Number(bestScore.toFixed(2));
+            }
+            return "Chưa nộp (0đ)";
+          });
+
+          detailRows.push([
+            idx + 1,
+            student.fullName,
+            student.studentCode || 'N/A',
+            student.username,
+            ...studentQuizScores,
+            Number(training.finalOfficialScore.toFixed(2)),
+            `${training.completedQuizzesCount}/${training.totalAssignedCount}`
+          ]);
+        });
+
+        const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+        wsDetail['!cols'] = [
+          { wch: 6 },
+          { wch: 26 },
+          { wch: 16 },
+          { wch: 16 },
+          ...classAssignedQuizzes.map(() => ({ wch: 25 })),
+          { wch: 22 },
+          { wch: 22 }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, wsDetail, "Diem_Chi_Tiet_Tung_De");
+      }
+
+      // Tạo binary blob và tải file .xlsx
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeClassName = (selectedClass.name || 'Lop').replace(/[^a-zA-Z0-9]/g, '_');
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Ket_Qua_Ren_Luyen_Lop_${safeClassName}_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Lỗi xuất file Excel kết quả rèn luyện:", err);
+    }
   };
 
   // Tab 3: Helper to calculate student progress statistics & automated feedback
@@ -2023,14 +2206,25 @@ export default function ClassManager({
                   </p>
                 </div>
 
-                <div className="w-full md:w-80 relative">
-                  <input
-                    className="w-full py-2 px-4 bg-slate-50 border rounded-xl outline-none text-xs font-bold pl-9"
-                    placeholder="Lọc theo tên hoặc MAHS..."
-                    value={progressSearch}
-                    onChange={e => setProgressSearch(e.target.value)}
-                  />
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <div className="w-full md:w-auto flex items-center gap-2.5 flex-wrap">
+                  <div className="w-full md:w-72 relative">
+                    <input
+                      className="w-full py-2 px-4 bg-slate-50 border rounded-xl outline-none text-xs font-bold pl-9"
+                      placeholder="Lọc theo tên hoặc MAHS..."
+                      value={progressSearch}
+                      onChange={e => setProgressSearch(e.target.value)}
+                    />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  </div>
+
+                  <button
+                    onClick={handleExportClassProgressExcel}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase shadow-xs transition-all border border-emerald-500 hover:shadow-md cursor-pointer shrink-0"
+                    title="Xuất bảng kết quả rèn luyện & điểm số học sinh sang file Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet size={15} />
+                    <span>XUẤT EXCEL</span>
+                  </button>
                 </div>
               </div>
 
@@ -2443,6 +2637,28 @@ export default function ClassManager({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Students Progress Table Header & Action */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-800 flex items-center gap-2">
+                    <Users size={14} className="text-indigo-600" />
+                    Bảng Thống Kê Chi Tiết Kết Quả Rèn Luyện ({classStudents.length} HS)
+                  </h4>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Theo dõi tỷ lệ làm bài, điểm trung bình tổng kết và điểm tích lũy của từng học sinh
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleExportClassProgressExcel}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase shadow-xs transition-all border border-emerald-500 hover:shadow-md cursor-pointer shrink-0"
+                  title="Xuất toàn bộ bảng kết quả rèn luyện học sinh sang file Excel (.xlsx)"
+                >
+                  <FileSpreadsheet size={14} />
+                  <span>XUẤT EXCEL</span>
+                </button>
               </div>
 
               {/* Students Progress Table */}
