@@ -123,6 +123,9 @@ export interface Quiz {
 export interface Result {
   id: string;
   quizId: string;
+  quizTitle?: string;
+  quizCategory?: string;
+  quizType?: QuizType;
   studentId: string;
   studentName: string;
   studentCode?: string; 
