@@ -65,6 +65,9 @@ interface ClassManagerProps {
 
 type ClassDetailTab = 'students' | 'stats' | 'progress';
 
+// Module-level cache để lưu giữ kết quả rèn luyện cho các lớp theo kiểu lazy-load (nạp 1 lần, cache dùng chung cho tất cả các tab)
+let cachedClassProgressResults: Result[] | null = null;
+
 export default function ClassManager({
   classes,
   students,
@@ -243,9 +246,16 @@ export default function ClassManager({
   const [currentQuizResults, setCurrentQuizResults] = useState<Result[]>([]);
   const [isQuizResultsLoading, setIsQuizResultsLoading] = useState(false);
 
-  // Tab 3: Dữ liệu kết quả tổng hợp của lớp (chỉ tải khi giáo viên mở Tab 3)
-  const [classProgressResults, setClassProgressResults] = useState<Result[]>([]);
+  // Tab 3: Dữ liệu kết quả tổng hợp của lớp (nạp lazy khi click vào lớp, lưu cache dùng chung cho tất cả các tab)
+  const [classProgressResults, setClassProgressResults] = useState<Result[]>(() => cachedClassProgressResults || []);
   const [isClassProgressLoading, setIsClassProgressLoading] = useState(false);
+
+  // Tập hợp kết quả làm bài đang hoạt động (kết hợp cache lớp và results prop)
+  const activeResults = useMemo(() => {
+    if (classProgressResults.length > 0) return classProgressResults;
+    if (results && results.length > 0) return results;
+    return [];
+  }, [classProgressResults, results]);
 
   React.useEffect(() => {
     let isCancelled = false;
@@ -280,17 +290,28 @@ export default function ClassManager({
 
   React.useEffect(() => {
     let isCancelled = false;
-    // Chỉ tải kết quả tổng hợp lớp khi giáo viên chủ động mở Tab 3 (Kết quả rèn luyện)
-    if (!selectedClass || activeTab !== 'progress') {
+    // DUYỆT LAZY: Khi chỉ xem danh sách các thẻ lớp (View 1: !selectedClass), KHÔNG nạp kết quả để tiết kiệm băng thông.
+    // Ngay khi giáo viên click chọn 1 lớp cụ thể (View 2), nạp kết quả ngay để Tab 1 ("Danh sách HS")
+    // lập tức hiển thị Điểm tích lũy và Thời gian rèn luyện, đồng thời lưu cache dùng chung cho tất cả các tab khác.
+    if (!selectedClass) {
+      return;
+    }
+
+    // Nếu đã có dữ liệu cache sẵn trong bộ nhớ thì áp dụng ngay
+    if (cachedClassProgressResults && cachedClassProgressResults.length > 0) {
+      if (classProgressResults.length === 0) {
+        setClassProgressResults(cachedClassProgressResults);
+      }
       return;
     }
 
     const fetchClassProgress = async () => {
       setIsClassProgressLoading(true);
       try {
-        const pResults = await getResultsMetadata(undefined, 1000, false);
-        if (!isCancelled) {
-          setClassProgressResults(pResults || []);
+        const pResults = await getResultsMetadata(undefined, 3000, false);
+        if (!isCancelled && pResults && pResults.length > 0) {
+          cachedClassProgressResults = pResults;
+          setClassProgressResults(pResults);
         }
       } catch (err) {
         console.warn("Lỗi tải kết quả rèn luyện của lớp:", err);
@@ -304,7 +325,7 @@ export default function ClassManager({
     return () => {
       isCancelled = true;
     };
-  }, [selectedClass?.id, activeTab]);
+  }, [selectedClass?.id]);
 
   // Tab 2: Detailed Quiz Performance based on FIRST ATTEMPT (Lần 1)
   const quizAttemptStats = useMemo(() => {
@@ -321,10 +342,10 @@ export default function ClassManager({
       };
     }
 
-    // Ưu tiên dùng dữ liệu đầy đủ tải riêng theo đề thi hiện tại, nếu chưa nạp xong thì tạm thời dùng results tổng
+    // Ưu tiên dùng dữ liệu đầy đủ tải riêng theo đề thi hiện tại, nếu chưa nạp xong thì dùng activeResults (đã tải và cache)
     const quizResults = currentQuizResults.length > 0 
       ? currentQuizResults 
-      : results.filter(r => r.quizId === currentQuiz.id);
+      : activeResults.filter(r => r.quizId === currentQuiz.id);
 
     const submittedList: Array<{
       student: User;
@@ -404,14 +425,14 @@ export default function ClassManager({
       highestFirstScore: highest,
       lowestFirstScore: totalSub > 0 ? lowest : 0
     };
-  }, [currentQuiz, selectedClass, classStudents, results, currentQuizResults]);
+  }, [currentQuiz, selectedClass, classStudents, activeResults, currentQuizResults]);
 
   const handleExportClassScoresCsv = () => {
     if (!currentQuiz || classStudents.length === 0) return;
 
     const quizResults = currentQuizResults.length > 0 
       ? currentQuizResults 
-      : results.filter(r => r.quizId === currentQuiz.id);
+      : activeResults.filter(r => r.quizId === currentQuiz.id);
     const headers = ["STT", "Họ và tên", "Mã học sinh", "Tài khoản", "Điểm lần 1", "Điểm cao nhất", "Số lần làm", "Trạng thái / Chú thích"];
     const rows: string[][] = [];
 
@@ -635,7 +656,7 @@ export default function ClassManager({
       let selectedStudentSubmitted = false;
 
       classStudents.forEach(student => {
-        const studentResults = results.filter(r => 
+        const studentResults = activeResults.filter(r => 
           r.quizId === quiz.id && 
           (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
         );
@@ -706,7 +727,7 @@ export default function ClassManager({
       if (training.finalOfficialScore < 5.0 || training.completionRate < 60) effortNeededCount++;
 
       classAssignedQuizzes.forEach(quiz => {
-        const studentResults = results.filter(r => 
+        const studentResults = activeResults.filter(r => 
           r.quizId === quiz.id && 
           (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
         );
@@ -751,7 +772,7 @@ export default function ClassManager({
       effortNeededStudentsCount: effortNeededCount,
       selectedStudentObj
     };
-  }, [selectedClass, classStudents, classAssignedQuizzes, results, classProgressChartScope, classProgressChartLimit, selectedStudentForComparison]);
+  }, [selectedClass, classStudents, classAssignedQuizzes, activeResults, classProgressChartScope, classProgressChartLimit, selectedStudentForComparison]);
 
   // Helper time formatter
   const formatStudyTime = (seconds: number) => {
@@ -993,7 +1014,11 @@ export default function ClassManager({
                 <span className="text-base font-black text-amber-400">{unassignedStudentsCount} HS</span>
               </div>
               <button
-                onClick={onRefresh}
+                onClick={() => {
+                  cachedClassProgressResults = null;
+                  setClassProgressResults([]);
+                  onRefresh();
+                }}
                 disabled={isLoading}
                 className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase shadow-xs transition-all flex items-center justify-center border border-white/15 disabled:opacity-50"
                 title="Tải lại danh sách lớp & học sinh từ máy chủ"
@@ -1171,6 +1196,33 @@ export default function ClassManager({
                     <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-black rounded-lg text-[10px] flex items-center gap-1">
                       <Users size={11} /> {classStudents.length} học sinh
                     </span>
+                    {isClassProgressLoading && (
+                      <span className="flex items-center gap-1 text-[10px] font-black uppercase text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        <Loader2 size={11} className="animate-spin" />
+                        Đang nạp kết quả...
+                      </span>
+                    )}
+                    <button
+                      onClick={async () => {
+                        setIsClassProgressLoading(true);
+                        try {
+                          const pResults = await getResultsMetadata(undefined, 3000, true);
+                          if (pResults && pResults.length > 0) {
+                            cachedClassProgressResults = pResults;
+                            setClassProgressResults(pResults);
+                          }
+                        } catch (err) {
+                          console.warn("Lỗi tải lại kết quả:", err);
+                        } finally {
+                          setIsClassProgressLoading(false);
+                        }
+                      }}
+                      disabled={isClassProgressLoading}
+                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Làm mới kết quả rèn luyện của lớp"
+                    >
+                      <RefreshCw size={13} className={isClassProgressLoading ? "animate-spin text-indigo-600" : ""} />
+                    </button>
                   </div>
                   {selectedClass.description && (
                     <p className="text-xs text-slate-500 font-medium mt-1">
@@ -1321,12 +1373,22 @@ export default function ClassManager({
                               {s.username}
                             </td>
                             <td className="p-3.5 text-center">
-                              <span className="font-black text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-md text-[11px]">
-                                ⭐ {training.accumulatedPoints.toFixed(2)}
-                              </span>
+                              {isClassProgressLoading && classProgressResults.length === 0 ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md text-[11px] animate-pulse">
+                                  ⭐ ...
+                                </span>
+                              ) : (
+                                <span className="font-black text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-md text-[11px]">
+                                  ⭐ {training.accumulatedPoints.toFixed(2)}
+                                </span>
+                              )}
                             </td>
                             <td className="p-3.5 text-center font-bold text-slate-600 text-[11px]">
-                              {formatStudyTime(training.totalSeconds)}
+                              {isClassProgressLoading && classProgressResults.length === 0 ? (
+                                <span className="text-slate-400 animate-pulse">...</span>
+                              ) : (
+                                formatStudyTime(training.totalSeconds)
+                              )}
                             </td>
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1">

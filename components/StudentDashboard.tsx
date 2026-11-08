@@ -14,7 +14,8 @@ import {
   Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, 
   Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Activity, Sparkles, Target, BarChart2, LineChart as LineChartIcon, 
-  BarChart3, CheckCircle, ArrowUpRight, Download, Wifi, WifiOff, CloudCheck, HardDrive, Trash2
+  BarChart3, CheckCircle, ArrowUpRight, Download, Wifi, WifiOff, CloudCheck, HardDrive, Trash2,
+  AlertTriangle, AlertCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -49,7 +50,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [academicYearFilter, setAcademicYearFilter] = useState<string>(user.academicYear || currentAcademicYear);
   const [chapterFilter, setChapterFilter] = useState('all');
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
-  const [quizStatusTab, setQuizStatusTab] = useState<'all' | 'open' | 'upcoming' | 'completed' | 'practice' | 'downloaded'>('all');
+  const [quizStatusTab, setQuizStatusTab] = useState<'all' | 'open' | 'upcoming' | 'completed' | 'practice' | 'downloaded' | 'uncompleted'>('all');
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [activePracticeQuiz, setActivePracticeQuiz] = useState<Quiz | null>(null);
   const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
@@ -128,7 +129,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     if (!isSilent) setIsLoading(true);
     try {
         const [allQuizzes, userResults, myPubs, allChapters] = await Promise.all([
-            getQuizzesMetadata(gradeFilter, forceRefresh), 
+            getQuizzesMetadata('all', forceRefresh), 
             getResultsForStudent(user.id, user.studentCode, forceRefresh), 
             getPublishedResultsForStudent(user.studentCode, forceRefresh),
             getChapters(forceRefresh)
@@ -142,8 +143,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                 return belongs ? prev : gradeChapters[0].name;
             });
         }
-        // CHỈ HIỆN ĐỀ CÔNG KHAI (KHÔNG PHẢI UNLISTED) TRÊN DASHBOARD
-        setQuizzes(allQuizzes.filter(q => q.isPublished && !q.isUnlisted));
+        // Giữ toàn bộ đề thi đã phát hành để phục vụ việc phân quyền xem đề & khớp thông tin lịch sử nộp bài
+        setQuizzes(allQuizzes.filter(q => q.isPublished));
 
         // Lọc khử trùng lặp dữ liệu nộp bài (do retry mạng, double submit hoặc trùng ID)
         const seenIds = new Set<string>();
@@ -435,20 +436,28 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   // Danh sách đề thi được phân công cho học sinh (Khối, Lớp, Công khai)
   const assignedQuizzes = useMemo(() => {
     return quizzes.filter((q: Quiz) => {
-      const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
-      let matchClass = true;
+      const matchGrade = !q.grade || q.grade === 'all' || gradeFilter === 'all' || String(q.grade) === String(gradeFilter);
+      let isTargetMatch = false;
+
       if (q.targetType === 'classes') {
-        if (q.assignedClassIds && q.assignedClassIds.length > 0) {
-          matchClass = Boolean(user.classId && q.assignedClassIds.includes(user.classId));
-        }
+        const hasClassIdMatch = Boolean(user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId));
+        const hasClassNameMatch = Boolean(user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className));
+        const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(c => 
+          (user.classId && c.id === user.classId) || (user.className && c.name === user.className)
+        ));
+        isTargetMatch = hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
+      } else {
+        isTargetMatch = !q.isUnlisted;
       }
-      return matchGrade && matchClass && q.isPublished && !q.isUnlisted;
+
+      return matchGrade && q.isPublished && isTargetMatch;
     });
-  }, [quizzes, gradeFilter, user.classId]);
+  }, [quizzes, gradeFilter, user.classId, user.className]);
 
   const completedQuizIds = useMemo(() => new Set(results.map(r => r.quizId)), [results]);
   const completedAssignedCount = useMemo(() => assignedQuizzes.filter(q => completedQuizIds.has(q.id)).length, [assignedQuizzes, completedQuizIds]);
   const uncompletedAssignedCount = useMemo(() => Math.max(0, assignedQuizzes.length - completedAssignedCount), [assignedQuizzes, completedAssignedCount]);
+  const uncompletedAssignedQuizzes = useMemo(() => assignedQuizzes.filter(q => !completedQuizIds.has(q.id)), [assignedQuizzes, completedQuizIds]);
 
   // Điểm cao nhất của từng đề đã nộp
   const bestScorePerQuiz = useMemo(() => {
@@ -727,22 +736,27 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
   const filteredQuizzes = useMemo(() => {
     return quizzes.filter((q: Quiz) => {
-        const matchGrade = gradeFilter === 'all' || q.grade === gradeFilter || q.grade === 'all';
+        const matchGrade = !q.grade || q.grade === 'all' || gradeFilter === 'all' || String(q.grade) === String(gradeFilter);
         const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
         const matchYear = !academicYearFilter || academicYearFilter === 'all' || 
             (academicYearFilter === 'none' ? !q.academicYear : (q.academicYear === academicYearFilter || (!q.academicYear && academicYearFilter === currentAcademicYear)));
         
         // Kiểm tra phân quyền giao đề theo Lớp
-        let matchClass = true;
+        let isTargetMatch = false;
         if (q.targetType === 'classes') {
-          if (q.assignedClassIds && q.assignedClassIds.length > 0) {
-            matchClass = Boolean(user.classId && q.assignedClassIds.includes(user.classId));
-          }
+          const hasClassIdMatch = Boolean(user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId));
+          const hasClassNameMatch = Boolean(user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className));
+          const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(c => 
+            (user.classId && c.id === user.classId) || (user.className && c.name === user.className)
+          ));
+          isTargetMatch = hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
+        } else {
+          isTargetMatch = !q.isUnlisted;
         }
 
-        return matchGrade && matchChapter && matchClass && matchYear;
+        return matchGrade && matchChapter && isTargetMatch && matchYear && q.isPublished;
     });
-  }, [quizzes, gradeFilter, chapterFilter, academicYearFilter, user.classId, currentAcademicYear]);
+  }, [quizzes, gradeFilter, chapterFilter, academicYearFilter, user.classId, user.className, currentAcademicYear]);
 
   // Helper tính toán thời gian mở đề & thông tin làm bài của riêng học sinh này
   const getQuizTiming = useCallback((q: Quiz) => {
@@ -820,6 +834,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const enrichedResults = useMemo(() => {
     return results.map(r => {
       const quiz = quizzes.find(q => q.id === r.quizId);
+      const title = quiz?.title || r.quizTitle || (r as any).title || 'Đề thi đã nộp';
+      const category = quiz?.category || r.quizCategory || '';
+      const rawType = quiz?.type || r.quizType || ((title.toLowerCase().includes('kiểm tra') || title.toLowerCase().includes('đề')) ? 'test' : 'practice');
       const isExpired = quiz ? isQuizExpired(quiz, currentTime) : true;
       const sameQuizAttempts = results
         .filter(item => item.quizId === r.quizId)
@@ -831,10 +848,13 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       return {
         ...r,
         quiz,
+        quizTitle: title,
+        quizCategory: category,
+        quizType: rawType,
         isExpired,
         attemptNumber,
         hasMultipleAttempts,
-        maxAttempts: quiz?.maxAttempts ?? (quiz?.type === 'practice' ? 99 : 2)
+        maxAttempts: quiz?.maxAttempts ?? (rawType === 'practice' ? 99 : 2)
       };
     });
   }, [results, quizzes, currentTime, isQuizExpired]);
@@ -1011,6 +1031,19 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             >
                 <Clock size={12} />
                 <span>Sắp làm ({upcomingTestQuizzes.length})</span>
+            </button>
+            <button
+                onClick={() => setQuizStatusTab('uncompleted')}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
+                    quizStatusTab === 'uncompleted'
+                        ? 'bg-rose-600 text-white shadow-md shadow-rose-200'
+                        : uncompletedAssignedQuizzes.length > 0 
+                            ? 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200' 
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-200'
+                }`}
+            >
+                <AlertTriangle size={12} className={uncompletedAssignedQuizzes.length > 0 ? "text-rose-600" : ""} />
+                <span>Chưa làm ({uncompletedAssignedQuizzes.length})</span>
             </button>
             <button
                 onClick={() => {
@@ -1501,7 +1534,82 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       </section>
 
       <section className="space-y-12">
-          {/* 1. ĐỀ THI ĐANG MỞ (VÀO LÀM BÀI NGAY) */}
+          {/* MỤC BÀI THI CHƯA HOÀN THÀNH - CHỈ HIỂN THỊ KHI Ở TAB "CHƯA LÀM" */}
+          {quizStatusTab === 'uncompleted' && (
+              <div className="mb-8">
+                  <div className="flex items-center gap-4 mb-6 px-2">
+                      <div className="flex items-center gap-2">
+                          <AlertTriangle size={18} className="text-rose-500" />
+                          <h2 className="text-base font-black text-slate-800 uppercase tracking-tight">Bài thi chưa hoàn thành (Giao riêng cho Lớp)</h2>
+                          <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 font-black text-[9px] rounded-full uppercase">
+                              {uncompletedAssignedQuizzes.length} đề chưa làm • Tính 0.00đ vào ĐTB
+                          </span>
+                      </div>
+                      <div className="h-px flex-1 bg-rose-100"></div>
+                  </div>
+
+                  {uncompletedAssignedQuizzes.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {uncompletedAssignedQuizzes.map(q => {
+                              const timing = getQuizTiming(q);
+                              const isOpen = !timing.isExpired && timing.isStarted && !timing.isEnded && !timing.isFrozen;
+                              const totalQuestions = q.questionCount || (q.questions ? q.questions.length : 0);
+
+                              return (
+                                  <div key={`uncomp_card_${q.id}`} className={`bg-white rounded-[1.5rem] border-2 p-6 flex flex-col transition-all shadow-md ${
+                                      isOpen ? 'border-amber-400 hover:border-amber-500 shadow-amber-100' : 'border-rose-200'
+                                  }`}>
+                                      <div className="flex justify-between items-start mb-3">
+                                          <span className={`px-2.5 py-1 rounded-xl text-[8px] font-black uppercase flex items-center gap-1.5 ${
+                                              isOpen ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                          }`}>
+                                              {isOpen ? '⚡ ĐANG MỞ - CẦN LÀM NGAY' : '🔴 CHƯA NỘP (TÍNH 0.00Đ)'}
+                                          </span>
+                                          <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
+                                      </div>
+                                      {q.category && <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
+                                      <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
+
+                                      <div className="bg-slate-50 rounded-xl p-3 mb-4 space-y-1.5 text-[9px] font-bold text-slate-600 border border-slate-100">
+                                          <div className="flex items-center justify-between text-slate-500">
+                                              <span>Số câu hỏi:</span>
+                                              <span className="text-slate-800 font-extrabold">{totalQuestions} câu</span>
+                                          </div>
+                                          <div className="flex items-center justify-between text-slate-500">
+                                              <span>Trạng thái nộp:</span>
+                                              <span className="text-rose-600 font-black">Chưa có kết quả</span>
+                                          </div>
+                                      </div>
+
+                                      <div className="mt-auto">
+                                          {isOpen ? (
+                                              <button
+                                                  onClick={() => handleStartQuiz(q)}
+                                                  className="w-full py-3 rounded-xl font-black uppercase text-[9px] bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                              >
+                                                  <Zap size={13} /> Vào làm bài bổ sung ngay
+                                              </button>
+                                          ) : (
+                                              <div className="w-full py-2.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 font-black uppercase text-[9px] text-center">
+                                                  Quá hạn thi • Đang tính 0.00đ
+                                              </div>
+                                          )}
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  ) : (
+                      <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-500 text-xs font-bold space-y-2">
+                          <CheckCircle2 size={32} className="text-emerald-500 mx-auto" />
+                          <p className="font-black uppercase text-slate-800 text-sm">Tuyệt vời!</p>
+                          <p className="text-slate-400">Bạn đã hoàn thành 100% các đề thi được phân công cho lớp. Không có đề thi nào bị bỏ lỡ.</p>
+                      </div>
+                  )}
+              </div>
+          )}
+
+          {/* 1. ĐỀ THI ĐANG MỜ (VÀO LÀM BÀI NGAY) */}
           {(quizStatusTab === 'all' || quizStatusTab === 'open') && (
               <div>
                   <div className="flex items-center gap-4 mb-6 px-2">
@@ -1922,6 +2030,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   <tbody className="divide-y">
                       {filteredResults.slice(0, resultsDisplayCount).map((r) => {
                           const quiz = r.quiz;
+                          const displayTitle = r.quizTitle || quiz?.title || 'Đề thi đã nộp';
+                          const displayCategory = r.quizCategory || quiz?.category || '';
+                          const displayType = r.quizType || quiz?.type || 'test';
                           const rowTotal = r.totalQuestions || quiz?.questionCount || 0;
                           const rowCompleted = countCompletedQuestions(r.userAnswers, rowTotal) || (r.score > 0 ? rowTotal : 0);
                           return (
@@ -1930,7 +2041,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                       <div className="space-y-1.5 max-w-md">
                                           <div className="flex flex-wrap items-center gap-2">
                                               <span className="font-black text-slate-800 uppercase text-xs leading-snug">
-                                                  {quiz?.title || 'Đề thi đã lưu trữ'}
+                                                  {displayTitle}
                                               </span>
                                           </div>
                                           <div className="flex flex-wrap items-center gap-1.5">
@@ -1952,9 +2063,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                                   </span>
                                               )}
 
-                                              {quiz?.category && (
+                                              {displayCategory && (
                                                   <span className="text-[9px] text-slate-400 font-medium truncate max-w-[200px]">
-                                                      • {quiz.category}
+                                                      • {displayCategory}
                                                   </span>
                                               )}
                                           </div>
@@ -1962,11 +2073,11 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                   </td>
                                   <td className="p-6 text-center">
                                       <span className={`inline-block px-2.5 py-1 rounded-xl text-[8px] font-black uppercase border ${
-                                          quiz?.type === 'test' 
+                                          displayType === 'test' 
                                               ? 'bg-blue-50 text-blue-700 border-blue-200' 
                                               : 'bg-amber-50 text-amber-700 border-amber-200'
                                       }`}>
-                                          {quiz?.type === 'test' ? 'Đề thi định kỳ' : 'Luyện tập tự do'}
+                                          {displayType === 'test' ? 'Bài thi bắt buộc' : 'Luyện tập tự do'}
                                       </span>
                                   </td>
                                   <td className="p-6 text-center">

@@ -42,12 +42,18 @@ export default function StudentDetailModal({ student, results, quizzes, onClose,
     const assignedQuizzes = useMemo(() => {
         if (!student) return [];
         return quizzes.filter(q => {
-            const matchGrade = q.grade === student.grade || q.grade === 'all';
-            if (!matchGrade) return false;
+            const matchGrade = !q.grade || q.grade === 'all' || q.grade === student.grade;
+            if (!matchGrade || !q.isPublished) return false;
+
             if (q.targetType === 'classes') {
-                return student.classId && q.assignedClassIds && q.assignedClassIds.includes(student.classId);
+                const hasClassIdMatch = Boolean(student.classId && q.assignedClassIds && q.assignedClassIds.includes(student.classId));
+                const hasClassNameMatch = Boolean(student.className && q.assignedClassIds && q.assignedClassIds.includes(student.className));
+                const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(c => 
+                    (student.classId && c.id === student.classId) || (student.className && c.name === student.className)
+                ));
+                return hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
             }
-            return true;
+            return !q.isUnlisted;
         });
     }, [quizzes, student]);
 

@@ -253,6 +253,9 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
         const result: Result = {
             id: uuidv4(),
             quizId: quiz.id,
+            quizTitle: quiz.title,
+            quizCategory: quiz.category,
+            quizType: quiz.type,
             studentId: student.id,
             studentName: student.fullName,
             studentCode: student.studentCode || 'N/A',
