@@ -43,7 +43,13 @@ export default function StudentDetailModal({ student, results, quizzes, onClose,
         if (!student) return [];
         return quizzes.filter(q => {
             const matchGrade = !q.grade || q.grade === 'all' || q.grade === student.grade;
-            if (!matchGrade || !q.isPublished) return false;
+            if (!matchGrade || q.isPublished === false) return false;
+
+            if (q.academicYear && student.academicYear) {
+                const qYear = q.academicYear.trim();
+                const sYear = student.academicYear.trim();
+                if (qYear && sYear && qYear !== sYear) return false;
+            }
 
             if (q.targetType === 'classes') {
                 const hasClassIdMatch = Boolean(student.classId && q.assignedClassIds && q.assignedClassIds.includes(student.classId));

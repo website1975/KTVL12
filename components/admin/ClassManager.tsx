@@ -28,7 +28,7 @@ import {
 } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
-import { getQuizById, getResultsMetadata } from '../../services/storage';
+import { getQuizById, getResultsMetadata, getResultsForStudents } from '../../services/storage';
 import QuizPreviewModal from './QuizPreviewModal';
 import * as XLSX from 'xlsx';
 
@@ -48,6 +48,122 @@ export const isStudentInClass = (s: User, c: ClassRoom): boolean => {
     return true;
   }
   return false;
+};
+
+// Helper chuẩn hóa chuỗi tiếng Việt (loại bỏ khoảng trắng thừa, Unicode NFC)
+export const normalizeString = (str: string): string => {
+  return (str || '')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+
+// Hàm kiểm tra bài làm có thuộc về học sinh hay không (đối soát thông minh theo ID, MAHS, Tài khoản và Tên)
+export const isResultOfStudent = (r: Result, student: User): boolean => {
+  if (!r || !student) return false;
+  
+  // 1. Khớp theo ID học sinh
+  if (r.studentId && student.id && String(r.studentId).trim() === String(student.id).trim()) return true;
+
+  // 2. Khớp theo Mã số học sinh (MAHS)
+  const rCode = (r.studentCode && r.studentCode !== 'N/A' ? r.studentCode : '').trim().toUpperCase();
+  const sCode = (student.studentCode && student.studentCode !== 'N/A' ? student.studentCode : '').trim().toUpperCase();
+  if (rCode && sCode && rCode === sCode) return true;
+
+  // 3. Khớp MAHS với studentId (nếu kết quả lưu MAHS ở cột student_id)
+  if (sCode && r.studentId && r.studentId.trim().toUpperCase() === sCode) return true;
+  if (rCode && student.id && student.id.trim().toUpperCase() === rCode) return true;
+
+  // 4. Khớp Tên tài khoản (username)
+  const rUser = ((r as any).username || (r as any).user || '').trim().toLowerCase();
+  const sUser = (student.username || '').trim().toLowerCase();
+  if (rUser && sUser && rUser === sUser) return true;
+  if (sUser && r.studentId && r.studentId.trim().toLowerCase() === sUser) return true;
+
+  // 5. Khớp Họ và tên (không phân biệt hoa thường, chuẩn hóa Unicode & khoảng trắng)
+  const rName = normalizeString(r.studentName);
+  const sName = normalizeString(student.fullName);
+  if (rName && sName && rName === sName) return true;
+
+  return false;
+};
+
+// Hàm kiểm tra học sinh đã hoàn thành đề thi hay chưa (so khớp ID đề thi hoặc Tiêu đề đề thi)
+export const isQuizCompletedByStudent = (q: Quiz, studentResults: Result[]): boolean => {
+  if (!q || !studentResults || studentResults.length === 0) return false;
+  const qId = String(q.id || '').trim();
+  const qTitleNorm = normalizeString(q.title);
+
+  return studentResults.some(r => {
+    // 1. Khớp theo ID đề thi
+    const rQuizId = String(r.quizId || (r as any).quiz_id || '').trim();
+    if (rQuizId && qId && rQuizId === qId) return true;
+    
+    // 2. Khớp theo tiêu đề đề thi
+    const rTitleNorm = normalizeString(r.quizTitle || (r as any).title || (r as any).quiz_title);
+    if (rTitleNorm && qTitleNorm) {
+      if (rTitleNorm === qTitleNorm) return true;
+      if (rTitleNorm.includes(qTitleNorm) || qTitleNorm.includes(rTitleNorm)) return true;
+    }
+
+    return false;
+  });
+};
+
+// Hàm lấy tất cả lượt làm bài của học sinh đối với 1 đề thi cụ thể
+export const getStudentQuizSubmissions = (q: Quiz, studentResults: Result[]): Result[] => {
+  if (!q || !studentResults || studentResults.length === 0) return [];
+  const qId = String(q.id || '').trim();
+  const qTitleNorm = normalizeString(q.title);
+
+  return studentResults.filter(r => {
+    const rQuizId = String(r.quizId || (r as any).quiz_id || '').trim();
+    if (rQuizId && qId && rQuizId === qId) return true;
+
+    const rTitleNorm = normalizeString(r.quizTitle || (r as any).title || (r as any).quiz_title);
+    if (rTitleNorm && qTitleNorm) {
+      if (rTitleNorm === qTitleNorm) return true;
+      if (rTitleNorm.includes(qTitleNorm) || qTitleNorm.includes(rTitleNorm)) return true;
+    }
+
+    return false;
+  });
+};
+
+// Hàm kiểm tra đề thi có thực sự được phân công cho Lớp học hay không (Lọc theo Niên khóa, Phát hành, Lớp được chọn)
+export const isQuizAssignedToClass = (q: Quiz, c: ClassRoom): boolean => {
+  if (!q || !c) return false;
+
+  // 1. Phải là đề đã phát hành (isPublished !== false) - Bản nháp/Chưa phát hành tuyệt đối không tính là đề thi đã giao
+  if (q.isPublished === false) return false;
+
+  // 2. Kiểm tra Khối (Grade)
+  const matchGrade = !q.grade || q.grade === 'all' || String(q.grade) === String(c.grade);
+  if (!matchGrade) return false;
+
+  // 3. Kiểm tra Niên khóa (Academic Year) - nếu đề thi có niên khóa thì phải trùng với niên khóa của lớp
+  if (q.academicYear && c.academicYear) {
+    const qYear = q.academicYear.trim();
+    const cYear = c.academicYear.trim();
+    if (qYear && cYear && qYear !== cYear) return false;
+  }
+
+  // 4. Kiểm tra Phạm vi phân công (Target Type & Target Classes)
+  if (q.targetType === 'classes') {
+    const hasClassIdMatch = Boolean(c.id && q.assignedClassIds && (q.assignedClassIds.includes(c.id) || q.assignedClassIds.includes(c.name)));
+    const hasClassNameMatch = Boolean(c.name && q.assignedClassIds && q.assignedClassIds.includes(c.name));
+    const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(ac => 
+      (c.id && ac.id === c.id) || (c.name && ac.name === c.name)
+    ));
+    return hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
+  }
+
+  // Nếu targetType === 'all' (hoặc không khai báo):
+  // Chỉ tính là giao cho toàn khối nếu đề thi KHÔNG ở trạng thái Ẩn/Chưa công khai (isUnlisted: true)
+  if (q.isUnlisted) return false;
+
+  return true;
 };
 
 interface ClassManagerProps {
@@ -209,19 +325,12 @@ export default function ClassManager({
     });
   }, [classStudents, memberSearch]);
 
-  // Quizzes assigned to the selected class (Explicitly assigned OR grade-wide assigned)
+  // Quizzes assigned to the selected class (Explicitly assigned OR grade-wide assigned for this academic year)
   const classAssignedQuizzes = useMemo(() => {
     if (!selectedClass) return [];
-    return quizzes.filter(q => {
-      const matchGrade = q.grade === selectedClass.grade || q.grade === 'all';
-      if (!matchGrade) return false;
-      
-      // Class targeting rule:
-      if (q.targetType === 'classes') {
-        return q.assignedClassIds && q.assignedClassIds.includes(selectedClass.id);
-      }
-      return true; // Default target 'all' for this grade
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return quizzes
+      .filter(q => isQuizAssignedToClass(q, selectedClass))
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [quizzes, selectedClass]);
 
   // Quizzes filtered for Tab 2 dropdown
@@ -251,12 +360,20 @@ export default function ClassManager({
   const [classProgressResults, setClassProgressResults] = useState<Result[]>(() => cachedClassProgressResults || []);
   const [isClassProgressLoading, setIsClassProgressLoading] = useState(false);
 
-  // Tập hợp kết quả làm bài đang hoạt động (kết hợp cache lớp và results prop)
+  // Tập hợp kết quả làm bài đang hoạt động (kết hợp cache lớp, results prop và currentQuizResults mà không trùng lặp)
   const activeResults = useMemo(() => {
-    if (classProgressResults.length > 0) return classProgressResults;
-    if (results && results.length > 0) return results;
-    return [];
-  }, [classProgressResults, results]);
+    const map = new Map<string, Result>();
+    if (results && Array.isArray(results)) {
+      results.forEach(r => { if (r && r.id) map.set(r.id, r); });
+    }
+    if (classProgressResults && Array.isArray(classProgressResults)) {
+      classProgressResults.forEach(r => { if (r && r.id) map.set(r.id, r); });
+    }
+    if (currentQuizResults && Array.isArray(currentQuizResults)) {
+      currentQuizResults.forEach(r => { if (r && r.id) map.set(r.id, r); });
+    }
+    return Array.from(map.values());
+  }, [classProgressResults, results, currentQuizResults]);
 
   React.useEffect(() => {
     let isCancelled = false;
@@ -292,27 +409,28 @@ export default function ClassManager({
   React.useEffect(() => {
     let isCancelled = false;
     // DUYỆT LAZY: Khi chỉ xem danh sách các thẻ lớp (View 1: !selectedClass), KHÔNG nạp kết quả để tiết kiệm băng thông.
-    // Ngay khi giáo viên click chọn 1 lớp cụ thể (View 2), nạp kết quả ngay để Tab 1 ("Danh sách HS")
-    // lập tức hiển thị Điểm tích lũy và Thời gian rèn luyện, đồng thời lưu cache dùng chung cho tất cả các tab khác.
+    // Ngay khi giáo viên click chọn 1 lớp cụ thể (View 2), nạp toàn bộ kết quả để Tab 1 ("Danh sách HS")
+    // và các Tab khác lập tức hiển thị đầy đủ Điểm tích lũy, Thời gian rèn luyện và Điểm số không bị giới hạn 13 mục.
     if (!selectedClass) {
-      return;
-    }
-
-    // Nếu đã có dữ liệu cache sẵn trong bộ nhớ thì áp dụng ngay
-    if (cachedClassProgressResults && cachedClassProgressResults.length > 0) {
-      if (classProgressResults.length === 0) {
-        setClassProgressResults(cachedClassProgressResults);
-      }
       return;
     }
 
     const fetchClassProgress = async () => {
       setIsClassProgressLoading(true);
       try {
-        const pResults = await getResultsMetadata(undefined, 3000, false);
-        if (!isCancelled && pResults && pResults.length > 0) {
-          cachedClassProgressResults = pResults;
-          setClassProgressResults(pResults);
+        const studentCodes = classStudents.map(s => s.studentCode || '').filter(Boolean);
+        const studentIds = classStudents.map(s => s.id).filter(Boolean);
+
+        if (studentCodes.length === 0 && studentIds.length === 0) {
+          setClassProgressResults([]);
+          return;
+        }
+
+        const classStudentResults = await getResultsForStudents(studentCodes, studentIds);
+
+        if (!isCancelled) {
+          cachedClassProgressResults = classStudentResults;
+          setClassProgressResults(classStudentResults);
         }
       } catch (err) {
         console.warn("Lỗi tải kết quả rèn luyện của lớp:", err);
@@ -357,11 +475,7 @@ export default function ClassManager({
     const unsubmittedList: User[] = [];
 
     classStudents.forEach(student => {
-      const studentResults = quizResults.filter(r => 
-        r.studentId === student.id || 
-        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
-        (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
-      );
+      const studentResults = quizResults.filter(r => isResultOfStudent(r, student));
 
       if (studentResults.length > 0) {
         // Sort by date ascending to get FIRST attempt
@@ -438,11 +552,7 @@ export default function ClassManager({
     const rows: string[][] = [];
 
     classStudents.forEach((student, idx) => {
-      const studentResults = quizResults.filter(r => 
-        r.studentId === student.id || 
-        (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
-        (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
-      );
+      const studentResults = quizResults.filter(r => isResultOfStudent(r, student));
 
       let scoreFirst = "0.0";
       let scoreBest = "0.0";
@@ -610,16 +720,12 @@ export default function ClassManager({
 
         classStudents.forEach((student, idx) => {
           const training = getStudentTrainingData(student);
+          const studentResults = activeResults.filter(r => isResultOfStudent(r, student));
           const studentQuizScores = classAssignedQuizzes.map(quiz => {
-            const studentResults = activeResults.filter(r => 
-              r.quizId === quiz.id && 
-              (r.studentId === student.id || 
-               (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
-               (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase()))
-            );
+            const quizSubs = getStudentQuizSubmissions(quiz, studentResults);
 
-            if (studentResults.length > 0) {
-              const bestScore = Math.max(...studentResults.map(r => r.score));
+            if (quizSubs.length > 0) {
+              const bestScore = Math.max(...quizSubs.map(r => r.score));
               return Number(bestScore.toFixed(2));
             }
             return "Chưa nộp (0đ)";
@@ -669,12 +775,7 @@ export default function ClassManager({
 
   // Tab 3: Helper to calculate student progress statistics & automated feedback
   const getStudentTrainingData = (student: User) => {
-    const activeResults = classProgressResults.length > 0 ? classProgressResults : results;
-    const studentResults = activeResults.filter(r => 
-      r.studentId === student.id || 
-      (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()) ||
-      (student.username && (r as any).username && (r as any).username.trim().toLowerCase() === student.username.trim().toLowerCase())
-    );
+    const studentResults = activeResults.filter(r => isResultOfStudent(r, student));
 
     const totalSeconds = studentResults.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
     const effortPoints = totalSeconds / 2700; // 45 mins = 1 effort point
@@ -688,19 +789,22 @@ export default function ClassManager({
 
     const accumulatedPoints = effortPoints + bonusPoints;
 
-    // Completed quizzes vs Assigned quizzes
-    const completedQuizIds = new Set(studentResults.map(r => r.quizId));
-    const completedQuizzesCount = classAssignedQuizzes.filter(q => completedQuizIds.has(q.id)).length;
+    // Completed quizzes vs Assigned quizzes (So khớp bằng ID hoặc Tên đề thi)
+    const completedQuizzes = classAssignedQuizzes.filter(q => isQuizCompletedByStudent(q, studentResults));
+    const completedQuizzesCount = completedQuizzes.length;
     const totalAssignedCount = classAssignedQuizzes.length;
     const completionRate = totalAssignedCount > 0 ? (completedQuizzesCount / totalAssignedCount) * 100 : 0;
-    const uncompletedQuizzes = classAssignedQuizzes.filter(q => !completedQuizIds.has(q.id));
+    const uncompletedQuizzes = classAssignedQuizzes.filter(q => !isQuizCompletedByStudent(q, studentResults));
     const uncompletedCount = uncompletedQuizzes.length;
 
-    // Điểm cao nhất của từng đề đã nộp
+    // Điểm cao nhất của từng đề được giao đã nộp
     const quizScoreMap = new Map<string, number>();
-    studentResults.forEach(r => {
-      const cur = quizScoreMap.get(r.quizId) ?? 0;
-      if (r.score > cur) quizScoreMap.set(r.quizId, r.score);
+    classAssignedQuizzes.forEach(q => {
+      const subs = getStudentQuizSubmissions(q, studentResults);
+      if (subs.length > 0) {
+        const best = Math.max(...subs.map(r => r.score));
+        quizScoreMap.set(q.id, best);
+      }
     });
 
     const sumSubmittedScores = Array.from(quizScoreMap.values()).reduce((a, b) => a + b, 0);
@@ -839,13 +943,11 @@ export default function ClassManager({
       let selectedStudentSubmitted = false;
 
       classStudents.forEach(student => {
-        const studentResults = activeResults.filter(r => 
-          r.quizId === quiz.id && 
-          (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
-        );
+        const studentResults = activeResults.filter(r => isResultOfStudent(r, student));
+        const quizSubs = getStudentQuizSubmissions(quiz, studentResults);
 
-        if (studentResults.length > 0) {
-          const best = Math.max(...studentResults.map(r => r.score));
+        if (quizSubs.length > 0) {
+          const best = Math.max(...quizSubs.map(r => r.score));
           totalAssignedScoreOnQuiz += best;
           totalSubmittedScoreOnQuiz += best;
           submittedCountOnQuiz++;
@@ -909,14 +1011,13 @@ export default function ClassManager({
       if (training.finalOfficialScore >= 8.0) excellentCount++;
       if (training.finalOfficialScore < 5.0 || training.completionRate < 60) effortNeededCount++;
 
-      classAssignedQuizzes.forEach(quiz => {
-        const studentResults = activeResults.filter(r => 
-          r.quizId === quiz.id && 
-          (r.studentId === student.id || (student.studentCode && r.studentCode && r.studentCode.trim().toUpperCase() === student.studentCode.trim().toUpperCase()))
-        );
+      const studentResults = activeResults.filter(r => isResultOfStudent(r, student));
 
-        if (studentResults.length > 0) {
-          const best = Math.max(...studentResults.map(r => r.score));
+      classAssignedQuizzes.forEach(quiz => {
+        const quizSubs = getStudentQuizSubmissions(quiz, studentResults);
+
+        if (quizSubs.length > 0) {
+          const best = Math.max(...quizSubs.map(r => r.score));
           grandTotalAssignedScore += best;
           grandTotalSubmittedScore += best;
           grandTotalSubmittedCount++;
@@ -2785,7 +2886,7 @@ export default function ClassManager({
 
         // 1. Duyệt qua tất cả các đề được giao cho lớp
         classAssignedQuizzes.forEach((q) => {
-          const subs = studentResultsMap.get(q.id);
+          const subs = getStudentQuizSubmissions(q, training.studentResults);
           if (subs && subs.length > 0) {
             const bestSub = [...subs].sort((a, b) => b.score - a.score)[0];
             const subDate = new Date(bestSub.submittedAt);
@@ -2822,14 +2923,19 @@ export default function ClassManager({
 
         // 2. Bổ sung các bài nộp khác của học sinh (nếu có đề ngoài lớp)
         training.studentResults.forEach(r => {
-          if (!classAssignedQuizzes.some(q => q.id === r.quizId) && !studentTimelineData.some(item => item.quizId === r.quizId)) {
+          const matchesAssigned = classAssignedQuizzes.some(q => 
+            (r.quizId && q.id && r.quizId === q.id) || 
+            ((r.quizTitle || (r as any).title) && (r.quizTitle || (r as any).title).trim().toLowerCase() === q.title.trim().toLowerCase())
+          );
+          if (!matchesAssigned && !studentTimelineData.some(item => item.quizId === r.quizId || item.id === r.id)) {
             const q = quizzes.find(item => item.id === r.quizId);
             const subDate = new Date(r.submittedAt);
+            const displayTitle = r.quizTitle || q?.title || 'Đề thi';
             studentTimelineData.push({
               id: r.id,
               quizId: r.quizId,
-              quizTitle: q?.title || 'Đề tự do',
-              shortTitle: (q?.title || 'Đề tự do').slice(0, 16),
+              quizTitle: displayTitle,
+              shortTitle: displayTitle.slice(0, 16),
               score: Number(r.score.toFixed(2)),
               isSubmitted: true,
               date: format(subDate, 'dd/MM/yyyy HH:mm'),
@@ -3172,8 +3278,8 @@ export default function ClassManager({
                             return (
                               <tr key={r.id || i} className="hover:bg-slate-50">
                                 <td className="p-2.5 font-black text-slate-800">
-                                  {q?.title || `Đề ${r.quizId.slice(0, 8)}`}
-                                  {q?.category && <span className="block text-[10px] font-medium text-slate-400">{q.category}</span>}
+                                  {r.quizTitle || q?.title || `Đề ${r.quizId.slice(0, 8)}`}
+                                  {(r.quizCategory || q?.category) && <span className="block text-[10px] font-medium text-slate-400">{r.quizCategory || q?.category}</span>}
                                 </td>
                                 <td className="p-2.5 text-center">
                                   <span className={`font-black px-2 py-0.5 rounded-md text-[11px] ${r.score >= 8 ? 'bg-emerald-50 text-emerald-700' : r.score >= 5 ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700'}`}>
