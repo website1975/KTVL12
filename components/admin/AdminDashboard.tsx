@@ -1739,6 +1739,8 @@ export default function AdminDashboard() {
                 quizzes={quizzes}
                 bankQuestions={allAvailableQuestions}
                 initialQuizId={activeReviewQuizId}
+                classes={classes}
+                students={students}
                 onClose={() => setActiveTab('quizzes')}
               />
             </div>

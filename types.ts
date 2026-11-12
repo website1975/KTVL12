@@ -168,3 +168,35 @@ export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
 }
+
+export interface LiveReviewStudentAnswer {
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  answer: any;
+  submittedAt: string;
+  isCorrect?: boolean;
+}
+
+export interface LiveReviewSession {
+  id: string; // e.g. "live_review_" + uuid
+  quizId: string;
+  quizTitle: string;
+  grade: Grade;
+  academicYear?: string;
+  targetClassIds: string[];
+  targetClassNames: string[];
+  startTime: string; // ISO string t1
+  endTime: string; // ISO string t2
+  status: 'active' | 'ended';
+  currentQuestionIndex: number;
+  timeLimitSeconds: number; // e.g. 60, 120
+  questionActivatedAt: string | null;
+  isQuestionLocked: boolean;
+  showAnswer: boolean;
+  showSolution: boolean;
+  teacherNote?: string;
+  allowPracticeRetry?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

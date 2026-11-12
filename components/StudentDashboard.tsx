@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { User, Quiz, Result, PublishedResult, Chapter, Grade } from '../types';
+import { User, Quiz, Result, PublishedResult, Chapter, Grade, LiveReviewSession } from '../types';
 import { getQuizzesMetadata, getResultsForStudent, getPublishedResultsForStudent, getQuizById, getResultById, getStudentActiveSessions, deleteExamSession, getChapters, getCurrentAcademicYear } from '../services/storage';
 import { downloadQuizForOffline, getOfflineQuizzes, getOfflineQuizById, deleteOfflineQuiz } from '../services/offlineStorage';
 import { useOfflineSync } from '../services/offlineSyncManager';
+import { getActiveLiveReviewForStudent, getLiveReviewedQuizIds } from '../services/liveReviewService';
+import LiveReviewStudentTaker from './LiveReviewStudentTaker';
 import OfflineManagerModal from './OfflineManagerModal';
 import QuizTaker from './QuizTaker';
 import QuickPractice from './QuickPractice';
@@ -15,7 +17,7 @@ import {
   Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Activity, Sparkles, Target, BarChart2, LineChart as LineChartIcon, 
   BarChart3, CheckCircle, ArrowUpRight, Download, Wifi, WifiOff, CloudCheck, HardDrive, Trash2,
-  AlertTriangle, AlertCircle
+  AlertTriangle, AlertCircle, Radio, Play, RotateCcw
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -59,6 +61,11 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(false);
 
+  // Trạng thái phiên sửa bài đố vui trực tiếp (Live Review Session)
+  const [activeLiveSession, setActiveLiveSession] = useState<LiveReviewSession | null>(null);
+  const [liveReviewSessionCheck, setLiveReviewSessionCheck] = useState<LiveReviewSession | null>(null);
+  const [liveReviewedQuizIds, setLiveReviewedQuizIds] = useState<string[]>(() => getLiveReviewedQuizIds());
+
   // Hook quản lý trạng thái kết nối & tự động đồng bộ kết quả ngoại tuyến
   const { 
     isOnline, 
@@ -89,6 +96,69 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   useEffect(() => {
     loadDownloadedQuizzes();
   }, [loadDownloadedQuizzes, downloadedCount]);
+
+  // Lắng nghe phiên sửa bài đố vui trực tiếp dành cho lớp của học sinh (Yêu cầu 1 & 2)
+  useEffect(() => {
+    let isMounted = true;
+    const checkLive = async () => {
+      // Nếu học sinh đang trong màn hình giải bài trực tiếp, bỏ qua kiểm tra banner để tránh re-render bảng điều khiển
+      if (activeLiveSession) return;
+      try {
+        const session = await getActiveLiveReviewForStudent(user);
+        if (isMounted) {
+          setLiveReviewSessionCheck(prev => {
+            if (!prev && !session) return null;
+            if (
+              prev &&
+              session &&
+              prev.id === session.id &&
+              prev.updatedAt === session.updatedAt &&
+              prev.currentQuestionIndex === session.currentQuestionIndex &&
+              prev.status === session.status
+            ) {
+              return prev;
+            }
+            return session;
+          });
+        }
+        const reviewedIds = getLiveReviewedQuizIds();
+        if (isMounted) setLiveReviewedQuizIds(reviewedIds);
+      } catch (e) {}
+    };
+
+    checkLive();
+    const interval = setInterval(checkLive, 4000);
+
+    // Kênh BroadcastChannel để nhận tín hiệu kết thúc hoặc cập nhật 0ms
+    let liveChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        liveChannel = new BroadcastChannel('eduquiz_live_review_sync');
+        liveChannel.onmessage = (e) => {
+          if (!isMounted) return;
+          if (e.data?.type === 'SESSION_END') {
+            setLiveReviewSessionCheck(null);
+            setActiveLiveSession(null);
+          } else if (e.data?.type === 'SESSION_UPDATE') {
+            if (e.data.session?.status === 'ended') {
+              setLiveReviewSessionCheck(null);
+              setActiveLiveSession(null);
+            } else if (!activeLiveSession) {
+              checkLive();
+            }
+          }
+        };
+      }
+    } catch (e) {}
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      if (liveChannel) {
+        try { liveChannel.close(); } catch (e) {}
+      }
+    };
+  }, [user, activeLiveSession]);
 
   const handleDownloadQuiz = async (quiz: Quiz, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -309,7 +379,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   };
 
   const handleStartPractice = async (quiz: Quiz) => {
-    if (quiz.type === 'test') {
+    const isLiveReviewed = liveReviewedQuizIds.includes(quiz.id);
+    if (quiz.type === 'test' && !isLiveReviewed) {
       alert("Đề này là Đề thi chính thức do Giáo viên chỉ định, không mở chế độ luyện tập trước.");
       return;
     }
@@ -335,6 +406,10 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       if (!fullQuiz) {
         alert("Không tìm thấy dữ liệu đề thi.");
         return;
+      }
+
+      if (isLiveReviewed) {
+        fullQuiz = { ...fullQuiz, type: 'practice' };
       }
 
       if (navigator.onLine) {
@@ -822,10 +897,14 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   }, [filteredQuizzes, getQuizTiming]);
 
 
-  // 4. Kho đề luyện tập
+  // 4. Kho đề luyện tập (Bao gồm đề tự luyện và đề sửa bài được phép làm lại - Yêu cầu 4)
   const practiceQuizzes = useMemo(() => {
-    return filteredQuizzes.filter(q => q.type === 'practice' && !isQuizExpired(q, currentTime));
-  }, [filteredQuizzes, currentTime, isQuizExpired]);
+    return filteredQuizzes.filter(q => {
+      const isLiveReviewed = liveReviewedQuizIds.includes(q.id);
+      if (isLiveReviewed) return true;
+      return q.type === 'practice' && !isQuizExpired(q, currentTime);
+    });
+  }, [filteredQuizzes, currentTime, isQuizExpired, liveReviewedQuizIds]);
 
   // Bộ lọc và hiển thị danh sách các đề đã làm ở phía dưới
   const [resultsFilter, setResultsFilter] = useState<'all' | 'expired' | 'active'>('all');
@@ -871,6 +950,19 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
   const expiredResultsCount = useMemo(() => enrichedResults.filter(r => r.isExpired).length, [enrichedResults]);
   const activeResultsCount = useMemo(() => enrichedResults.filter(r => !r.isExpired).length, [enrichedResults]);
+
+  if (activeLiveSession) {
+    return (
+      <LiveReviewStudentTaker
+        session={activeLiveSession}
+        student={user}
+        onExit={() => {
+          setActiveLiveSession(null);
+          refreshData(true);
+        }}
+      />
+    );
+  }
 
   if (activeQuiz) {
     return <QuizTaker quiz={activeQuiz} student={user} onExit={handleExitQuiz} />;
@@ -947,6 +1039,42 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             </div>
         </div>
       </header>
+
+      {/* 🔴 LIVE REVIEW INTERACTIVE INVITATION BANNER (YÊU CẦU 1) */}
+      {liveReviewSessionCheck && (
+        <div className="bg-gradient-to-r from-rose-600 via-amber-600 to-rose-700 rounded-3xl p-6 text-white shadow-2xl border-4 border-white/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 animate-scale-in">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
+              <Radio className="w-7 h-7 text-white animate-pulse" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="bg-white text-rose-700 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full tracking-wider shadow-sm flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
+                  ĐANG PHÁT SÓNG TRỰC TIẾP
+                </span>
+                <span className="text-white/90 text-xs font-bold bg-black/20 px-2 py-0.5 rounded-lg">
+                  Lớp: {liveReviewSessionCheck.targetClassNames.join(', ')}
+                </span>
+              </div>
+              <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight">
+                {liveReviewSessionCheck.quizTitle}
+              </h2>
+              <p className="text-xs text-rose-100 font-medium mt-1 max-w-2xl leading-relaxed">
+                Thầy/Cô đang mở phiên sửa bài đố vui trực tiếp! Các câu hỏi sẽ được kích hoạt lần lượt để bạn trả lời và nhận điểm tức thì.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setActiveLiveSession(liveReviewSessionCheck)}
+            className="w-full md:w-auto px-6 py-3.5 bg-white hover:bg-rose-50 text-rose-700 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl hover:shadow-2xl transition transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2.5 shrink-0 cursor-pointer"
+          >
+            <Zap className="w-5 h-5 fill-rose-600 text-rose-600 animate-bounce" />
+            <span>THAM GIA ĐỐ VUI NGAY</span>
+          </button>
+        </div>
+      )}
 
       {/* Filters Section & Status Switcher */}
       <section className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
@@ -1818,21 +1946,31 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                         const pTotalQuestions = q.questionCount || (q.questions ? q.questions.length : (latestPAttempt?.totalQuestions || 0));
                         const pCompletedQuestions = latestPAttempt ? (countCompletedQuestions(latestPAttempt.userAnswers, pTotalQuestions) || (latestPAttempt.score > 0 ? pTotalQuestions : 0)) : 0;
 
+                        const isReviewedForPractice = liveReviewedQuizIds.includes(q.id);
+                        const isLocked = isReviewedForPractice ? false : status.isLocked;
+
                         return (
-                          <div key={q.id} className={`bg-white rounded-[1.5rem] border border-slate-200 p-6 flex flex-col transition-all border-b-4 ${status.isLocked ? 'opacity-75 grayscale' : 'hover:shadow-xl hover:-translate-y-1 group hover:border-b-purple-500'}`}>
+                          <div key={q.id} className={`bg-white rounded-[1.5rem] border ${isReviewedForPractice ? 'border-rose-300 shadow-md ring-1 ring-rose-200' : 'border-slate-200'} p-6 flex flex-col transition-all border-b-4 ${isLocked ? 'opacity-75 grayscale' : 'hover:shadow-xl hover:-translate-y-1 group hover:border-b-purple-500'}`}>
                             <div className="flex justify-between items-start mb-3">
-                              <div className="px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-xl font-black text-[8px] uppercase flex items-center gap-1">
-                                <Zap size={10}/> {q.questionCount || (q.questions ? q.questions.length : 0)} câu
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <div className="px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-xl font-black text-[8px] uppercase flex items-center gap-1">
+                                  <Zap size={10}/> {q.questionCount || (q.questions ? q.questions.length : 0)} câu
+                                </div>
+                                {isReviewedForPractice && (
+                                  <span className="px-2 py-0.5 bg-rose-50 border border-rose-300 text-rose-700 rounded-xl font-black text-[8px] uppercase flex items-center gap-1">
+                                    <Sparkles size={9} className="text-rose-500" /> Đề sửa bài (Làm lại)
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[9px] font-black text-slate-400 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
                             </div>
                             {q.category && <p className="text-[8px] font-black text-purple-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
                             <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-4 group-hover:text-purple-600 uppercase flex items-center gap-2 line-clamp-2 min-h-[2.5em]">
-                                {status.isLocked && <Lock size={14} className="text-slate-400 shrink-0"/>}
+                                {isLocked && <Lock size={14} className="text-slate-400 shrink-0"/>}
                                 {q.title}
                             </h3>
                             
-                            {status.isLocked ? (
+                            {isLocked ? (
                                 <div className="mt-auto bg-slate-50 p-3 rounded-xl border border-slate-200">
                                     <p className="text-[8px] font-black text-slate-400 uppercase mb-0.5">Đang khóa</p>
                                     <p className="text-[9px] font-bold text-slate-600 leading-tight">{status.reason}</p>
@@ -1853,16 +1991,26 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 mt-auto">
-                                      <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-md active:scale-95">
-                                        <Zap size={12}/> Luyện tập
+                                      <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-md active:scale-95 cursor-pointer">
+                                        <Zap size={12}/> {isReviewedForPractice ? 'Ôn tập lại' : 'Luyện tập'}
                                       </button>
-                                      <button 
-                                        disabled={true} 
-                                        title="Đề luyện tập: Chỉ mở chế độ ôn luyện từng câu, không tính vào bài thi chính thức" 
-                                        className="flex items-center justify-center gap-1.5 bg-slate-100 border border-dashed border-slate-300 text-slate-400 py-2.5 rounded-xl text-[9px] font-bold uppercase cursor-not-allowed opacity-40"
-                                      >
-                                        <Lock size={10}/> Khóa Thi
-                                      </button>
+                                      {isReviewedForPractice ? (
+                                        <button 
+                                          onClick={() => handleStartQuiz(q)} 
+                                          title="Làm lại đề như một bài thi hoàn chỉnh" 
+                                          className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-[9px] font-black uppercase transition-all shadow-md active:scale-95 cursor-pointer"
+                                        >
+                                          <RotateCcw size={11}/> Thi lại
+                                        </button>
+                                      ) : (
+                                        <button 
+                                          disabled={true} 
+                                          title="Đề luyện tập: Chỉ mở chế độ ôn luyện từng câu, không tính vào bài thi chính thức" 
+                                          className="flex items-center justify-center gap-1.5 bg-slate-100 border border-dashed border-slate-300 text-slate-400 py-2.5 rounded-xl text-[9px] font-bold uppercase cursor-not-allowed opacity-40"
+                                        >
+                                          <Lock size={10}/> Khóa Thi
+                                        </button>
+                                      )}
                                     </div>
                                 </>
                             )}

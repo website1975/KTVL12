@@ -13,7 +13,7 @@ const SUPABASE_URL = cleanedUrl;
 
 const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjaGZoc2lveHZna2pmc2lreWNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NTI3MDksImV4cCI6MjA4MDUyODcwOX0.toOc2ytPzo_cqhpQyd0YOLq4Zvk3BtfdZSziXN__j8Q').trim();
 
-let supabase: any = null;
+export let supabase: any = null;
 
 try {
   if (SUPABASE_URL && SUPABASE_KEY) {
@@ -1769,13 +1769,11 @@ export const getBankQuestionsPage = async (
         }
 
         if (chapterFilter && chapterFilter !== 'all') {
-            let kw = chapterFilter.replace(/^chương\s*\d+\s*[:\-]\s*/i, '').trim();
+            const rawClean = chapterFilter.trim();
+            let kw = rawClean.replace(/^chương\s*\d+\s*[:\-]\s*/i, '').trim();
             kw = kw.replace(/l[íy]/gi, 'l_');
-            if (kw) {
-                query = query.or(`data->>chapterName.ilike.%${kw}%,data->>quizCategory.ilike.%${kw}%`);
-            } else {
-                query = query.or(`data->>chapterName.ilike.%${chapterFilter.trim()}%,data->>quizCategory.ilike.%${chapterFilter.trim()}%`);
-            }
+            const kwWildcard = kw || rawClean;
+            query = query.or(`data->>chapterId.eq.${rawClean},data->>chapterName.ilike.%${kwWildcard}%,data->>quizCategory.ilike.%${kwWildcard}%,data->>chapterName.ilike.%${rawClean}%`);
         }
 
         if (typeFilter && typeFilter !== 'all') {
@@ -1972,12 +1970,17 @@ export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{
                     // Ưu tiên 2: Kiểm tra theo nội dung đối với các câu hỏi mới nạp từ PDF/JSON
                     const existingQ = existingFingerprintMap.get(fp);
                     if (existingQ) {
-                        // Nếu câu hỏi đã có, kiểm tra xem bản mới có thông tin phong phú hơn không (VD: có thêm level hoặc solution)
-                        const hasNewLevel = (!existingQ.level && q.level);
-                        const hasNewSolution = (!existingQ.solution && q.solution);
-                        const hasNewChapter = (!existingQ.chapterName && q.chapterName);
-                        
-                        if (hasNewLevel || hasNewSolution || hasNewChapter) {
+                        // Kiểm tra xem bản mới có thông tin mới/cập nhật không (chương, mức độ, lời giải...)
+                        const isChapterChanged = Boolean(
+                            (q.chapterName && q.chapterName !== existingQ.chapterName) ||
+                            (q.chapterId && q.chapterId !== existingQ.chapterId)
+                        );
+                        const hasNewLevel = Boolean(!existingQ.level && q.level);
+                        const isLevelChanged = Boolean(q.level && q.level !== existingQ.level);
+                        const hasNewSolution = Boolean(!existingQ.solution && q.solution);
+                        const isSolutionChanged = Boolean(q.solution && q.solution !== existingQ.solution);
+
+                        if (isChapterChanged || hasNewLevel || isLevelChanged || hasNewSolution || isSolutionChanged) {
                             const enriched: Question = {
                                 ...existingQ,
                                 level: q.level || existingQ.level,
@@ -1989,6 +1992,7 @@ export const syncQuizzesToBank = async (forceAll: boolean = false): Promise<{
                                 quizCategory: q.chapterName || quiz.category || existingQ.quizCategory
                             };
                             questionsToSave.push(enriched);
+                            existingFingerprintMap.set(fp, enriched);
                             updatedCount++;
                         } else {
                             skippedCount++;

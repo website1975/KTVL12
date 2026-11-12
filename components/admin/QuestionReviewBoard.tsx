@@ -1,21 +1,38 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Quiz, Question, Grade, QuestionType, QuestionLevel 
+  Quiz, Question, Grade, QuestionType, QuestionLevel, ClassRoom, User, LiveReviewSession, LiveReviewStudentAnswer 
 } from '../../types';
 import { 
   Pencil, Highlighter, Eraser, Move, Type, Square, Circle, ArrowRight,
   RotateCcw, RotateCw, Trash2, Download, Maximize2, Minimize2, ChevronLeft, ChevronRight,
   FileUp, BookOpen, Database, Sparkles, Eye, EyeOff, Layers, CheckCircle2,
-  AlertCircle, HelpCircle, Share2, Copy, Save, Check, RefreshCw, X, Sliders, Image as ImageIcon, Loader2
+  AlertCircle, HelpCircle, Share2, Copy, Save, Check, RefreshCw, X, Sliders, Image as ImageIcon, Loader2,
+  Radio, Tv, BarChart2, Clock, Users, Zap, Play, Square as SquareIcon, Calendar
 } from 'lucide-react';
 import LatexText from '../LatexText';
 import { parseQuestionsFromPDF, parseQuestionsFromText, generateSolutionForQuestionWithAI, safeJsonParse } from '../../services/gemini';
 import { getQuizById } from '../../services/storage';
+import { 
+  saveLiveReviewSession, 
+  getActiveLiveReviewSessions, 
+  activateLiveReviewQuestion, 
+  lockLiveReviewQuestion, 
+  toggleLiveReviewAnswer, 
+  toggleLiveReviewSolution, 
+  endLiveReviewSession, 
+  subscribeToLiveReviewSession, 
+  subscribeToStudentAnswers, 
+  getStudentAnswersForQuestion,
+  resolveQuestionCorrectOption
+} from '../../services/liveReviewService';
+import LiveReviewStatsModal from './LiveReviewStatsModal';
 
 interface QuestionReviewBoardProps {
   quizzes: Quiz[];
   bankQuestions?: Question[];
   initialQuizId?: string | null;
+  classes?: ClassRoom[];
+  students?: User[];
   onClose?: () => void;
 }
 
@@ -34,6 +51,8 @@ export default function QuestionReviewBoard({
   quizzes,
   bankQuestions = [],
   initialQuizId = null,
+  classes = [],
+  students = [],
   onClose
 }: QuestionReviewBoardProps) {
   // Source State
@@ -41,6 +60,29 @@ export default function QuestionReviewBoard({
   const [selectedQuizId, setSelectedQuizId] = useState<string>(
     initialQuizId || (quizzes.length > 0 ? quizzes[0].id : '')
   );
+
+  // ==========================================
+  // LIVE INTERACTIVE REVIEW SESSION STATE (ĐỐ VUI)
+  // ==========================================
+  const [isLiveSetupOpen, setIsLiveSetupOpen] = useState<boolean>(false);
+  const [liveSession, setLiveSession] = useState<LiveReviewSession | null>(null);
+  const [selectedLiveClassIds, setSelectedLiveClassIds] = useState<string[]>([]);
+  const [liveStartTime, setLiveStartTime] = useState<string>(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - 2);
+    return d.toISOString().slice(0, 16);
+  });
+  const [liveEndTime, setLiveEndTime] = useState<string>(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 90);
+    return d.toISOString().slice(0, 16);
+  });
+  const [liveDurationPerQuestion, setLiveDurationPerQuestion] = useState<number>(60);
+  const [allowPracticeRetry, setAllowPracticeRetry] = useState<boolean>(true);
+  const [studentLiveAnswers, setStudentLiveAnswers] = useState<LiveReviewStudentAnswer[]>([]);
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState<boolean>(false);
+  const [questionCountdown, setQuestionCountdown] = useState<number>(0);
+  const [isStartingLive, setIsStartingLive] = useState<boolean>(false);
   
   // Loaded Questions
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -145,6 +187,191 @@ export default function QuestionReviewBoard({
     }
     return () => { isMounted = false; };
   }, [initialQuizId, quizzes]);
+
+  // Kiểm tra phiên sửa bài đố vui đang mở trên hệ thống cho đề thi này
+  useEffect(() => {
+    getActiveLiveReviewSessions().then(sessions => {
+      if (sessions && sessions.length > 0) {
+        const match = sessions.find(s => s.quizId === selectedQuizId) || sessions[0];
+        if (match) {
+          setLiveSession(match);
+          setSelectedLiveClassIds(match.targetClassIds || []);
+        }
+      }
+    });
+  }, [selectedQuizId]);
+
+  // Lắng nghe cập nhật phiên sửa bài và câu trả lời học sinh theo thời gian thực
+  useEffect(() => {
+    if (!liveSession?.id) {
+      setStudentLiveAnswers([]);
+      return;
+    }
+
+    const unsubSession = subscribeToLiveReviewSession(liveSession.id, updated => {
+      if (updated) {
+        setLiveSession(updated);
+      }
+    });
+
+    const unsubAnswers = subscribeToStudentAnswers(liveSession.id, currentIdx, answers => {
+      setStudentLiveAnswers(answers);
+    });
+
+    getStudentAnswersForQuestion(liveSession.id, currentIdx).then(setStudentLiveAnswers);
+
+    return () => {
+      unsubSession();
+      unsubAnswers();
+    };
+  }, [liveSession?.id, currentIdx]);
+
+  // Đếm ngược thời gian câu hỏi hiện tại trên màn hình Giáo viên
+  useEffect(() => {
+    if (!liveSession || !liveSession.questionActivatedAt || liveSession.timeLimitSeconds <= 0 || liveSession.isQuestionLocked) {
+      setQuestionCountdown(0);
+      return;
+    }
+
+    const targetTime = new Date(liveSession.questionActivatedAt).getTime() + liveSession.timeLimitSeconds * 1000;
+    
+    const updateCountdown = () => {
+      const now = Date.now();
+      const diff = Math.max(0, Math.ceil((targetTime - now) / 1000));
+      setQuestionCountdown(diff);
+
+      if (diff === 0 && !liveSession.isQuestionLocked) {
+        lockLiveReviewQuestion(liveSession).then(updated => setLiveSession(updated));
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 500);
+
+    return () => clearInterval(interval);
+  }, [liveSession?.questionActivatedAt, liveSession?.timeLimitSeconds, liveSession?.isQuestionLocked]);
+
+  // Bắt đầu buổi sửa bài trực tiếp
+  const handleStartLiveSession = async () => {
+    if (selectedLiveClassIds.length === 0) {
+      alert("Vui lòng chọn ít nhất 1 Lớp học để phát sóng buổi sửa bài!");
+      return;
+    }
+    const currentQuiz = quizzes.find(q => q.id === selectedQuizId);
+    if (!currentQuiz) {
+      alert("Vui lòng chọn một đề thi hợp lệ để bắt đầu.");
+      return;
+    }
+
+    setIsStartingLive(true);
+    try {
+      const targetClassNames = selectedLiveClassIds.map(id => {
+        const c = classes.find(item => item.id === id);
+        return c?.name || id;
+      });
+
+      const newSession: LiveReviewSession = {
+        id: `live_review_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        quizId: currentQuiz.id,
+        quizTitle: currentQuiz.title,
+        grade: currentQuiz.grade,
+        academicYear: currentQuiz.academicYear,
+        targetClassIds: selectedLiveClassIds,
+        targetClassNames,
+        startTime: new Date(liveStartTime).toISOString(),
+        endTime: new Date(liveEndTime).toISOString(),
+        status: 'active',
+        currentQuestionIndex: currentIdx,
+        timeLimitSeconds: liveDurationPerQuestion,
+        questionActivatedAt: new Date().toISOString(),
+        isQuestionLocked: false,
+        showAnswer: false,
+        showSolution: false,
+        allowPracticeRetry,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await saveLiveReviewSession(newSession);
+      setLiveSession(newSession);
+      setIsLiveSetupOpen(false);
+      alert(`Đã bắt đầu phát sóng Sửa bài Đố vui Trực tiếp cho lớp ${targetClassNames.join(', ')}! Học sinh khi đăng nhập sẽ thấy đề thi.`);
+    } catch (err: any) {
+      alert("Lỗi khi mở phòng sửa bài: " + (err?.message || 'Lỗi'));
+    } finally {
+      setIsStartingLive(false);
+    }
+  };
+
+  // Kích hoạt câu hỏi hiện tại & Bắt đầu tính giờ cho HS
+  const handleActivateQuestion = async (durationSec: number = liveDurationPerQuestion) => {
+    if (!liveSession) return;
+    try {
+      const updated = await activateLiveReviewQuestion(liveSession, currentIdx, durationSec);
+      setLiveSession(updated);
+      setStudentLiveAnswers([]);
+    } catch (e) {}
+  };
+
+  // Khóa câu hỏi (dừng nhận trả lời)
+  const handleLockQuestion = async () => {
+    if (!liveSession) return;
+    try {
+      const updated = await lockLiveReviewQuestion(liveSession);
+      setLiveSession(updated);
+    } catch (e) {}
+  };
+
+  // Gia hạn thêm thời gian cho câu hiện tại (VD: +30s)
+  const handleExtendQuestionTimer = async (seconds: number = 30) => {
+    if (!liveSession) return;
+    try {
+      const remaining = (questionCountdown > 0 ? questionCountdown : 0) + seconds;
+      const updated = await activateLiveReviewQuestion(liveSession, currentIdx, remaining);
+      setLiveSession(updated);
+    } catch (e) {}
+  };
+
+  // Bật/tắt hiện đáp án đúng cho học sinh
+  const handleToggleAnswerForStudents = async (show: boolean) => {
+    setShowCorrectAnswer(show);
+    if (!liveSession) return;
+    try {
+      const updated = await toggleLiveReviewAnswer(liveSession, show);
+      setLiveSession(updated);
+    } catch (e) {}
+  };
+
+  // Bật/tắt hiện lời giải chi tiết cho học sinh
+  const handleToggleSolutionForStudents = async (show: boolean) => {
+    setShowSolution(show);
+    if (!liveSession) return;
+    try {
+      const updated = await toggleLiveReviewSolution(liveSession, show);
+      setLiveSession(updated);
+    } catch (e) {}
+  };
+
+  // Dừng buổi sửa bài trực tiếp
+  const handleEndLiveSession = async () => {
+    if (!liveSession) return;
+    if (confirm("Bạn có chắc chắn muốn kết thúc buổi sửa bài đố vui trực tiếp này không?")) {
+      await endLiveReviewSession(liveSession);
+      setLiveSession(null);
+      alert("Đã kết thúc buổi sửa bài trực tiếp!");
+    }
+  };
+
+  // Chuyển câu hỏi & Tự động đồng bộ câu hỏi sang màn hình học sinh khi đang phát sóng
+  const handleChangeQuestion = (newIdx: number) => {
+    setCurrentIdx(newIdx);
+    if (liveSession) {
+      activateLiveReviewQuestion(liveSession, newIdx, liveDurationPerQuestion).then(updated => {
+        setLiveSession(updated);
+        setStudentLiveAnswers([]);
+      }).catch(() => {});
+    }
+  };
 
   // Current Question
   const currentQ = questions[currentIdx] || null;
@@ -653,21 +880,35 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
     setTimeout(() => setCopiedToast(false), 3000);
   };
 
+  // Đảm bảo kết thúc buổi livestream an toàn khi đóng bảng
+  const handleSafeClose = async () => {
+    if (liveSession) {
+      const confirmEnd = window.confirm("Bạn đang mở phiên sửa bài đố vui trực tiếp cho học sinh. Bạn có muốn kết thúc phiên trực tiếp này trước khi thoát không?");
+      if (confirmEnd) {
+        try {
+          await endLiveReviewSession(liveSession);
+          setLiveSession(null);
+        } catch (e) {}
+      }
+    }
+    if (onClose) onClose();
+  };
+
   // Keyboard Navigation (ArrowLeft / ArrowRight)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-        if (currentIdx < questions.length - 1) setCurrentIdx(prev => prev + 1);
+        if (currentIdx < questions.length - 1) handleChangeQuestion(currentIdx + 1);
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        if (currentIdx > 0) setCurrentIdx(prev => prev - 1);
+        if (currentIdx > 0) handleChangeQuestion(currentIdx - 1);
       } else if (e.key === 'Escape') {
-        if (onClose) onClose();
+        handleSafeClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIdx, questions.length, onClose]);
+  }, [currentIdx, questions.length, onClose, liveSession, liveDurationPerQuestion]);
 
   return (
     <div 
@@ -680,7 +921,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
         <div className="flex items-center gap-3">
           {onClose && (
             <button 
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 hover:text-white rounded-xl text-xs font-black uppercase flex items-center gap-1.5 transition shadow"
               title="Thoát không gian sửa bài (phím ESC)"
             >
@@ -759,6 +1000,23 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
         {/* Right Controls: Question Navigation & Display Options */}
         <div className="flex items-center gap-2">
+          {/* Live Review Button / Status */}
+          {liveSession ? (
+            <div className="flex items-center gap-1.5 bg-rose-950/90 border border-rose-600 px-3 py-1.5 rounded-xl shadow-lg shadow-rose-950/40">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+              <span className="text-xs font-black uppercase text-rose-300">Đang phát sóng: {liveSession.targetClassNames.join(', ')}</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsLiveSetupOpen(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-1.5 transition shadow-lg shadow-rose-600/30 cursor-pointer"
+              title="Phát sóng buổi sửa bài đố vui trực tiếp cho các lớp"
+            >
+              <Radio className="w-3.5 h-3.5 text-white animate-pulse" />
+              <span>Sửa bài đố vui trực tiếp</span>
+            </button>
+          )}
+
           {/* AI Phân Tích Bẫy Button */}
           <button
             onClick={handleGenerateAiNotes}
@@ -1037,6 +1295,129 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
         </div>
       )}
 
+      {/* 🔴 LIVE BROADCAST CONTROL BAR (BĂNG ĐIỀU KHIỂN ĐỐ VUI TRỰC TIẾP) */}
+      {liveSession && (
+        <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-amber-950 border-b border-rose-800/80 px-4 py-2 flex items-center justify-between gap-3 flex-wrap shrink-0 z-20 shadow-xl">
+          {/* Status info */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 bg-rose-900/70 border border-rose-600 px-3 py-1 rounded-xl text-white">
+              <Radio className="w-4 h-4 text-rose-400 animate-pulse" />
+              <span className="text-xs font-black uppercase tracking-wider">
+                ĐỐ VUI TRỰC TIẾP: <span className="text-amber-300">{liveSession.targetClassNames.join(', ')}</span>
+              </span>
+            </div>
+
+            {/* Countdown timer for question */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border font-mono font-bold text-xs ${
+              liveSession.isQuestionLocked 
+                ? 'bg-slate-800 border-slate-700 text-slate-400' 
+                : questionCountdown <= 10 
+                  ? 'bg-rose-900/90 border-rose-500 text-rose-200 animate-bounce' 
+                  : 'bg-emerald-950 border-emerald-600 text-emerald-300'
+            }`}>
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                {liveSession.isQuestionLocked ? 'ĐÃ KHÓA CÂU' : `${questionCountdown}s`}
+              </span>
+            </div>
+
+            {/* Submissions count */}
+            <div className="flex items-center gap-1.5 bg-blue-950/80 border border-blue-700 px-2.5 py-1 rounded-xl text-blue-300 text-xs font-bold">
+              <Users className="w-3.5 h-3.5 text-blue-400" />
+              <span>{studentLiveAnswers.length} HS đã nộp</span>
+            </div>
+          </div>
+
+          {/* Live Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Activate question button */}
+            <button
+              onClick={() => handleActivateQuestion(liveDurationPerQuestion)}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition cursor-pointer"
+              title="Kích hoạt câu này trên màn hình học sinh và bắt đầu đếm ngược"
+            >
+              <Zap className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+              <span>Kích hoạt câu ({liveDurationPerQuestion}s)</span>
+            </button>
+
+            {/* Extend timer +30s */}
+            {!liveSession.isQuestionLocked && (
+              <button
+                onClick={() => handleExtendQuestionTimer(30)}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                title="Cộng thêm 30 giây cho học sinh trả lời"
+              >
+                <span>+30s</span>
+              </button>
+            )}
+
+            {/* Lock Question */}
+            {!liveSession.isQuestionLocked ? (
+              <button
+                onClick={handleLockQuestion}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                title="Khóa ngay không nhận câu trả lời nữa"
+              >
+                <SquareIcon className="w-3.5 h-3.5" />
+                <span>Khóa nhận bài</span>
+              </button>
+            ) : (
+              <span className="text-[11px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded-xl border border-slate-700 font-semibold">
+                🔒 Đã khóa câu
+              </span>
+            )}
+
+            {/* View Live Stats Modal */}
+            <button
+              onClick={() => setIsStatsModalOpen(true)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-blue-600/30 transition cursor-pointer"
+              title="Mở biểu đồ thống kê tỉ lệ A, B, C, D của học sinh"
+            >
+              <BarChart2 className="w-3.5 h-3.5 text-cyan-300" />
+              <span>Thống kê kết quả ({studentLiveAnswers.length})</span>
+            </button>
+
+            {/* Reveal Answer to Students */}
+            <button
+              onClick={() => handleToggleAnswerForStudents(!liveSession.showAnswer)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                liveSession.showAnswer
+                  ? 'bg-emerald-900 border-emerald-600 text-emerald-200'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              }`}
+              title="Bật/tắt hiện đáp án đúng cho học sinh"
+            >
+              {liveSession.showAnswer ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>{liveSession.showAnswer ? 'HS thấy đáp án' : 'Hiện đáp án cho HS'}</span>
+            </button>
+
+            {/* Reveal Solution to Students */}
+            <button
+              onClick={() => handleToggleSolutionForStudents(!liveSession.showSolution)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                liveSession.showSolution
+                  ? 'bg-amber-900 border-amber-600 text-amber-200'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              }`}
+              title="Bật/tắt hiện lời giải chi tiết cho học sinh"
+            >
+              <Eye className="w-3.5 h-3.5 text-amber-400" />
+              <span>{liveSession.showSolution ? 'HS thấy lời giải' : 'Hiện lời giải cho HS'}</span>
+            </button>
+
+            {/* End Live Broadcast */}
+            <button
+              onClick={handleEndLiveSession}
+              className="px-2.5 py-1.5 bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+              title="Dừng và đóng phiên đố vui trực tiếp"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Dừng phát</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 🟡 MAIN CONTENT WORKSPACE: SIDEBAR & CANVAS ARENA */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* LEFT SIDEBAR: QUESTION LIST & SELECTOR */}
@@ -1092,7 +1473,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                   return (
                     <button
                       key={q.id || idx}
-                      onClick={() => setCurrentIdx(idx)}
+                      onClick={() => handleChangeQuestion(idx)}
                       className={`w-full text-left p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
                         isCurrent 
                           ? 'bg-blue-900/60 border-blue-500 text-white shadow-lg shadow-blue-900/40 ring-1 ring-blue-400' 
@@ -1244,24 +1625,27 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                   )}
 
                   {/* Options Display (For MCQ) */}
-                  {currentQ.type === 'mcq' && currentQ.options && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                      {currentQ.options.map((opt, optIdx) => {
-                        const letter = String.fromCharCode(65 + optIdx);
-                        const isCorrect = showCorrectAnswer && currentQ.correctAnswer && (
-                          currentQ.correctAnswer.trim().toUpperCase() === letter || 
-                          currentQ.correctAnswer.trim() === opt.trim()
-                        );
+                  {currentQ.type === 'mcq' && currentQ.options && (() => {
+                    const { index: correctIdx, letter: correctLetter, text: correctText } = resolveQuestionCorrectOption(currentQ);
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                        {currentQ.options.map((opt, optIdx) => {
+                          const letter = String.fromCharCode(65 + optIdx);
+                          const isCorrect = showCorrectAnswer && (
+                            (correctIdx >= 0 && optIdx === correctIdx) ||
+                            (correctLetter && letter === correctLetter) ||
+                            (correctText && opt.trim().toLowerCase() === correctText.trim().toLowerCase())
+                          );
 
-                        return (
-                          <div
-                            key={optIdx}
-                            className={`p-3.5 rounded-xl border transition flex items-start gap-3 ${
-                              isCorrect 
-                                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/50 shadow-lg' 
-                                : 'bg-slate-900/80 border-slate-700/60 text-slate-200'
-                            }`}
-                          >
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-3.5 rounded-xl border transition flex items-start gap-3 ${
+                                isCorrect 
+                                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/50 shadow-lg' 
+                                  : 'bg-slate-900/80 border-slate-700/60 text-slate-200'
+                              }`}
+                            >
                             <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
                               isCorrect ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-300'
                             }`}>
@@ -1277,7 +1661,8 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                         );
                       })}
                     </div>
-                  )}
+                  );
+                })()}
 
                   {/* SubQuestions Display (For Group True/False) */}
                   {currentQ.type === 'group-tf' && currentQ.subQuestions && (
@@ -1391,9 +1776,9 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
           <div className="bg-slate-950 border-t border-slate-800 px-6 py-3 flex items-center justify-between gap-4 shrink-0 z-20">
             {/* Prev Question */}
             <button
-              onClick={() => setCurrentIdx(prev => Math.max(0, prev - 1))}
+              onClick={() => handleChangeQuestion(Math.max(0, currentIdx - 1))}
               disabled={currentIdx === 0}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center gap-2 transition"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center gap-2 transition cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Câu Trước</span>
@@ -1411,9 +1796,9 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
 
             {/* Next Question */}
             <button
-              onClick={() => setCurrentIdx(prev => Math.min(questions.length - 1, prev + 1))}
+              onClick={() => handleChangeQuestion(Math.min(questions.length - 1, currentIdx + 1))}
               disabled={currentIdx >= questions.length - 1}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-30 transition"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-30 transition cursor-pointer"
             >
               <span>Câu Tiếp Theo</span>
               <ChevronRight className="w-4 h-4" />
@@ -1421,6 +1806,224 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
           </div>
         </div>
       </div>
+
+      {/* 🔴 LIVE BROADCAST SETUP MODAL (HỘP THOẠI MỞ PHÒNG ĐỐ VUI TRỰC TIẾP) */}
+      {isLiveSetupOpen && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+            {/* Header */}
+            <div className="p-4 bg-gradient-to-r from-rose-950 via-slate-900 to-amber-950 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-600/30 border border-rose-500 rounded-xl text-rose-300">
+                  <Radio className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-white tracking-wide">
+                    Phát Sóng Sửa Bài Đố Vui Trực Tiếp
+                  </h3>
+                  <p className="text-xs text-rose-300/80">
+                    Học sinh các lớp được chỉ định sẽ tham gia tương tác trả lời theo thời gian thực
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsLiveSetupOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs text-slate-200">
+              {/* Quiz Info */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Đề thi phát sóng:</span>
+                <p className="font-bold text-sm text-amber-300">{titleName}</p>
+                <p className="text-slate-400 mt-0.5">{questions.length} câu hỏi</p>
+              </div>
+
+              {/* Target Classes Selection (Requirement 1) */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-blue-400" />
+                    <span>1. Chia sẻ cho Lớp học (Bắt buộc)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLiveClassIds(classes.map(c => c.id))}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline"
+                    >
+                      Chọn tất cả
+                    </button>
+                    <span className="text-slate-600">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLiveClassIds([])}
+                      className="text-[11px] text-slate-400 hover:text-slate-300 underline"
+                    >
+                      Bỏ chọn
+                    </button>
+                  </div>
+                </div>
+
+                {classes.length === 0 ? (
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-slate-400">
+                    Chưa có danh sách lớp học nào. Vui lòng tạo lớp học trong mục Quản trị.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">
+                    {classes.map(c => {
+                      const isSelected = selectedLiveClassIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedLiveClassIds(prev => 
+                              isSelected ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                            );
+                          }}
+                          className={`p-2 rounded-lg border text-left flex items-center justify-between gap-1 transition ${
+                            isSelected 
+                              ? 'bg-blue-900/60 border-blue-500 text-blue-200' 
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <span className="truncate font-semibold">{c.name}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Time Window [t1, t2] (Requirement 1) */}
+              <div>
+                <label className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 mb-2">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>2. Khung giờ phát sóng [t1 - t2]</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block mb-1">Thời gian bắt đầu (t1):</span>
+                    <input
+                      type="datetime-local"
+                      value={liveStartTime}
+                      onChange={e => setLiveStartTime(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block mb-1">Thời gian kết thúc (t2):</span>
+                    <input
+                      type="datetime-local"
+                      value={liveEndTime}
+                      onChange={e => setLiveEndTime(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Timer Limit Per Question (Requirement 2) */}
+              <div>
+                <label className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 mb-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>3. Thời gian trả lời mặc định cho mỗi câu</span>
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { label: '30 giây', sec: 30 },
+                    { label: '1 phút', sec: 60 },
+                    { label: '1.5 phút', sec: 90 },
+                    { label: '2 phút', sec: 120 },
+                    { label: '3 phút', sec: 180 }
+                  ].map(item => (
+                    <button
+                      key={item.sec}
+                      type="button"
+                      onClick={() => setLiveDurationPerQuestion(item.sec)}
+                      className={`p-2 rounded-xl border text-center font-bold transition ${
+                        liveDurationPerQuestion === item.sec 
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md' 
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Requirement 4: Allow re-do in Practice tab */}
+              <div className="bg-slate-950/70 border border-slate-800 p-3 rounded-xl flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  id="allowPracticeRetry"
+                  checked={allowPracticeRetry}
+                  onChange={e => setAllowPracticeRetry(e.target.checked)}
+                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="allowPracticeRetry" className="cursor-pointer text-slate-300">
+                  <span className="font-bold text-white block">Hiển thị trong mục "Luyện tập" để học sinh làm lại (Yêu cầu 4)</span>
+                  <span className="text-[11px] text-slate-400">
+                    Sau buổi sửa bài, đề này sẽ được gắn nhãn luyện tập để học sinh có thể ôn luyện làm lại nhiều lần.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsLiveSetupOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleStartLiveSession}
+                disabled={isStartingLive || selectedLiveClassIds.length === 0}
+                className="px-5 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl font-black uppercase flex items-center gap-2 shadow-lg shadow-rose-600/30 transition disabled:opacity-40 cursor-pointer"
+              >
+                {isStartingLive ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Đang khởi tạo...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>Bắt Đầu Phát Sóng Ngay</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔴 LIVE REVIEW STATS MODAL (BIỂU ĐỒ CỘT THỐNG KÊ TRẢ LỜI CỦA HỌC SINH - YÊU CẦU 3) */}
+      {isStatsModalOpen && liveSession && (
+        <LiveReviewStatsModal
+          session={liveSession}
+          currentQuestionIndex={currentIdx}
+          currentQuestion={currentQ}
+          studentAnswers={studentLiveAnswers}
+          allStudents={students}
+          isOpen={isStatsModalOpen}
+          onClose={() => setIsStatsModalOpen(false)}
+          onToggleShowAnswer={handleToggleAnswerForStudents}
+          onToggleShowSolution={handleToggleSolutionForStudents}
+          onLockQuestion={handleLockQuestion}
+        />
+      )}
     </div>
   );
 }

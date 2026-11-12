@@ -131,11 +131,36 @@ export default function QuestionBank({
             const qGradeRaw = (q.quizGrade || 'all').toString().trim();
             const matchGrade = bGradeFilter === 'all' || qGradeRaw === bGradeFilter;
 
-            // Lọc chương: hỗ trợ cả chapterName, quizCategory và chapterId
-            const qChapter = (q.chapterName || q.quizCategory || '').toString().trim().toLowerCase();
-            const qChapterId = (q.chapterId || '').toString().trim().toLowerCase();
-            const filterVal = bChapterFilter.trim().toLowerCase();
-            const matchChapter = bChapterFilter === 'all' || qChapter === filterVal || (qChapterId !== '' && qChapterId === filterVal);
+            // Lọc chương: hỗ trợ cả chapterName, quizCategory và chapterId (với chuẩn hóa tên chương)
+            const normalizeChapter = (s: string) => {
+                if (!s) return '';
+                return s.toLowerCase()
+                    .trim()
+                    .replace(/^chương\s*\d+\s*[:\-]?\s*/i, '')
+                    .replace(/l[íy]/gi, 'ly')
+                    .replace(/\s+/g, ' ');
+            };
+
+            const qChapter = (q.chapterName || q.quizCategory || '').toString().trim();
+            const qChapterId = (q.chapterId || '').toString().trim();
+            const filterVal = bChapterFilter.trim();
+
+            let matchChapter = bChapterFilter === 'all';
+            if (!matchChapter) {
+                if (qChapterId !== '' && qChapterId.toLowerCase() === filterVal.toLowerCase()) {
+                    matchChapter = true;
+                } else if (qChapter.toLowerCase() === filterVal.toLowerCase()) {
+                    matchChapter = true;
+                } else {
+                    const normQ = normalizeChapter(qChapter);
+                    const normF = normalizeChapter(filterVal);
+                    if (normF !== '' && normQ !== '') {
+                        if (normQ === normF || normQ.includes(normF) || normF.includes(normQ)) {
+                            matchChapter = true;
+                        }
+                    }
+                }
+            }
             
             // Lọc dạng - Xử lý cả 'group_tf' và 'group-tf'
             let qTypeRaw = (q.type || 'mcq').toString().trim().toLowerCase().replace('_', '-');
