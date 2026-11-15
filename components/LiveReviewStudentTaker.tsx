@@ -33,11 +33,15 @@ export default function LiveReviewStudentTaker({
 
   // Câu trả lời của học sinh theo từng câu hỏi: { [qIndex: number]: any }
   const [myAnswers, setMyAnswers] = useState<Record<number, any>>({});
+  const [shortDrafts, setShortDrafts] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Đếm ngược thời gian câu hỏi hiện tại
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const activeQuestionRef = useRef<HTMLDivElement | null>(null);
+  const lastActivationByQRef = useRef<Record<number, string | undefined>>({
+    [initialSession.currentQuestionIndex ?? 0]: initialSession.activationId
+  });
 
   // 1. Lắng nghe cập nhật phiên trực tiếp từ Giáo viên
   useEffect(() => {
@@ -48,6 +52,7 @@ export default function LiveReviewStudentTaker({
             prev &&
             prev.id === updated.id &&
             prev.currentQuestionIndex === updated.currentQuestionIndex &&
+            prev.activationId === updated.activationId &&
             prev.isQuestionLocked === updated.isQuestionLocked &&
             prev.showAnswer === updated.showAnswer &&
             prev.showSolution === updated.showSolution &&
@@ -85,23 +90,42 @@ export default function LiveReviewStudentTaker({
     return () => { isMounted = false; };
   }, [session.quizId]);
 
-  // 3. Phục hồi câu trả lời cũ của học sinh cho câu hỏi hiện tại
+  // 3. Đồng bộ lượt kích hoạt mới & phục hồi câu trả lời cũ của đúng lượt kích hoạt hiện tại
   useEffect(() => {
     if (!student?.id || !session?.id) return;
     const currentQIdx = session.currentQuestionIndex ?? 0;
-    
-    // Nếu chưa có trong state thì nạp từ máy chủ / localStorage
-    if (myAnswers[currentQIdx] === undefined) {
-      getStudentAnswerForQuestion(session.id, currentQIdx, student.id).then(ans => {
-        if (ans && ans.answer !== undefined) {
-          setMyAnswers(prev => {
-            if (prev[currentQIdx] === ans.answer) return prev;
-            return { ...prev, [currentQIdx]: ans.answer };
-          });
-        }
+    const prevActId = lastActivationByQRef.current[currentQIdx];
+    const nextActId = session.activationId;
+
+    if (prevActId !== undefined && prevActId !== nextActId) {
+      setMyAnswers(prev => {
+        if (prev[currentQIdx] === undefined) return prev;
+        const copy = { ...prev };
+        delete copy[currentQIdx];
+        return copy;
+      });
+      setShortDrafts(prev => {
+        if (prev[currentQIdx] === undefined) return prev;
+        const copy = { ...prev };
+        delete copy[currentQIdx];
+        return copy;
       });
     }
-  }, [session.id, session.currentQuestionIndex, student.id, myAnswers]);
+    lastActivationByQRef.current[currentQIdx] = nextActId;
+
+    let isCancelled = false;
+    getStudentAnswerForQuestion(session.id, currentQIdx, student.id, nextActId).then(ans => {
+      if (isCancelled) return;
+      if (ans && ans.answer !== undefined) {
+        setMyAnswers(prev => {
+          if (prev[currentQIdx] === ans.answer) return prev;
+          return { ...prev, [currentQIdx]: ans.answer };
+        });
+      }
+    });
+
+    return () => { isCancelled = true; };
+  }, [session.id, session.currentQuestionIndex, session.activationId, student.id]);
 
   // 4. Tính toán thời gian đếm ngược thời gian thực cho câu hỏi đang active
   useEffect(() => {
@@ -145,6 +169,7 @@ export default function LiveReviewStudentTaker({
   const handleSelectOption = async (qIdx: number, question: Question, answerValue: any) => {
     if (qIdx !== session.currentQuestionIndex) return;
     if (isCurrentExpired) return;
+    if (answerValue === undefined || answerValue === null || String(answerValue).trim() === '') return;
 
     // Cập nhật state UI ngay lập tức
     setMyAnswers(prev => ({ ...prev, [qIdx]: answerValue }));
@@ -154,7 +179,7 @@ export default function LiveReviewStudentTaker({
 
     setIsSubmitting(true);
     try {
-      await submitLiveReviewAnswer(session.id, qIdx, student, answerValue, isCorrect, question);
+      await submitLiveReviewAnswer(session.id, qIdx, student, answerValue, isCorrect, question, session.activationId);
     } catch (err) {
       console.warn("Lỗi gửi câu trả lời:", err);
     } finally {
@@ -178,7 +203,7 @@ export default function LiveReviewStudentTaker({
 
     setIsSubmitting(true);
     try {
-      await submitLiveReviewAnswer(session.id, qIdx, student, currentTfAnswers, isCorrect, question);
+      await submitLiveReviewAnswer(session.id, qIdx, student, currentTfAnswers, isCorrect, question, session.activationId);
     } catch (err) {
       console.warn("Lỗi gửi câu trả lời TF:", err);
     } finally {
@@ -422,7 +447,7 @@ export default function LiveReviewStudentTaker({
                               <button
                                 key={optIdx}
                                 type="button"
-                                disabled={isCurrentExpired && !session.showAnswer}
+                                disabled={isCurrentExpired}
                                 onClick={() => handleSelectOption(idx, q, optKey)}
                                 className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3 ${optionStyle} ${
                                   isCurrentExpired ? 'cursor-default' : 'cursor-pointer'
@@ -500,23 +525,51 @@ export default function LiveReviewStudentTaker({
                     )}
 
                     {/* DẠNG 3: TRẢ LỜI NGẮN (SHORT) */}
-                    {q.type === 'short' && (
-                      <div className="max-w-md">
-                        <label className="text-[11px] font-black uppercase text-slate-400 block mb-2">
-                          Nhập kết quả số của bạn:
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            disabled={isCurrentExpired}
-                            value={typeof myChoice === 'string' ? myChoice : ''}
-                            onChange={e => handleSelectOption(idx, q, e.target.value)}
-                            placeholder="Ví dụ: 2.5 hoặc 10"
-                            className="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-black text-white outline-none focus:border-blue-500"
-                          />
+                    {q.type === 'short' && (() => {
+                      const draftVal = shortDrafts[idx] ?? (typeof myChoice === 'string' ? myChoice : '');
+                      const submitShort = () => {
+                        const trimmed = draftVal.trim();
+                        if (!trimmed || isCurrentExpired) return;
+                        handleSelectOption(idx, q, trimmed);
+                      };
+                      return (
+                        <div className="max-w-md">
+                          <label className="text-[11px] font-black uppercase text-slate-400 block mb-2">
+                            Nhập kết quả số của bạn:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              disabled={isCurrentExpired}
+                              value={draftVal}
+                              onChange={e => setShortDrafts(prev => ({ ...prev, [idx]: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  submitShort();
+                                }
+                              }}
+                              onBlur={() => {
+                                if (draftVal.trim() && draftVal.trim() !== myChoice) {
+                                  submitShort();
+                                }
+                              }}
+                              placeholder="Ví dụ: 2.5 hoặc 10"
+                              className="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-black text-white outline-none focus:border-blue-500 disabled:opacity-60"
+                            />
+                            <button
+                              type="button"
+                              disabled={isCurrentExpired || !draftVal.trim() || isSubmitting}
+                              onClick={submitShort}
+                              className="px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-2xl text-xs font-black uppercase flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                            >
+                              <Send size={14} />
+                              <span>Gửi</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* KHU VỰC HIỆN ĐÁP ÁN ĐÚNG & LỜI GIẢI CHI TIẾT (KHI GIÁO VIÊN BẬT) */}

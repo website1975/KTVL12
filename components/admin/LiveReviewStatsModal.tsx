@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Question, LiveReviewStudentAnswer } from '../../types';
-import { resolveQuestionCorrectOption, checkIsStudentAnswerCorrect } from '../../services/liveReviewService';
+import { resolveQuestionCorrectOption, checkIsStudentAnswerCorrect, hasNonEmptyLiveAnswer } from '../../services/liveReviewService';
 import { 
   BarChart2, X, CheckCircle2, XCircle, Users, Clock, Award, 
-  HelpCircle, Eye, EyeOff, Search, FileText, Check
+  HelpCircle, Eye, EyeOff, Search, FileText, Check, RotateCcw
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -46,6 +46,7 @@ export interface LiveReviewStatsModalProps {
   onToggleSolution?: (show: boolean) => void;
   onToggleShowSolution?: (show: boolean) => void;
   onLockQuestion?: () => void;
+  onResetAnswers?: () => void;
   onClose: () => void;
 }
 
@@ -67,14 +68,20 @@ export default function LiveReviewStatsModal({
   onToggleSolution,
   onToggleShowSolution,
   onLockQuestion,
+  onResetAnswers,
   onClose
 }: LiveReviewStatsModalProps) {
   const [searchStudent, setSearchStudent] = useState('');
   const [activeTab, setActiveTab] = useState<'chart' | 'list'>('chart');
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const question = currentQuestion || propQuestion || null;
   const questionIndex = currentQuestionIndex !== undefined ? currentQuestionIndex : (propQuestionIndex || 0);
-  const answers = studentAnswers || propAnswers || [];
+  const rawAnswers = studentAnswers || propAnswers || [];
+  const answers = useMemo(
+    () => rawAnswers.filter(a => a && hasNonEmptyLiveAnswer(a.answer)),
+    [rawAnswers]
+  );
   const showAnswer = propShowAnswer ?? (session?.showAnswer || false);
   const showSolution = propShowSolution ?? (session?.showSolution || false);
   const isQuestionLocked = propIsQuestionLocked ?? (session?.isQuestionLocked || false);
@@ -82,6 +89,26 @@ export default function LiveReviewStatsModal({
   const handleToggleSolution = onToggleShowSolution || onToggleSolution || (() => {});
 
   const totalResponses = answers.length;
+
+  const targetClassCount = useMemo(() => {
+    if (!Array.isArray(allStudents) || allStudents.length === 0) return 0;
+    const targetIds = Array.isArray(session?.targetClassIds) ? session.targetClassIds : [];
+    const targetNames = Array.isArray(session?.targetClassNames)
+      ? session.targetClassNames.map((n: string) => String(n || '').trim().toUpperCase())
+      : [];
+    if (
+      targetIds.includes('all') ||
+      targetNames.includes('TẤT CẢ CÁC LỚP') ||
+      (targetIds.length === 0 && targetNames.length === 0)
+    ) {
+      return allStudents.length;
+    }
+    return allStudents.filter((st: any) => {
+      const matchId = st.classId && targetIds.includes(st.classId);
+      const matchName = st.className && targetNames.includes(String(st.className).trim().toUpperCase());
+      return matchId || matchName;
+    }).length;
+  }, [allStudents, session?.targetClassIds, session?.targetClassNames]);
 
   // Tính toán dữ liệu thống kê cho câu hỏi trắc nghiệm A, B, C, D (hoặc Đúng/Sai / Trả lời ngắn)
   const chartData: ChartItem[] = useMemo(() => {
@@ -234,7 +261,9 @@ export default function LiveReviewStatsModal({
             <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl shadow-2xs">
               <Users size={16} className="text-blue-600" />
               <span className="text-xs font-black text-slate-700">
-                {totalResponses} học sinh đã trả lời
+                {targetClassCount > 0
+                  ? `${totalResponses} / ${targetClassCount} học sinh đã trả lời`
+                  : `${totalResponses} học sinh đã trả lời`}
               </span>
             </div>
 
@@ -249,7 +278,7 @@ export default function LiveReviewStatsModal({
           </div>
 
           {/* Quick Action Toggles */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => handleToggleAnswer(!showAnswer)}
               className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 border cursor-pointer ${
@@ -281,6 +310,29 @@ export default function LiveReviewStatsModal({
               >
                 <Clock size={14} />
                 <span>Khóa nhận bài</span>
+              </button>
+            )}
+
+            {onResetAnswers && (
+              <button
+                onClick={() => {
+                  if (!confirmReset) {
+                    setConfirmReset(true);
+                    setTimeout(() => setConfirmReset(false), 3500);
+                  } else {
+                    setConfirmReset(false);
+                    onResetAnswers();
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 border cursor-pointer ${
+                  confirmReset
+                    ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
+                }`}
+                title="Xóa toàn bộ câu trả lời hiện tại của câu này để thu thập lại từ 0"
+              >
+                <RotateCcw size={14} />
+                <span>{confirmReset ? 'Bấm lần nữa để xóa về 0' : 'Làm mới (0)'}</span>
               </button>
             )}
           </div>

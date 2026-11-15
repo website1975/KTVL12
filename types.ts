@@ -176,6 +176,7 @@ export interface LiveReviewStudentAnswer {
   answer: any;
   submittedAt: string;
   isCorrect?: boolean;
+  activationId?: string;
 }
 
 export interface LiveReviewSession {
@@ -192,6 +193,7 @@ export interface LiveReviewSession {
   currentQuestionIndex: number;
   timeLimitSeconds: number; // e.g. 60, 120
   questionActivatedAt: string | null;
+  activationId?: string;
   isQuestionLocked: boolean;
   showAnswer: boolean;
   showSolution: boolean;

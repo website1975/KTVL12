@@ -16,6 +16,8 @@ import {
   saveLiveReviewSession, 
   getActiveLiveReviewSessions, 
   activateLiveReviewQuestion, 
+  extendLiveReviewQuestionTimer,
+  clearLiveReviewQuestionAnswers,
   lockLiveReviewQuestion, 
   toggleLiveReviewAnswer, 
   toggleLiveReviewSolution, 
@@ -61,6 +63,11 @@ export default function QuestionReviewBoard({
     initialQuizId || (quizzes.length > 0 ? quizzes[0].id : '')
   );
 
+  const toLocalDateTimeInputValue = (date: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
   // ==========================================
   // LIVE INTERACTIVE REVIEW SESSION STATE (ĐỐ VUI)
   // ==========================================
@@ -70,19 +77,77 @@ export default function QuestionReviewBoard({
   const [liveStartTime, setLiveStartTime] = useState<string>(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() - 2);
-    return d.toISOString().slice(0, 16);
+    return toLocalDateTimeInputValue(d);
   });
   const [liveEndTime, setLiveEndTime] = useState<string>(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() + 90);
-    return d.toISOString().slice(0, 16);
+    return toLocalDateTimeInputValue(d);
   });
   const [liveDurationPerQuestion, setLiveDurationPerQuestion] = useState<number>(60);
+  const [customDurationsPerQuestion, setCustomDurationsPerQuestion] = useState<Record<number, number>>({});
+  const [editingTimeIdx, setEditingTimeIdx] = useState<number | null>(null);
+  const [customTimeInput, setCustomTimeInput] = useState<string>('60');
   const [allowPracticeRetry, setAllowPracticeRetry] = useState<boolean>(true);
   const [studentLiveAnswers, setStudentLiveAnswers] = useState<LiveReviewStudentAnswer[]>([]);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState<boolean>(false);
   const [questionCountdown, setQuestionCountdown] = useState<number>(0);
   const [isStartingLive, setIsStartingLive] = useState<boolean>(false);
+  const isLockingRef = useRef<boolean>(false);
+
+  const getQuestionDuration = useCallback(
+    (idx: number) => customDurationsPerQuestion[idx] ?? liveDurationPerQuestion,
+    [customDurationsPerQuestion, liveDurationPerQuestion]
+  );
+
+  const handleSetQuestionDuration = async (idx: number, seconds: number) => {
+    const cleanSec = Math.max(5, Math.min(1800, Math.round(seconds || liveDurationPerQuestion)));
+    setCustomDurationsPerQuestion(prev => {
+      const next = { ...prev };
+      if (cleanSec === liveDurationPerQuestion) {
+        delete next[idx];
+      } else {
+        next[idx] = cleanSec;
+      }
+      if (selectedQuizId) {
+        try {
+          localStorage.setItem(`eduquiz_live_custom_times_${selectedQuizId}`, JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
+    setEditingTimeIdx(null);
+
+    // Nếu đang phát sóng đúng câu này và chưa khóa -> cập nhật luôn đồng hồ đang chạy mà giữ nguyên bài nộp
+    if (liveSession && idx === currentIdx && !liveSession.isQuestionLocked) {
+      try {
+        const updated = await extendLiveReviewQuestionTimer(liveSession, cleanSec);
+        setLiveSession(updated);
+      } catch (e) {}
+    }
+  };
+
+  const handleResetQuestionDuration = async (idx: number) => {
+    setCustomDurationsPerQuestion(prev => {
+      if (prev[idx] === undefined) return prev;
+      const next = { ...prev };
+      delete next[idx];
+      if (selectedQuizId) {
+        try {
+          localStorage.setItem(`eduquiz_live_custom_times_${selectedQuizId}`, JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
+    setEditingTimeIdx(null);
+
+    if (liveSession && idx === currentIdx && !liveSession.isQuestionLocked) {
+      try {
+        const updated = await extendLiveReviewQuestionTimer(liveSession, liveDurationPerQuestion);
+        setLiveSession(updated);
+      } catch (e) {}
+    }
+  };
   
   // Loaded Questions
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -91,9 +156,9 @@ export default function QuestionReviewBoard({
   const [isLoadingQuiz, setIsLoadingQuiz] = useState<boolean>(false);
   const [titleName, setTitleName] = useState<string>('Không gian sửa bài');
 
-  // Interactive View Settings
-  const [showSolution, setShowSolution] = useState<boolean>(true);
-  const [showCorrectAnswer, setShowCorrectAnswer] = useState<boolean>(true);
+  // Interactive View Settings (Mặc định ẩn đáp án & lời giải trên màn hình lớn để HS tự giải)
+  const [showSolution, setShowSolution] = useState<boolean>(false);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>('large');
@@ -128,6 +193,9 @@ export default function QuestionReviewBoard({
       const qz = quizzes.find(q => q.id === selectedQuizId);
       if (qz) {
         setTitleName(qz.title);
+        setShowCorrectAnswer(false);
+        setShowSolution(false);
+        setAiExplanation(null);
         if (qz.questions && qz.questions.length > 0) {
           setQuestions(qz.questions);
           setCurrentIdx(0);
@@ -166,6 +234,9 @@ export default function QuestionReviewBoard({
         setSelectedQuizId(matched.id);
         setSourceType('quiz');
         setTitleName(matched.title);
+        setShowCorrectAnswer(false);
+        setShowSolution(false);
+        setAiExplanation(null);
         if (matched.questions && matched.questions.length > 0) {
           setQuestions(matched.questions);
           setCurrentIdx(0);
@@ -188,17 +259,34 @@ export default function QuestionReviewBoard({
     return () => { isMounted = false; };
   }, [initialQuizId, quizzes]);
 
-  // Kiểm tra phiên sửa bài đố vui đang mở trên hệ thống cho đề thi này
+  // Kiểm tra phiên sửa bài đố vui đang mở trên hệ thống cho đúng đề thi này & nạp thời gian riêng từng câu nếu có
   useEffect(() => {
+    setEditingTimeIdx(null);
+    if (selectedQuizId) {
+      try {
+        const savedTimes = localStorage.getItem(`eduquiz_live_custom_times_${selectedQuizId}`);
+        setCustomDurationsPerQuestion(savedTimes ? JSON.parse(savedTimes) : {});
+      } catch (e) {
+        setCustomDurationsPerQuestion({});
+      }
+    } else {
+      setCustomDurationsPerQuestion({});
+    }
+
+    let isCancelled = false;
     getActiveLiveReviewSessions().then(sessions => {
-      if (sessions && sessions.length > 0) {
-        const match = sessions.find(s => s.quizId === selectedQuizId) || sessions[0];
-        if (match) {
-          setLiveSession(match);
-          setSelectedLiveClassIds(match.targetClassIds || []);
-        }
+      if (isCancelled) return;
+      if (sessions && sessions.length > 0 && selectedQuizId) {
+        const match = sessions.find(s => s.quizId === selectedQuizId) || null;
+        setLiveSession(match);
+        setSelectedLiveClassIds(match?.targetClassIds || []);
+        if (!match) setStudentLiveAnswers([]);
+      } else {
+        setLiveSession(null);
+        setStudentLiveAnswers([]);
       }
     });
+    return () => { isCancelled = true; };
   }, [selectedQuizId]);
 
   // Lắng nghe cập nhật phiên sửa bài và câu trả lời học sinh theo thời gian thực
@@ -208,23 +296,60 @@ export default function QuestionReviewBoard({
       return;
     }
 
+    let isActive = true;
+    const currentActivationId = liveSession.activationId;
+
     const unsubSession = subscribeToLiveReviewSession(liveSession.id, updated => {
+      if (!isActive) return;
       if (updated) {
-        setLiveSession(updated);
+        setLiveSession(prev => {
+          if (
+            prev &&
+            prev.id === updated.id &&
+            prev.currentQuestionIndex === updated.currentQuestionIndex &&
+            prev.activationId === updated.activationId &&
+            prev.isQuestionLocked === updated.isQuestionLocked &&
+            prev.showAnswer === updated.showAnswer &&
+            prev.showSolution === updated.showSolution &&
+            prev.questionActivatedAt === updated.questionActivatedAt &&
+            prev.timeLimitSeconds === updated.timeLimitSeconds &&
+            prev.updatedAt === updated.updatedAt
+          ) {
+            return prev;
+          }
+          return updated;
+        });
+      } else {
+        setLiveSession(null);
+        setStudentLiveAnswers([]);
       }
     });
 
-    const unsubAnswers = subscribeToStudentAnswers(liveSession.id, currentIdx, answers => {
-      setStudentLiveAnswers(answers);
+    const unsubAnswers = subscribeToStudentAnswers(
+      liveSession.id,
+      currentIdx,
+      answers => {
+        if (isActive) setStudentLiveAnswers(answers);
+      },
+      1500,
+      currentActivationId
+    );
+
+    getStudentAnswersForQuestion(liveSession.id, currentIdx, currentActivationId).then(answers => {
+      if (isActive) setStudentLiveAnswers(answers);
     });
 
-    getStudentAnswersForQuestion(liveSession.id, currentIdx).then(setStudentLiveAnswers);
-
     return () => {
+      isActive = false;
       unsubSession();
       unsubAnswers();
     };
-  }, [liveSession?.id, currentIdx]);
+  }, [liveSession?.id, liveSession?.activationId, currentIdx]);
+
+  // Reset guard mỗi khi câu hỏi được kích hoạt lại
+  useEffect(() => {
+    isLockingRef.current = false;
+  }, [liveSession?.id, liveSession?.questionActivatedAt, liveSession?.currentQuestionIndex, liveSession?.activationId]);
 
   // Đếm ngược thời gian câu hỏi hiện tại trên màn hình Giáo viên
   useEffect(() => {
@@ -240,8 +365,11 @@ export default function QuestionReviewBoard({
       const diff = Math.max(0, Math.ceil((targetTime - now) / 1000));
       setQuestionCountdown(diff);
 
-      if (diff === 0 && !liveSession.isQuestionLocked) {
-        lockLiveReviewQuestion(liveSession).then(updated => setLiveSession(updated));
+      if (diff === 0 && !liveSession.isQuestionLocked && !isLockingRef.current) {
+        isLockingRef.current = true;
+        lockLiveReviewQuestion(liveSession)
+          .then(updated => setLiveSession(updated))
+          .catch(() => { isLockingRef.current = false; });
       }
     };
 
@@ -249,7 +377,7 @@ export default function QuestionReviewBoard({
     const interval = setInterval(updateCountdown, 500);
 
     return () => clearInterval(interval);
-  }, [liveSession?.questionActivatedAt, liveSession?.timeLimitSeconds, liveSession?.isQuestionLocked]);
+  }, [liveSession?.id, liveSession?.questionActivatedAt, liveSession?.timeLimitSeconds, liveSession?.isQuestionLocked]);
 
   // Bắt đầu buổi sửa bài trực tiếp
   const handleStartLiveSession = async () => {
@@ -282,8 +410,9 @@ export default function QuestionReviewBoard({
         endTime: new Date(liveEndTime).toISOString(),
         status: 'active',
         currentQuestionIndex: currentIdx,
-        timeLimitSeconds: liveDurationPerQuestion,
+        timeLimitSeconds: getQuestionDuration(currentIdx),
         questionActivatedAt: new Date().toISOString(),
+        activationId: `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         isQuestionLocked: false,
         showAnswer: false,
         showSolution: false,
@@ -292,6 +421,7 @@ export default function QuestionReviewBoard({
         updatedAt: new Date().toISOString()
       };
 
+      setStudentLiveAnswers([]);
       await saveLiveReviewSession(newSession);
       setLiveSession(newSession);
       setIsLiveSetupOpen(false);
@@ -303,12 +433,23 @@ export default function QuestionReviewBoard({
     }
   };
 
-  // Kích hoạt câu hỏi hiện tại & Bắt đầu tính giờ cho HS
-  const handleActivateQuestion = async (durationSec: number = liveDurationPerQuestion) => {
+  // Kích hoạt lại câu hỏi hiện tại (xóa câu trả lời cũ để thu thập lượt mới từ 0)
+  const handleActivateQuestion = async (durationSec: number = getQuestionDuration(currentIdx)) => {
     if (!liveSession) return;
+    setStudentLiveAnswers([]);
     try {
-      const updated = await activateLiveReviewQuestion(liveSession, currentIdx, durationSec);
+      const updated = await activateLiveReviewQuestion(liveSession, currentIdx, durationSec, { clearOldAnswers: true });
       setLiveSession(updated);
+      setStudentLiveAnswers([]);
+    } catch (e) {}
+  };
+
+  // Xóa kết quả đã ghi nhận của câu hiện tại (về 0)
+  const handleResetQuestionAnswers = async () => {
+    if (!liveSession) return;
+    setStudentLiveAnswers([]);
+    try {
+      await clearLiveReviewQuestionAnswers(liveSession.id, currentIdx);
       setStudentLiveAnswers([]);
     } catch (e) {}
   };
@@ -322,12 +463,12 @@ export default function QuestionReviewBoard({
     } catch (e) {}
   };
 
-  // Gia hạn thêm thời gian cho câu hiện tại (VD: +30s)
+  // Gia hạn thêm thời gian cho câu hiện tại (VD: +30s) mà không xóa câu trả lời đã nộp
   const handleExtendQuestionTimer = async (seconds: number = 30) => {
     if (!liveSession) return;
     try {
       const remaining = (questionCountdown > 0 ? questionCountdown : 0) + seconds;
-      const updated = await activateLiveReviewQuestion(liveSession, currentIdx, remaining);
+      const updated = await extendLiveReviewQuestionTimer(liveSession, remaining);
       setLiveSession(updated);
     } catch (e) {}
   };
@@ -358,6 +499,7 @@ export default function QuestionReviewBoard({
     if (confirm("Bạn có chắc chắn muốn kết thúc buổi sửa bài đố vui trực tiếp này không?")) {
       await endLiveReviewSession(liveSession);
       setLiveSession(null);
+      setStudentLiveAnswers([]);
       alert("Đã kết thúc buổi sửa bài trực tiếp!");
     }
   };
@@ -365,10 +507,13 @@ export default function QuestionReviewBoard({
   // Chuyển câu hỏi & Tự động đồng bộ câu hỏi sang màn hình học sinh khi đang phát sóng
   const handleChangeQuestion = (newIdx: number) => {
     setCurrentIdx(newIdx);
+    setStudentLiveAnswers([]);
+    setShowCorrectAnswer(false);
+    setShowSolution(false);
+    setAiExplanation(null);
     if (liveSession) {
-      activateLiveReviewQuestion(liveSession, newIdx, liveDurationPerQuestion).then(updated => {
+      activateLiveReviewQuestion(liveSession, newIdx, getQuestionDuration(newIdx)).then(updated => {
         setLiveSession(updated);
-        setStudentLiveAnswers([]);
       }).catch(() => {});
     }
   };
@@ -758,11 +903,17 @@ export default function QuestionReviewBoard({
           setTitleName(file.name.replace('.json', ''));
           setSourceType('file');
           setCurrentIdx(0);
+          setShowCorrectAnswer(false);
+          setShowSolution(false);
+          setAiExplanation(null);
         } else if (parsed?.questions && Array.isArray(parsed.questions)) {
           setQuestions(parsed.questions);
           setTitleName(parsed.title || file.name.replace('.json', ''));
           setSourceType('file');
           setCurrentIdx(0);
+          setShowCorrectAnswer(false);
+          setShowSolution(false);
+          setAiExplanation(null);
         } else {
           alert('File JSON không đúng cấu trúc đề thi');
         }
@@ -782,6 +933,9 @@ export default function QuestionReviewBoard({
           setTitleName(file.name.replace('.pdf', ''));
           setSourceType('file');
           setCurrentIdx(0);
+          setShowCorrectAnswer(false);
+          setShowSolution(false);
+          setAiExplanation(null);
         } else {
           alert('Không tìm thấy câu hỏi từ file PDF này');
         }
@@ -794,6 +948,9 @@ export default function QuestionReviewBoard({
           setTitleName(file.name);
           setSourceType('file');
           setCurrentIdx(0);
+          setShowCorrectAnswer(false);
+          setShowSolution(false);
+          setAiExplanation(null);
         } else {
           alert('Không trích xuất được câu hỏi từ tệp tin');
         }
@@ -888,6 +1045,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
         try {
           await endLiveReviewSession(liveSession);
           setLiveSession(null);
+          setStudentLiveAnswers([]);
         } catch (e) {}
       }
     }
@@ -1031,29 +1189,29 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
           {/* Answer Toggle */}
           <button
             onClick={() => setShowCorrectAnswer(!showCorrectAnswer)}
-            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition ${
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
               showCorrectAnswer 
                 ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700' 
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
             }`}
-            title="Hiện/Ẩn đáp án đúng"
+            title={showCorrectAnswer ? 'Nhấn để ẩn đáp án đúng' : 'Nhấn để hiển thị đáp án đúng'}
           >
-            {showCorrectAnswer ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{showCorrectAnswer ? 'Đã hiện đáp án' : 'Ẩn đáp án'}</span>
+            {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5 text-emerald-400" /> : <Eye className="w-3.5 h-3.5 text-emerald-400" />}
+            <span className="hidden sm:inline">{showCorrectAnswer ? 'Ẩn đáp án' : 'Hiện đáp án'}</span>
           </button>
 
           {/* Solution Toggle */}
           <button
             onClick={() => setShowSolution(!showSolution)}
-            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition ${
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
               showSolution 
                 ? 'bg-amber-950/80 text-amber-300 border-amber-700' 
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
             }`}
-            title="Hiện/Ẩn lời giải chi tiết"
+            title={showSolution ? 'Nhấn để ẩn lời giải chi tiết' : 'Nhấn để hiển thị lời giải chi tiết'}
           >
-            <Eye className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{showSolution ? 'Hiện lời giải' : 'Ẩn lời giải'}</span>
+            {showSolution ? <EyeOff className="w-3.5 h-3.5 text-amber-400" /> : <Eye className="w-3.5 h-3.5 text-amber-400" />}
+            <span className="hidden sm:inline">{showSolution ? 'Ẩn lời giải' : 'Hiện lời giải'}</span>
           </button>
 
           {/* Text Size Switcher */}
@@ -1332,12 +1490,14 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
           <div className="flex items-center gap-2 flex-wrap">
             {/* Activate question button */}
             <button
-              onClick={() => handleActivateQuestion(liveDurationPerQuestion)}
+              onClick={() => handleActivateQuestion(getQuestionDuration(currentIdx))}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition cursor-pointer"
               title="Kích hoạt câu này trên màn hình học sinh và bắt đầu đếm ngược"
             >
               <Zap className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
-              <span>Kích hoạt câu ({liveDurationPerQuestion}s)</span>
+              <span>
+                Kích hoạt câu ({getQuestionDuration(currentIdx)}s{customDurationsPerQuestion[currentIdx] !== undefined ? ' riêng' : ''})
+              </span>
             </button>
 
             {/* Extend timer +30s */}
@@ -1451,6 +1611,47 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
             )}
           </div>
 
+          {/* Default & Custom Timer Subheader */}
+          {sidebarOpen && questions.length > 0 && (
+            <div className="px-3 py-2 bg-slate-900/70 border-b border-slate-800/80 flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-400">
+                <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                <span className="font-semibold">Mặc định:</span>
+                <select
+                  value={liveDurationPerQuestion}
+                  onChange={e => setLiveDurationPerQuestion(Number(e.target.value))}
+                  className="bg-slate-950 border border-slate-700 text-amber-300 font-bold rounded-md px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-blue-500 cursor-pointer"
+                  title="Thời gian mặc định cho các câu chưa đặt thời gian riêng"
+                >
+                  <option value={30}>30s</option>
+                  <option value={45}>45s</option>
+                  <option value={60}>60s</option>
+                  <option value={90}>90s</option>
+                  <option value={120}>120s</option>
+                  <option value={180}>180s</option>
+                  <option value={240}>240s</option>
+                  <option value={300}>300s</option>
+                </select>
+              </div>
+              {Object.keys(customDurationsPerQuestion).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomDurationsPerQuestion({});
+                    setEditingTimeIdx(null);
+                    if (selectedQuizId) {
+                      try { localStorage.removeItem(`eduquiz_live_custom_times_${selectedQuizId}`); } catch (e) {}
+                    }
+                  }}
+                  className="text-[10px] text-amber-400 hover:text-amber-300 underline font-semibold cursor-pointer shrink-0"
+                  title="Đặt tất cả câu về thời gian mặc định"
+                >
+                  {Object.keys(customDurationsPerQuestion).length} câu riêng • Xóa
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Question Grid List */}
           {sidebarOpen && (
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -1469,59 +1670,173 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                 questions.map((q, idx) => {
                   const isCurrent = idx === currentIdx;
                   const hasDrawing = (drawingsPerQuestion[idx] || []).length > 0;
+                  const customSec = customDurationsPerQuestion[idx];
+                  const effectiveSec = customSec ?? liveDurationPerQuestion;
+                  const hasCustomDuration = customSec !== undefined;
+                  const isEditingThisTime = editingTimeIdx === idx;
 
                   return (
-                    <button
+                    <div
                       key={q.id || idx}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleChangeQuestion(idx)}
-                      className={`w-full text-left p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleChangeQuestion(idx);
+                        }
+                      }}
+                      className={`w-full text-left p-2.5 rounded-xl border transition cursor-pointer ${
                         isCurrent 
                           ? 'bg-blue-900/60 border-blue-500 text-white shadow-lg shadow-blue-900/40 ring-1 ring-blue-400' 
                           : 'bg-slate-900/80 border-slate-800/80 text-slate-300 hover:bg-slate-850 hover:border-slate-700'
                       }`}
                     >
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                        isCurrent ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300'
-                      }`}>
-                        {idx + 1}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          {q.type === 'mcq' && (
-                            <span className="text-[10px] bg-sky-950 text-sky-300 border border-sky-800 px-1.5 py-0.2 rounded font-mono">
-                              Trắc nghiệm
-                            </span>
-                          )}
-                          {q.type === 'group-tf' && (
-                            <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.2 rounded font-mono">
-                              Đúng/Sai
-                            </span>
-                          )}
-                          {q.type === 'short' && (
-                            <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.2 rounded font-mono">
-                              Trả lời ngắn
-                            </span>
-                          )}
-
-                          {q.level && (
-                            <span className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded font-bold">
-                              {q.level}
-                            </span>
-                          )}
-
-                          {hasDrawing && (
-                            <span className="text-[10px] bg-red-950 text-red-300 border border-red-800 px-1 rounded flex items-center gap-0.5">
-                              <Pencil className="w-2.5 h-2.5" /> Có vẽ
-                            </span>
-                          )}
+                      <div className="flex items-start gap-2.5">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                          isCurrent ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300'
+                        }`}>
+                          {idx + 1}
                         </div>
 
-                        <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                          {q.text || 'Nội dung câu hỏi...'}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1 flex-wrap mb-1">
+                            {q.type === 'mcq' && (
+                              <span className="text-[10px] bg-sky-950 text-sky-300 border border-sky-800 px-1.5 py-0.2 rounded font-mono">
+                                Trắc nghiệm
+                              </span>
+                            )}
+                            {q.type === 'group-tf' && (
+                              <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.2 rounded font-mono">
+                                Đúng/Sai
+                              </span>
+                            )}
+                            {q.type === 'short' && (
+                              <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.2 rounded font-mono">
+                                Trả lời ngắn
+                              </span>
+                            )}
+
+                            {q.level && (
+                              <span className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded font-bold">
+                                {q.level}
+                              </span>
+                            )}
+
+                            {hasDrawing && (
+                              <span className="text-[10px] bg-red-950 text-red-300 border border-red-800 px-1 rounded flex items-center gap-0.5">
+                                <Pencil className="w-2.5 h-2.5" /> Có vẽ
+                              </span>
+                            )}
+
+                            {/* Per-question Timer Badge */}
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (isEditingThisTime) {
+                                  setEditingTimeIdx(null);
+                                } else {
+                                  setEditingTimeIdx(idx);
+                                  setCustomTimeInput(String(effectiveSec));
+                                }
+                              }}
+                              className={`ml-auto px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold flex items-center gap-0.5 border transition cursor-pointer shrink-0 ${
+                                hasCustomDuration
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-xs'
+                                  : 'bg-slate-800/90 text-slate-400 border-slate-700 hover:text-white hover:border-slate-500'
+                              }`}
+                              title={
+                                hasCustomDuration
+                                  ? `Thời gian riêng: ${effectiveSec}s (bấm để chỉnh)`
+                                  : `Thời gian mặc định: ${effectiveSec}s (bấm để đặt số giây riêng cho câu này)`
+                              }
+                            >
+                              <Clock className="w-2.5 h-2.5" />
+                              <span>{effectiveSec}s</span>
+                            </button>
+                          </div>
+
+                          <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                            {q.text || 'Nội dung câu hỏi...'}
+                          </p>
+                        </div>
                       </div>
-                    </button>
+
+                      {/* Inline Per-Question Custom Time Picker */}
+                      {isEditingThisTime && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          className="mt-2.5 pt-2 border-t border-slate-700/80 space-y-2 bg-slate-950/80 p-2 rounded-lg"
+                        >
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+                            <span>Đặt thời gian câu {idx + 1}:</span>
+                            {hasCustomDuration && (
+                              <button
+                                type="button"
+                                onClick={() => handleResetQuestionDuration(idx)}
+                                className="text-sky-400 hover:text-sky-300 underline cursor-pointer"
+                              >
+                                Về mặc định ({liveDurationPerQuestion}s)
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[30, 45, 60, 90, 120, 180, 240, 300].map(sec => (
+                              <button
+                                key={sec}
+                                type="button"
+                                onClick={() => handleSetQuestionDuration(idx, sec)}
+                                className={`py-1 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
+                                  effectiveSec === sec
+                                    ? 'bg-amber-500 text-slate-950 border-amber-400'
+                                    : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                                }`}
+                              >
+                                {sec}s
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={5}
+                              max={1800}
+                              value={customTimeInput}
+                              onChange={e => setCustomTimeInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const val = parseInt(customTimeInput, 10);
+                                  if (!isNaN(val) && val >= 5) handleSetQuestionDuration(idx, val);
+                                }
+                              }}
+                              className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-white focus:outline-none focus:border-amber-400"
+                              placeholder="Giây"
+                            />
+                            <span className="text-[10px] text-slate-400">giây</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = parseInt(customTimeInput, 10);
+                                if (!isNaN(val) && val >= 5) handleSetQuestionDuration(idx, val);
+                              }}
+                              className="ml-auto px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold cursor-pointer"
+                            >
+                              Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingTimeIdx(null)}
+                              className="px-1.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
+                            >
+                              Đóng
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })
               )}
@@ -1597,6 +1912,18 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
                     </div>
 
                     <div className="flex items-center gap-2 relative z-40 pointer-events-auto">
+                      <button
+                        onClick={() => setShowCorrectAnswer(!showCorrectAnswer)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer ${
+                          showCorrectAnswer
+                            ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-600 text-emerald-300'
+                            : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                        }`}
+                        title={showCorrectAnswer ? 'Nhấn để ẩn đáp án đúng' : 'Nhấn để hiển thị đáp án đúng'}
+                      >
+                        {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5 text-emerald-400" /> : <Eye className="w-3.5 h-3.5 text-emerald-400" />}
+                        <span>{showCorrectAnswer ? 'Ẩn đáp án' : 'Hiện đáp án'}</span>
+                      </button>
                       <button
                         onClick={handleGenerateAiNotes}
                         disabled={isGeneratingAi}
@@ -1933,7 +2260,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
               <div>
                 <label className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 mb-2">
                   <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>3. Thời gian trả lời mặc định cho mỗi câu</span>
+                  <span>3. Thời gian trả lời mặc định (có thể chỉnh riêng từng câu ở cột trái)</span>
                 </label>
                 <div className="grid grid-cols-5 gap-2">
                   {[
@@ -2022,6 +2349,7 @@ ${currentQ.solution ? `💡 Lời giải: ${currentQ.solution}` : ''}
           onToggleShowAnswer={handleToggleAnswerForStudents}
           onToggleShowSolution={handleToggleSolutionForStudents}
           onLockQuestion={handleLockQuestion}
+          onResetAnswers={handleResetQuestionAnswers}
         />
       )}
     </div>

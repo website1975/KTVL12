@@ -361,21 +361,92 @@ export async function getActiveLiveReviewForStudent(student: User): Promise<Live
 }
 
 /**
+ * Kiểm tra câu trả lời có thực sự chứa lựa chọn/nội dung hợp lệ hay không (tránh tính giá trị rỗng)
+ */
+export function hasNonEmptyLiveAnswer(answer: any): boolean {
+  if (answer === undefined || answer === null) return false;
+  if (typeof answer === 'string') return answer.trim() !== '';
+  if (typeof answer === 'number' || typeof answer === 'boolean') return true;
+  if (typeof answer === 'object') {
+    return Object.values(answer).some(v => v !== undefined && v !== null && String(v).trim() !== '');
+  }
+  return false;
+}
+
+/**
+ * Xóa toàn bộ câu trả lời đã lưu của 1 câu hỏi trong phiên sửa bài (khi GV kích hoạt lại câu hỏi)
+ */
+export async function clearLiveReviewQuestionAnswers(sessionId: string, qIndex: number): Promise<void> {
+  const prefix = `live_ans_${sessionId}_q${qIndex}_`;
+
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (e) {}
+
+  if (isDatabaseConnected() && supabase) {
+    try {
+      await supabase
+        .from('exam_sessions')
+        .delete()
+        .like('id', `${prefix}%`);
+    } catch (err) {
+      console.warn("Lỗi xóa câu trả lời cũ trên Supabase:", err);
+    }
+  }
+}
+
+/**
  * Giáo viên kích hoạt câu hỏi mới & bắt đầu tính giờ
  */
 export async function activateLiveReviewQuestion(
   session: LiveReviewSession,
   questionIndex: number,
-  timeLimitSeconds: number = 60
+  timeLimitSeconds: number = 60,
+  options?: { clearOldAnswers?: boolean }
 ): Promise<LiveReviewSession> {
+  if (options?.clearOldAnswers) {
+    await clearLiveReviewQuestionAnswers(session.id, questionIndex);
+  }
+
+  const activationId = options?.clearOldAnswers
+    ? `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    : (session.currentQuestionIndex === questionIndex && session.activationId)
+      ? session.activationId
+      : `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
   const updated: LiveReviewSession = {
     ...session,
     currentQuestionIndex: questionIndex,
     timeLimitSeconds,
     questionActivatedAt: new Date().toISOString(),
+    activationId,
     isQuestionLocked: false,
     showAnswer: false,
     showSolution: false,
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveLiveReviewSession(updated);
+  return updated;
+}
+
+/**
+ * Giáo viên gia hạn thêm thời gian cho câu hiện tại (giữ nguyên các câu trả lời đã nộp)
+ */
+export async function extendLiveReviewQuestionTimer(
+  session: LiveReviewSession,
+  newTimeLimitSeconds: number
+): Promise<LiveReviewSession> {
+  const updated: LiveReviewSession = {
+    ...session,
+    timeLimitSeconds: newTimeLimitSeconds,
+    questionActivatedAt: new Date().toISOString(),
+    isQuestionLocked: false,
     updatedAt: new Date().toISOString()
   };
 
@@ -436,9 +507,16 @@ export async function endLiveReviewSession(session: LiveReviewSession): Promise<
     updatedAt: new Date().toISOString()
   };
 
-  // 1. Xóa ngay khỏi LocalStorage
+  // 1. Xóa ngay khỏi LocalStorage (cả session lẫn câu trả lời tạm của phiên này)
   try {
     localStorage.removeItem(`${LOCAL_STORAGE_SESSION_PREFIX}${session.id}`);
+    const ansPrefix = `live_ans_${session.id}_`;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(ansPrefix)) {
+        localStorage.removeItem(k);
+      }
+    }
   } catch (e) {}
 
   // 2. Broadcast tức thời qua kênh nội bộ cho mọi tab học sinh để lập tức ẩn banner
@@ -448,10 +526,11 @@ export async function endLiveReviewSession(session: LiveReviewSession): Promise<
     } catch (e) {}
   }
 
-  // 3. Dọn dẹp trên Supabase Cloud: cập nhật status ended hoặc xóa phiên
+  // 3. Dọn dẹp trên Supabase Cloud: xóa phiên và các bản ghi câu trả lời tạm của phiên này
   if (isDatabaseConnected() && supabase) {
     try {
       await supabase.from('exam_sessions').delete().eq('id', session.id);
+      await supabase.from('exam_sessions').delete().like('id', `live_ans_${session.id}_%`);
     } catch (err) {
       console.warn("Lỗi dọn dẹp Live Review Session trên Supabase:", err);
     }
@@ -469,7 +548,8 @@ export async function submitLiveReviewAnswer(
   student: User,
   answer: any,
   isCorrect?: boolean,
-  question?: Question
+  question?: Question,
+  activationId?: string
 ): Promise<LiveReviewStudentAnswer> {
   const calculatedCorrect = question !== undefined 
     ? checkIsStudentAnswerCorrect(question, answer) 
@@ -481,8 +561,13 @@ export async function submitLiveReviewAnswer(
     studentCode: student.studentCode || 'N/A',
     answer,
     submittedAt: new Date().toISOString(),
-    isCorrect: calculatedCorrect
+    isCorrect: calculatedCorrect,
+    ...(activationId ? { activationId } : {})
   };
+
+  if (!hasNonEmptyLiveAnswer(answer)) {
+    return record;
+  }
 
   const answerKey = `live_ans_${sessionId}_q${qIndex}_${student.id}`;
 
@@ -528,13 +613,23 @@ export async function submitLiveReviewAnswer(
 export async function getStudentAnswerForQuestion(
   sessionId: string,
   qIndex: number,
-  studentId: string
+  studentId: string,
+  activationId?: string
 ): Promise<LiveReviewStudentAnswer | null> {
   const answerKey = `live_ans_${sessionId}_q${qIndex}_${studentId}`;
 
+  const matchesRound = (ans: any) => {
+    if (!ans || !hasNonEmptyLiveAnswer(ans.answer)) return false;
+    if (activationId && ans.activationId && ans.activationId !== activationId) return false;
+    return true;
+  };
+
   try {
     const raw = localStorage.getItem(answerKey);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (matchesRound(parsed)) return parsed;
+    }
   } catch (e) {}
 
   if (isDatabaseConnected() && supabase) {
@@ -546,7 +641,8 @@ export async function getStudentAnswerForQuestion(
         .limit(1);
 
       if (!error && data && data.length > 0 && data[0]?.data) {
-        return data[0].data as LiveReviewStudentAnswer;
+        const srv = data[0].data as LiveReviewStudentAnswer;
+        if (matchesRound(srv)) return srv;
       }
     } catch (e) {}
   }
@@ -559,10 +655,20 @@ export async function getStudentAnswerForQuestion(
  */
 export async function getStudentAnswersForQuestion(
   sessionId: string,
-  qIndex: number
+  qIndex: number,
+  activationId?: string
 ): Promise<LiveReviewStudentAnswer[]> {
   const answersMap = new Map<string, LiveReviewStudentAnswer>();
   const prefix = `live_ans_${sessionId}_q${qIndex}_`;
+
+  const isValidRecord = (ans: any): boolean => {
+    if (!ans || !ans.studentId) return false;
+    if (ans.sessionId !== undefined && ans.sessionId !== sessionId) return false;
+    if (ans.qIndex !== undefined && Number(ans.qIndex) !== Number(qIndex)) return false;
+    if (!hasNonEmptyLiveAnswer(ans.answer)) return false;
+    if (activationId && ans.activationId && ans.activationId !== activationId) return false;
+    return true;
+  };
 
   // 1. Quét LocalStorage
   try {
@@ -571,7 +677,7 @@ export async function getStudentAnswersForQuestion(
       if (k && k.startsWith(prefix)) {
         try {
           const ans = JSON.parse(localStorage.getItem(k) || '{}');
-          if (ans && ans.studentId) answersMap.set(ans.studentId, ans);
+          if (isValidRecord(ans)) answersMap.set(ans.studentId, ans);
         } catch (e) {}
       }
     }
@@ -582,13 +688,14 @@ export async function getStudentAnswersForQuestion(
     try {
       const { data, error } = await supabase
         .from('exam_sessions')
-        .select('data')
+        .select('id, data')
         .like('id', `${prefix}%`);
 
       if (!error && data && Array.isArray(data)) {
         data.forEach((row: any) => {
+          if (row?.id && !String(row.id).startsWith(prefix)) return;
           const ans = row.data as LiveReviewStudentAnswer;
-          if (ans && ans.studentId) {
+          if (isValidRecord(ans)) {
             answersMap.set(ans.studentId, ans);
             try {
               localStorage.setItem(`live_ans_${sessionId}_q${qIndex}_${ans.studentId}`, JSON.stringify(ans));
@@ -663,14 +770,15 @@ export function subscribeToStudentAnswers(
   sessionId: string,
   qIndex: number,
   onUpdate: (answers: LiveReviewStudentAnswer[]) => void,
-  intervalMs: number = 1500
+  intervalMs: number = 1500,
+  activationId?: string
 ): () => void {
   let isSubscribed = true;
 
   const handleBroadcast = (e: MessageEvent) => {
     if (!isSubscribed) return;
     if (e.data?.type === 'STUDENT_ANSWER' && e.data?.sessionId === sessionId && e.data?.qIndex === qIndex) {
-      getStudentAnswersForQuestion(sessionId, qIndex).then(res => {
+      getStudentAnswersForQuestion(sessionId, qIndex, activationId).then(res => {
         if (isSubscribed) onUpdate(res);
       });
     }
@@ -683,7 +791,7 @@ export function subscribeToStudentAnswers(
   const poll = async () => {
     if (!isSubscribed) return;
     try {
-      const res = await getStudentAnswersForQuestion(sessionId, qIndex);
+      const res = await getStudentAnswersForQuestion(sessionId, qIndex, activationId);
       if (isSubscribed) onUpdate(res);
     } catch (e) {}
   };
