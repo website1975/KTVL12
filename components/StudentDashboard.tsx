@@ -12,6 +12,7 @@ import QuickPractice from './QuickPractice';
 import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
 import QuizProgressIndicator, { countCompletedQuestions } from './QuizProgressIndicator';
+import StudentLeaderboard from './StudentLeaderboard';
 import { 
   Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, 
   Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp,
@@ -60,6 +61,8 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(false);
+  const [leaderboardQuizId, setLeaderboardQuizId] = useState<string>('');
+  const [leaderboardRefreshKey, setLeaderboardRefreshKey] = useState<number>(0);
 
   // Trạng thái phiên sửa bài đố vui trực tiếp (Live Review Session)
   const [activeLiveSession, setActiveLiveSession] = useState<LiveReviewSession | null>(null);
@@ -732,10 +735,23 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return () => clearInterval(interval);
   }, [refreshData]);
 
-  const handleExitQuiz = () => {
+  const handleExitQuiz = (options?: { scrollToLeaderboard?: boolean; completedQuizId?: string }) => {
+    const finishedQuizId = options?.completedQuizId || activeQuiz?.id || null;
     setActiveQuiz(null);
     setActivePracticeQuiz(null);
-    setTimeout(() => refreshData(), 500);
+    if (finishedQuizId) {
+      setLeaderboardQuizId(finishedQuizId);
+    }
+    setLeaderboardRefreshKey(prev => prev + 1);
+    setTimeout(() => {
+      refreshData(false, true);
+      if (options?.scrollToLeaderboard) {
+        setTimeout(() => {
+          const el = document.getElementById('student-leaderboard');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 120);
+      }
+    }, 350);
   };
 
   const formatStudyTime = (seconds: number) => {
@@ -1183,6 +1199,17 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
             >
                 <CheckCircle2 size={12} className="text-emerald-600 group-hover:scale-110 transition-transform" />
                 <span>Đã làm ({results.length})</span>
+            </button>
+            <button
+                onClick={() => {
+                    const el = document.getElementById('student-leaderboard');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/70 group cursor-pointer"
+                title="Xem vị trí xếp hạng của bạn so với các bạn khác"
+            >
+                <Trophy size={12} className="text-amber-600 group-hover:scale-110 transition-transform" />
+                <span>Bảng xếp hạng</span>
             </button>
             <button
                 onClick={() => setQuizStatusTab('practice')}
@@ -2102,6 +2129,17 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
           </div>
       )}
 
+      {/* Bảng xếp hạng thành tích học sinh theo từng đề thi */}
+      <StudentLeaderboard
+        student={user}
+        results={results}
+        quizzes={quizzes}
+        selectedQuizId={leaderboardQuizId}
+        onSelectQuizId={setLeaderboardQuizId}
+        refreshTrigger={leaderboardRefreshKey}
+        isOnline={isOnline}
+      />
+
       {/* Danh sách các đề đã làm & Lịch sử nộp bài (Bao gồm các đề đã hết hạn mở) */}
       <section id="student-results-history" className="pt-10 scroll-mt-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -2257,13 +2295,26 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                                       </span>
                                   </td>
                                   <td className="p-6 text-center">
-                                      <button 
-                                          onClick={() => handleViewResult(r)} 
-                                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95"
-                                          title="Xem lại bài thi đã nộp, đáp án và lời giải"
-                                      >
-                                          <Eye size={12}/> Xem lại <ChevronRight size={12}/>
-                                      </button>
+                                      <div className="inline-flex items-center justify-center gap-2">
+                                          <button 
+                                              onClick={() => handleViewResult(r)} 
+                                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+                                              title="Xem lại bài thi đã nộp, đáp án và lời giải"
+                                          >
+                                              <Eye size={12}/> Xem lại <ChevronRight size={12}/>
+                                          </button>
+                                          <button
+                                              onClick={() => {
+                                                  setLeaderboardQuizId(r.quizId);
+                                                  const el = document.getElementById('student-leaderboard');
+                                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                              }}
+                                              className="inline-flex items-center gap-1 px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all shadow-sm active:scale-95 cursor-pointer"
+                                              title="Xem thứ hạng của bạn ở đề thi này"
+                                          >
+                                              <Trophy size={12}/> Xếp hạng
+                                          </button>
+                                      </div>
                                   </td>
                               </tr>
                           );

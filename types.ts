@@ -129,6 +129,9 @@ export interface Result {
   studentId: string;
   studentName: string;
   studentCode?: string; 
+  grade?: Grade;
+  classId?: string;
+  className?: string;
   academicYear?: string;
   score: number;
   totalQuestions: number;

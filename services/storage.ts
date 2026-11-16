@@ -413,6 +413,58 @@ export const getUsers = async (forceRefresh: boolean = false): Promise<User[]> =
   }
 };
 
+export interface StudentClassProfile {
+  id: string;
+  studentCode?: string;
+  classId?: string;
+  className?: string;
+  grade?: Grade;
+}
+
+export const getStudentClassProfiles = async (forceRefresh: boolean = false): Promise<StudentClassProfile[]> => {
+  if (!supabase) return [];
+  const cacheKey = 'student_class_profiles';
+  const now = Date.now();
+  if (!forceRefresh && memoryCache[cacheKey] && memoryCache[cacheKey].expires > now) {
+    return memoryCache[cacheKey].data;
+  }
+  try {
+    let allRows: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id,studentCode:data->>studentCode,classId:data->>classId,className:data->>className,grade:data->>grade')
+        .range(from, from + step - 1);
+
+      if (error) throw error;
+      if (data && data.length > 0) {
+        allRows = [...allRows, ...data];
+        from += step;
+        if (data.length < step) hasMore = false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const profiles: StudentClassProfile[] = allRows.map((row: any) => ({
+      id: String(row.id || ''),
+      studentCode: row.studentCode || undefined,
+      classId: row.classId || undefined,
+      className: row.className || undefined,
+      grade: (row.grade as Grade) || undefined,
+    }));
+    memoryCache[cacheKey] = { data: profiles, expires: now + CACHE_TTL };
+    return profiles;
+  } catch (e) {
+    console.warn("Lỗi getStudentClassProfiles:", e);
+    return [];
+  }
+};
+
 export const saveUser = async (user: User): Promise<void> => {
   invalidateCache('users_all');
   if (!supabase) throw new Error("Mất kết nối Database Cloud");

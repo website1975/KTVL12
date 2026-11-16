@@ -13,7 +13,7 @@ import { addMinutes, differenceInSeconds } from 'date-fns';
 interface QuizTakerProps {
     quiz: Quiz;
     student: User;
-    onExit: () => void;
+    onExit: (options?: { scrollToLeaderboard?: boolean; completedQuizId?: string }) => void;
 }
 
 export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
@@ -259,6 +259,10 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
             studentId: student.id,
             studentName: student.fullName,
             studentCode: student.studentCode || 'N/A',
+            grade: student.grade,
+            classId: student.classId,
+            className: student.className,
+            academicYear: student.academicYear,
             score: Number(score.toFixed(2)),
             totalQuestions: quiz.questions.length,
             submittedAt: new Date().toISOString(),
@@ -397,9 +401,19 @@ export default function QuizTaker({ quiz, student, onExit }: QuizTakerProps) {
                         </div>
                     )}
 
-                    <button onClick={onExit} className="w-full py-4.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95">
-                        <Home size={18}/> Về trang chủ
-                    </button>
+                    <div className="space-y-2.5">
+                        {!isOfflineSaved && (
+                            <button
+                                onClick={() => onExit({ scrollToLeaderboard: true, completedQuizId: quiz.id })}
+                                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg active:scale-95"
+                            >
+                                <Trophy size={17}/> Xem bảng xếp hạng
+                            </button>
+                        )}
+                        <button onClick={() => onExit({ completedQuizId: quiz.id })} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95">
+                            <Home size={18}/> Về trang chủ
+                        </button>
+                    </div>
                 </div>
             </div>
         );
