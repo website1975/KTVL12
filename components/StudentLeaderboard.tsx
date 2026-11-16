@@ -7,7 +7,6 @@ import {
   Award,
   Users,
   RefreshCw,
-  Search,
   Clock,
   ArrowUp,
   ChevronDown,
@@ -89,7 +88,6 @@ export default function StudentLeaderboard({
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'class'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showAllRows, setShowAllRows] = useState(false);
 
   // Danh sách các đề thi mà học sinh đã hoàn thành (sắp xếp theo lần nộp gần nhất)
@@ -350,27 +348,16 @@ export default function StudentLeaderboard({
     };
   }, [rankedEntries]);
 
-  const filteredEntries = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return rankedEntries;
-    return rankedEntries.filter(
-      (entry) =>
-        entry.studentName.toLowerCase().includes(q) ||
-        entry.studentCode.toLowerCase().includes(q) ||
-        (entry.className && entry.className.toLowerCase().includes(q))
-    );
-  }, [rankedEntries, searchQuery]);
-
   const DEFAULT_VISIBLE = 15;
   const displayedEntries = useMemo(() => {
-    if (showAllRows || searchQuery.trim()) return filteredEntries;
-    return filteredEntries.slice(0, DEFAULT_VISIBLE);
-  }, [filteredEntries, showAllRows, searchQuery]);
+    if (showAllRows) return rankedEntries;
+    return rankedEntries.slice(0, DEFAULT_VISIBLE);
+  }, [rankedEntries, showAllRows]);
 
   const isMyRowOutsideDefault = useMemo(() => {
-    if (!myEntry || showAllRows || searchQuery.trim()) return false;
+    if (!myEntry || showAllRows) return false;
     return !displayedEntries.some((e) => e.studentKey === myEntry.studentKey);
-  }, [myEntry, showAllRows, searchQuery, displayedEntries]);
+  }, [myEntry, showAllRows, displayedEntries]);
 
   const handleJumpToMyRow = () => {
     if (!myEntry) return;
@@ -495,57 +482,29 @@ export default function StudentLeaderboard({
 
         {/* Bộ chọn đề thi đã làm */}
         {completedQuizOptions.length > 0 && (
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <label
-                htmlFor="leaderboard-quiz-select"
-                className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5"
-              >
-                Chọn bài thi / bài luyện tập để xem thứ hạng
-              </label>
-              <select
-                id="leaderboard-quiz-select"
-                value={selectedQuizId}
-                onChange={(e) => {
-                  onSelectQuizId(e.target.value);
-                  setSearchQuery('');
-                  setShowAllRows(false);
-                }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all cursor-pointer"
-              >
-                {completedQuizOptions.map((opt) => (
-                  <option key={opt.quizId} value={opt.quizId}>
-                    {opt.quizType === 'practice' ? '[Luyện tập] ' : '[Đề thi] '}
-                    {opt.quizTitle} — Điểm cao nhất của bạn: {opt.myBestScore.toFixed(2)}đ
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {rankedEntries.length > 8 && (
-              <div className="md:w-64">
-                <label
-                  htmlFor="leaderboard-search"
-                  className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5"
-                >
-                  Tìm thí sinh
-                </label>
-                <div className="relative">
-                  <Search
-                    size={14}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                  />
-                  <input
-                    id="leaderboard-search"
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Tên, MSHS hoặc lớp..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs font-medium text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                  />
-                </div>
-              </div>
-            )}
+          <div>
+            <label
+              htmlFor="leaderboard-quiz-select"
+              className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5"
+            >
+              Chọn bài thi / bài luyện tập để xem thứ hạng
+            </label>
+            <select
+              id="leaderboard-quiz-select"
+              value={selectedQuizId}
+              onChange={(e) => {
+                onSelectQuizId(e.target.value);
+                setShowAllRows(false);
+              }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all cursor-pointer"
+            >
+              {completedQuizOptions.map((opt) => (
+                <option key={opt.quizId} value={opt.quizId}>
+                  {opt.quizType === 'practice' ? '[Luyện tập] ' : '[Đề thi] '}
+                  {opt.quizTitle} — Điểm cao nhất của bạn: {opt.myBestScore.toFixed(2)}đ
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
@@ -674,8 +633,8 @@ export default function StudentLeaderboard({
             </div>
           )}
 
-          {/* Top 3 nổi bật khi không lọc tìm kiếm */}
-          {!searchQuery.trim() && rankedEntries.length >= 3 && (
+          {/* Top 3 nổi bật */}
+          {rankedEntries.length >= 3 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {rankedEntries.slice(0, 3).map((top) => {
                 const isFirst = top.rank === 1;
@@ -707,8 +666,11 @@ export default function StudentLeaderboard({
                     </p>
                     <div className="flex items-center justify-between gap-2 mt-1.5 text-[11px] text-slate-500 font-medium">
                       <span className="truncate">
-                        {top.studentCode}
-                        {top.className ? ` · Lớp ${top.className}` : ''}
+                        {top.isCurrentUser
+                          ? `${top.studentCode}${top.className ? ` · Lớp ${top.className}` : ''}`
+                          : top.className
+                          ? `Lớp ${top.className}`
+                          : 'Thí sinh'}
                       </span>
                       <span className="inline-flex items-center gap-1 font-mono tabular-nums shrink-0">
                         <Clock size={11} className="text-slate-400" />
@@ -727,11 +689,9 @@ export default function StudentLeaderboard({
               <Loader2 size={28} className="animate-spin text-blue-600 mx-auto" />
               <p className="text-xs font-bold text-slate-500">Đang tổng hợp bảng xếp hạng...</p>
             </div>
-          ) : filteredEntries.length === 0 ? (
+          ) : rankedEntries.length === 0 ? (
             <div className="py-10 text-center text-xs font-medium text-slate-500 bg-slate-50 rounded-2xl border border-slate-100">
-              {searchQuery.trim()
-                ? `Không tìm thấy thí sinh khớp với "${searchQuery.trim()}".`
-                : 'Chưa có bài nộp nào trong phạm vi đã chọn.'}
+              Chưa có bài nộp nào trong phạm vi đã chọn.
             </div>
           ) : (
             <div className="border border-slate-200 rounded-2xl overflow-hidden overflow-x-auto">
@@ -772,8 +732,12 @@ export default function StudentLeaderboard({
                             )}
                           </div>
                           <span className="text-[11px] text-slate-500 font-normal">
-                            {entry.studentCode}
-                            {entry.className ? ` · Lớp ${entry.className}` : ''}
+                            {entry.isCurrentUser ? `${entry.studentCode}` : ''}
+                            {entry.className
+                              ? `${entry.isCurrentUser ? ' · ' : ''}Lớp ${entry.className}`
+                              : !entry.isCurrentUser
+                              ? 'Thí sinh'
+                              : ''}
                             {entry.submittedAt
                               ? ` · Nộp ${format(new Date(entry.submittedAt), 'HH:mm dd/MM')}`
                               : ''}
@@ -855,10 +819,10 @@ export default function StudentLeaderboard({
           )}
 
           {/* Điều khiển mở rộng / thu gọn danh sách */}
-          {!searchQuery.trim() && filteredEntries.length > DEFAULT_VISIBLE && (
+          {rankedEntries.length > DEFAULT_VISIBLE && (
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-slate-500 font-medium">
               <span className="font-mono tabular-nums">
-                Đang hiển thị {displayedEntries.length} / {filteredEntries.length} thí sinh
+                Đang hiển thị {displayedEntries.length} / {rankedEntries.length} thí sinh
               </span>
               <div className="flex items-center gap-2">
                 {!showAllRows ? (
@@ -868,7 +832,7 @@ export default function StudentLeaderboard({
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-colors cursor-pointer"
                   >
                     <ChevronDown size={14} />
-                    <span>Xem tất cả ({filteredEntries.length})</span>
+                    <span>Xem tất cả ({rankedEntries.length})</span>
                   </button>
                 ) : (
                   <button

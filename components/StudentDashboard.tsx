@@ -1,8 +1,22 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { User, Quiz, Result, PublishedResult, Chapter, Grade, LiveReviewSession } from '../types';
-import { getQuizzesMetadata, getResultsForStudent, getPublishedResultsForStudent, getQuizById, getResultById, getStudentActiveSessions, deleteExamSession, getChapters, getCurrentAcademicYear } from '../services/storage';
-import { downloadQuizForOffline, getOfflineQuizzes, getOfflineQuizById, deleteOfflineQuiz } from '../services/offlineStorage';
+import { User, Quiz, Result, PublishedResult, Chapter, LiveReviewSession } from '../types';
+import {
+  getQuizzesMetadata,
+  getResultsForStudent,
+  getPublishedResultsForStudent,
+  getQuizById,
+  getResultById,
+  getStudentActiveSessions,
+  deleteExamSession,
+  getChapters,
+  getCurrentAcademicYear,
+} from '../services/storage';
+import {
+  downloadQuizForOffline,
+  getOfflineQuizzes,
+  getOfflineQuizById,
+  deleteOfflineQuiz,
+} from '../services/offlineStorage';
 import { useOfflineSync } from '../services/offlineSyncManager';
 import { getActiveLiveReviewForStudent, getLiveReviewedQuizIds } from '../services/liveReviewService';
 import LiveReviewStudentTaker from './LiveReviewStudentTaker';
@@ -13,36 +27,51 @@ import ResultDetailModal from './admin/ResultDetailModal';
 import QuizPreviewModal from './admin/QuizPreviewModal';
 import QuizProgressIndicator, { countCompletedQuestions } from './QuizProgressIndicator';
 import StudentLeaderboard from './StudentLeaderboard';
-import { 
-  Clock, Trophy, BookOpen, Eye, Medal, History, ChevronRight, Star, Award, Users, X, 
-  Loader2, RefreshCw, Zap, ShieldAlert, Calendar, Lock, FileText, CheckCircle2, ChevronDown, ChevronUp,
-  TrendingUp, TrendingDown, Activity, Sparkles, Target, BarChart2, LineChart as LineChartIcon, 
-  BarChart3, CheckCircle, ArrowUpRight, Download, Wifi, WifiOff, CloudCheck, HardDrive, Trash2,
-  AlertTriangle, AlertCircle, Radio, Play, RotateCcw
-} from 'lucide-react';
+import StudentAnalyticsPanel from './StudentAnalyticsPanel';
 import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ReferenceLine,
-  Cell
-} from 'recharts';
+  Clock,
+  Trophy,
+  Eye,
+  Medal,
+  History,
+  ChevronRight,
+  Award,
+  X,
+  Loader2,
+  RefreshCw,
+  Zap,
+  ShieldAlert,
+  Calendar,
+  Lock,
+  FileText,
+  CheckCircle2,
+  Download,
+  Wifi,
+  WifiOff,
+  CloudCheck,
+  HardDrive,
+  Trash2,
+  AlertTriangle,
+  Radio,
+  RotateCcw,
+  BarChart3,
+  Filter,
+} from 'lucide-react';
 import { format, isBefore, isAfter, addMinutes, differenceInMinutes } from 'date-fns';
-import LatexText from './LatexText';
 
 interface StudentDashboardProps {
   user: User;
   targetQuizId?: string | null;
 }
+
+type StudentMenuKey =
+  | 'exams'
+  | 'practice'
+  | 'overview'
+  | 'history'
+  | 'leaderboard'
+  | 'honors'
+  | 'offline';
 
 export default function StudentDashboard({ user, targetQuizId }: StudentDashboardProps) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -50,13 +79,23 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [results, setResults] = useState<Result[]>([]);
   const gradeFilter = user.grade || '10';
   const currentAcademicYear = getCurrentAcademicYear();
-  const [academicYearFilter, setAcademicYearFilter] = useState<string>(user.academicYear || currentAcademicYear);
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>(
+    user.academicYear || currentAcademicYear
+  );
   const [chapterFilter, setChapterFilter] = useState('all');
+
+  // Menu 2-panel: Chỉ kích hoạt & render panel đang chọn để tối ưu băng thông
+  const [activeMenu, setActiveMenu] = useState<StudentMenuKey>('exams');
+  const [examSubTab, setExamSubTab] = useState<'all' | 'open' | 'upcoming' | 'uncompleted'>('all');
+
+  // Lazy-loaded Honors state (chỉ tải từ Cloud khi học sinh mở mục Vinh danh)
   const [publishedResults, setPublishedResults] = useState<PublishedResult[]>([]);
-  const [quizStatusTab, setQuizStatusTab] = useState<'all' | 'open' | 'upcoming' | 'completed' | 'practice' | 'downloaded' | 'uncompleted'>('all');
+  const [honorsLoaded, setHonorsLoaded] = useState(false);
+  const [isLoadingHonors, setIsLoadingHonors] = useState(false);
+
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [activePracticeQuiz, setActivePracticeQuiz] = useState<Quiz | null>(null);
-  const [selectedResult, setSelectedResult] = useState<{ result: Result, quiz: Quiz } | null>(null);
+  const [selectedResult, setSelectedResult] = useState<{ result: Result; quiz: Quiz } | null>(null);
   const [viewingHonorees, setViewingHonorees] = useState<PublishedResult | null>(null);
   const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,20 +103,21 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const [leaderboardQuizId, setLeaderboardQuizId] = useState<string>('');
   const [leaderboardRefreshKey, setLeaderboardRefreshKey] = useState<number>(0);
 
-  // Trạng thái phiên sửa bài đố vui trực tiếp (Live Review Session)
+  // Live Review Session
   const [activeLiveSession, setActiveLiveSession] = useState<LiveReviewSession | null>(null);
   const [liveReviewSessionCheck, setLiveReviewSessionCheck] = useState<LiveReviewSession | null>(null);
-  const [liveReviewedQuizIds, setLiveReviewedQuizIds] = useState<string[]>(() => getLiveReviewedQuizIds());
+  const [liveReviewedQuizIds, setLiveReviewedQuizIds] = useState<string[]>(() =>
+    getLiveReviewedQuizIds()
+  );
 
-  // Hook quản lý trạng thái kết nối & tự động đồng bộ kết quả ngoại tuyến
-  const { 
-    isOnline, 
-    isSyncing, 
-    pendingCount, 
-    downloadedCount, 
-    syncFeedback, 
-    manualSync, 
-    refreshStats: refreshOfflineStats 
+  // Offline Sync Hook
+  const {
+    isOnline,
+    isSyncing,
+    pendingCount,
+    downloadedCount,
+    syncFeedback,
+    manualSync,
   } = useOfflineSync(user.id);
 
   const [downloadedQuizzes, setDownloadedQuizzes] = useState<Quiz[]>([]);
@@ -89,10 +129,10 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const loadDownloadedQuizzes = useCallback(async () => {
     try {
       const list = await getOfflineQuizzes(user.id);
-      setDownloadedQuizzes(list.map(item => item.quiz));
-      setDownloadedQuizIds(new Set(list.map(item => item.quizId)));
+      setDownloadedQuizzes(list.map((item) => item.quiz));
+      setDownloadedQuizIds(new Set(list.map((item) => item.quizId)));
     } catch (err) {
-      console.error("Lỗi nạp danh sách đề thi ngoại tuyến:", err);
+      console.error('Lỗi nạp danh sách đề thi ngoại tuyến:', err);
     }
   }, [user.id]);
 
@@ -100,16 +140,15 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     loadDownloadedQuizzes();
   }, [loadDownloadedQuizzes, downloadedCount]);
 
-  // Lắng nghe phiên sửa bài đố vui trực tiếp dành cho lớp của học sinh (Yêu cầu 1 & 2)
+  // Kiểm tra phiên sửa bài trực tiếp
   useEffect(() => {
     let isMounted = true;
     const checkLive = async () => {
-      // Nếu học sinh đang trong màn hình giải bài trực tiếp, bỏ qua kiểm tra banner để tránh re-render bảng điều khiển
       if (activeLiveSession) return;
       try {
         const session = await getActiveLiveReviewForStudent(user);
         if (isMounted) {
-          setLiveReviewSessionCheck(prev => {
+          setLiveReviewSessionCheck((prev) => {
             if (!prev && !session) return null;
             if (
               prev &&
@@ -132,7 +171,6 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     checkLive();
     const interval = setInterval(checkLive, 4000);
 
-    // Kênh BroadcastChannel để nhận tín hiệu kết thúc hoặc cập nhật 0ms
     let liveChannel: BroadcastChannel | null = null;
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -158,7 +196,9 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       isMounted = false;
       clearInterval(interval);
       if (liveChannel) {
-        try { liveChannel.close(); } catch (e) {}
+        try {
+          liveChannel.close();
+        } catch (e) {}
       }
     };
   }, [user, activeLiveSession]);
@@ -168,20 +208,23 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     if (downloadingQuizId) return;
 
     setDownloadingQuizId(quiz.id);
-    setDownloadStatusText("Đang nạp dữ liệu câu hỏi & hình ảnh...");
+    setDownloadStatusText('Đang nạp dữ liệu câu hỏi & hình ảnh...');
 
     try {
-      const fullQuiz = (quiz.questions && quiz.questions.length > 0) ? quiz : await getQuizById(quiz.id);
+      const fullQuiz =
+        quiz.questions && quiz.questions.length > 0 ? quiz : await getQuizById(quiz.id);
       if (!fullQuiz) {
-        alert("Không thể lấy nội dung đề thi để tải về.");
+        alert('Không thể lấy nội dung đề thi để tải về.');
         return;
       }
 
-      setDownloadStatusText("Đang mã hóa hình ảnh & công thức ngoại tuyến...");
+      setDownloadStatusText('Đang mã hóa hình ảnh & công thức ngoại tuyến...');
       const result = await downloadQuizForOffline(fullQuiz.id, user.id);
       if (result.success) {
         await loadDownloadedQuizzes();
-        alert(`Đã tải thành công đề "${fullQuiz.title}" về máy (${result.sizeKb.toFixed(1)} KB). Bạn có thể làm bài hoàn toàn ngoại tuyến!`);
+        alert(
+          `Đã tải thành công đề "${fullQuiz.title}" về máy (${result.sizeKb.toFixed(1)} KB). Bạn có thể làm bài hoàn toàn ngoại tuyến!`
+        );
       } else {
         alert(`Lỗi khi tải đề thi: ${result.message || 'Vui lòng kiểm tra kết nối mạng.'}`);
       }
@@ -198,60 +241,93 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     await loadDownloadedQuizzes();
   };
 
-  const refreshData = useCallback(async (isSilent = false, forceRefresh = false) => {
-    if (!isSilent) setIsLoading(true);
-    try {
-        const [allQuizzes, userResults, myPubs, allChapters] = await Promise.all([
-            getQuizzesMetadata('all', forceRefresh), 
-            getResultsForStudent(user.id, user.studentCode, forceRefresh), 
-            getPublishedResultsForStudent(user.studentCode, forceRefresh),
-            getChapters(forceRefresh)
-        ]);
-        
-        setChapters(allChapters);
-        const gradeChapters = (allChapters || []).filter((c: Chapter) => gradeFilter === 'all' || String(c.grade) === String(gradeFilter));
-        if (gradeChapters.length > 0) {
-            setChapterFilter(prev => {
-                const belongs = gradeChapters.some(c => c.name === prev);
-                return belongs ? prev : gradeChapters[0].name;
-            });
-        }
-        // Giữ toàn bộ đề thi đã phát hành để phục vụ việc phân quyền xem đề & khớp thông tin lịch sử nộp bài
-        setQuizzes(allQuizzes.filter(q => q.isPublished));
+  // Tải Bảng vàng vinh danh theo yêu cầu khi học sinh chọn menu Vinh danh
+  const loadHonors = useCallback(
+    async (forceRefresh = false) => {
+      setIsLoadingHonors(true);
+      try {
+        const myPubs = await getPublishedResultsForStudent(user.studentCode, forceRefresh);
+        setPublishedResults(myPubs || []);
+        setHonorsLoaded(true);
+      } catch (err) {
+        console.warn('Lỗi tải bảng vinh danh:', err);
+      } finally {
+        setIsLoadingHonors(false);
+      }
+    },
+    [user.studentCode]
+  );
 
-        // Lọc khử trùng lặp dữ liệu nộp bài (do retry mạng, double submit hoặc trùng ID)
+  useEffect(() => {
+    if (activeMenu === 'honors' && !honorsLoaded) {
+      loadHonors(false);
+    }
+  }, [activeMenu, honorsLoaded, loadHonors]);
+
+  // Nạp dữ liệu cốt lõi nhẹ băng thông (đề thi metadata, kết quả của riêng HS, danh mục chương)
+  const refreshData = useCallback(
+    async (isSilent = false, forceRefresh = false) => {
+      if (!isSilent) setIsLoading(true);
+      try {
+        const [allQuizzes, userResults, allChapters] = await Promise.all([
+          getQuizzesMetadata('all', forceRefresh),
+          getResultsForStudent(user.id, user.studentCode, forceRefresh),
+          getChapters(forceRefresh),
+        ]);
+
+        setChapters(allChapters);
+        const gradeChapters = (allChapters || []).filter(
+          (c: Chapter) => gradeFilter === 'all' || String(c.grade) === String(gradeFilter)
+        );
+        if (gradeChapters.length > 0) {
+          setChapterFilter((prev) => {
+            if (prev === 'all') return 'all';
+            const belongs = gradeChapters.some((c) => c.name === prev);
+            return belongs ? prev : 'all';
+          });
+        }
+        setQuizzes(allQuizzes.filter((q) => q.isPublished));
+
         const seenIds = new Set<string>();
         const uniqueResults: Result[] = [];
-        const sortedRaw = (userResults as Result[]).sort((a: Result, b: Result) => 
+        const sortedRaw = (userResults as Result[]).sort(
+          (a: Result, b: Result) =>
             new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
         );
 
         for (const r of sortedRaw) {
-            if (!r || !r.id || seenIds.has(r.id)) continue;
-            seenIds.add(r.id);
+          if (!r || !r.id || seenIds.has(r.id)) continue;
+          seenIds.add(r.id);
 
-            // Kiểm tra nếu có bản ghi cùng đề thi, cùng điểm và nộp sát nhau trong vòng 15 giây -> coi là bị lưu đúp
-            const isDuplicate = uniqueResults.some(prev => 
-                prev.quizId === r.quizId && 
-                Math.abs(new Date(prev.submittedAt).getTime() - new Date(r.submittedAt).getTime()) < 15000 &&
-                Math.abs(prev.score - r.score) < 0.001
-            );
+          const isDuplicate = uniqueResults.some(
+            (prev) =>
+              prev.quizId === r.quizId &&
+              Math.abs(new Date(prev.submittedAt).getTime() - new Date(r.submittedAt).getTime()) <
+                15000 &&
+              Math.abs(prev.score - r.score) < 0.001
+          );
 
-            if (!isDuplicate) {
-                uniqueResults.push(r);
-            }
+          if (!isDuplicate) {
+            uniqueResults.push(r);
+          }
         }
         setResults(uniqueResults);
 
-        // Chỉ nạp bảng vinh danh của chính học sinh này (đã được lọc tinh gọn từ server)
-        setPublishedResults(myPubs || []);
-
-    } catch (err) {
-        console.error("Lỗi đồng bộ dữ liệu StudentDashboard:", err);
-    } finally {
+        // Nếu học sinh đã mở menu Vinh danh hoặc Bảng xếp hạng và yêu cầu làm mới thủ công -> cập nhật đồng bộ
+        if (forceRefresh && activeMenu === 'honors') {
+          loadHonors(true);
+        }
+        if (forceRefresh && activeMenu === 'leaderboard') {
+          setLeaderboardRefreshKey((prev) => prev + 1);
+        }
+      } catch (err) {
+        console.error('Lỗi đồng bộ dữ liệu StudentDashboard:', err);
+      } finally {
         setIsLoading(false);
-    }
-  }, [user.id, user.studentCode, user.grade]);
+      }
+    },
+    [user.id, user.studentCode, gradeFilter, activeMenu, loadHonors]
+  );
 
   const [sessionWarning, setSessionWarning] = useState<{
     type: 'different_quiz' | 'same_quiz';
@@ -264,15 +340,13 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     setIsCheckingSession(true);
     try {
       const sessions = await getStudentActiveSessions(user.id);
-      // Lọc các phiên còn "sống" (cập nhật trong 10 phút qua)
-      const activeSessions = sessions.filter(s => {
+      const activeSessions = sessions.filter((s) => {
         const lastUpdate = new Date(s.lastUpdate);
         return differenceInMinutes(new Date(), lastUpdate) < 10;
       });
 
       if (activeSessions.length > 0) {
-        // 1. Chặn nếu làm đề KHÁC
-        const otherQuizSession = activeSessions.find(s => s.quizId !== quizId);
+        const otherQuizSession = activeSessions.find((s) => s.quizId !== quizId);
         if (otherQuizSession) {
           return new Promise((resolve) => {
             setSessionWarning({
@@ -284,20 +358,19 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   setSessionWarning(null);
                   resolve(true);
                 } catch (e) {
-                  alert("Không thể kết thúc phiên cũ. Vui lòng thử lại.");
+                  alert('Không thể kết thúc phiên cũ. Vui lòng thử lại.');
                   resolve(false);
                 }
               },
               onCancel: () => {
                 setSessionWarning(null);
                 resolve(false);
-              }
+              },
             });
           });
         }
 
-        // 2. Cảnh báo nếu làm CÙNG ĐỀ trên máy khác
-        const sameQuizSession = activeSessions.find(s => s.quizId === quizId);
+        const sameQuizSession = activeSessions.find((s) => s.quizId === quizId);
         if (sameQuizSession) {
           return new Promise((resolve) => {
             setSessionWarning({
@@ -309,33 +382,34 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                   setSessionWarning(null);
                   resolve(true);
                 } catch (e) {
-                  alert("Không thể xóa phiên cũ. Vui lòng thử lại.");
+                  alert('Không thể xóa phiên cũ. Vui lòng thử lại.');
                   resolve(false);
                 }
               },
               onCancel: () => {
                 setSessionWarning(null);
                 resolve(false);
-              }
+              },
             });
           });
         }
       }
       return true;
     } catch (e) {
-      console.error("Lỗi kiểm tra phiên làm bài:", e);
-      return true; // Cho phép nếu lỗi mạng
+      console.error('Lỗi kiểm tra phiên làm bài:', e);
+      return true;
     } finally {
       setIsCheckingSession(false);
     }
   };
 
   const handleStartQuiz = async (quiz: Quiz) => {
-    // Kiểm tra số lần đã làm bài của học sinh đối với đề thi này
-    const myAttempts = results.filter(r => r.quizId === quiz.id);
+    const myAttempts = results.filter((r) => r.quizId === quiz.id);
     const maxAttempts = quiz.maxAttempts ?? 2;
     if (myAttempts.length >= maxAttempts) {
-      alert(`Bạn đã sử dụng hết ${maxAttempts} lần làm bài cho đề thi này. Nút làm bài đã được đóng băng.`);
+      alert(
+        `Bạn đã sử dụng hết ${maxAttempts} lần làm bài cho đề thi này. Nút làm bài đã được đóng băng.`
+      );
       return;
     }
 
@@ -346,19 +420,22 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       if (!navigator.onLine) {
         fullQuiz = await getOfflineQuizById(quiz.id, user.id);
         if (!fullQuiz) {
-          alert("Bạn đang ngoại tuyến và đề thi này chưa được tải về máy. Vui lòng bật mạng để tải đề!");
+          alert(
+            'Bạn đang ngoại tuyến và đề thi này chưa được tải về máy. Vui lòng bật mạng để tải đề!'
+          );
           setIsLoading(false);
           return;
         }
       } else {
-        fullQuiz = (quiz.questions && quiz.questions.length > 0) ? quiz : await getQuizById(quiz.id);
+        fullQuiz =
+          quiz.questions && quiz.questions.length > 0 ? quiz : await getQuizById(quiz.id);
         if (!fullQuiz) {
           fullQuiz = await getOfflineQuizById(quiz.id, user.id);
         }
       }
 
       if (!fullQuiz) {
-        alert("Không tìm thấy dữ liệu đề thi.");
+        alert('Không tìm thấy dữ liệu đề thi.');
         return;
       }
 
@@ -369,12 +446,12 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
       setActiveQuiz(fullQuiz);
     } catch (e) {
-      console.error("Lỗi khởi tạo bài thi:", e);
+      console.error('Lỗi khởi tạo bài thi:', e);
       const offlineQuiz = await getOfflineQuizById(quiz.id, user.id);
       if (offlineQuiz) {
         setActiveQuiz(offlineQuiz);
       } else {
-        alert("Lỗi khi tải câu hỏi bài thi.");
+        alert('Lỗi khi tải câu hỏi bài thi.');
       }
     } finally {
       setIsLoading(false);
@@ -384,7 +461,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
   const handleStartPractice = async (quiz: Quiz) => {
     const isLiveReviewed = liveReviewedQuizIds.includes(quiz.id);
     if (quiz.type === 'test' && !isLiveReviewed) {
-      alert("Đề này là Đề thi chính thức do Giáo viên chỉ định, không mở chế độ luyện tập trước.");
+      alert('Đề này là Đề thi chính thức do Giáo viên chỉ định, không mở chế độ luyện tập trước.');
       return;
     }
 
@@ -395,19 +472,20 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       if (!navigator.onLine) {
         fullQuiz = await getOfflineQuizById(quiz.id, user.id);
         if (!fullQuiz) {
-          alert("Bạn đang ngoại tuyến và đề luyện tập này chưa được tải về máy.");
+          alert('Bạn đang ngoại tuyến và đề luyện tập này chưa được tải về máy.');
           setIsLoading(false);
           return;
         }
       } else {
-        fullQuiz = (quiz.questions && quiz.questions.length > 0) ? quiz : await getQuizById(quiz.id);
+        fullQuiz =
+          quiz.questions && quiz.questions.length > 0 ? quiz : await getQuizById(quiz.id);
         if (!fullQuiz) {
           fullQuiz = await getOfflineQuizById(quiz.id, user.id);
         }
       }
 
       if (!fullQuiz) {
-        alert("Không tìm thấy dữ liệu đề thi.");
+        alert('Không tìm thấy dữ liệu đề thi.');
         return;
       }
 
@@ -422,12 +500,12 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
       setActivePracticeQuiz(fullQuiz);
     } catch (e) {
-      console.error("Lỗi khởi tạo luyện tập:", e);
+      console.error('Lỗi khởi tạo luyện tập:', e);
       const offlineQuiz = await getOfflineQuizById(quiz.id, user.id);
       if (offlineQuiz) {
         setActivePracticeQuiz(offlineQuiz);
       } else {
-        alert("Lỗi khi tải câu hỏi luyện tập.");
+        alert('Lỗi khi tải câu hỏi luyện tập.');
       }
     } finally {
       setIsLoading(false);
@@ -439,90 +517,106 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     try {
       const [fullQuiz, fullResult] = await Promise.all([
         getQuizById(res.quizId),
-        getResultById(res.id)
+        getResultById(res.id),
       ]);
       if (fullQuiz && fullResult) {
         setSelectedResult({ result: fullResult, quiz: fullQuiz });
       } else if (fullQuiz) {
         setSelectedResult({ result: res, quiz: fullQuiz });
       } else {
-        alert("Đề thi này đã bị xóa hoặc không tìm thấy dữ liệu.");
+        alert('Đề thi này đã bị xóa hoặc không tìm thấy dữ liệu.');
       }
     } catch (e) {
-      console.error("Lỗi xem chi tiết kết quả:", e);
+      console.error('Lỗi xem chi tiết kết quả:', e);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Xử lý tự động mở đề thi từ link ẩn
+  // Tự động mở đề thi từ URL ?quiz=...
   useEffect(() => {
     if (targetQuizId) {
-        const checkTargetQuiz = async () => {
-            setIsLoading(true);
-            try {
-                const quiz = await getQuizById(targetQuizId);
-                if (quiz && quiz.isPublished) {
-                    const curNow = new Date();
-                    const startX = quiz.startTime ? new Date(quiz.startTime) : null;
-                    const endY = quiz.endTime ? new Date(quiz.endTime) : null;
-                    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+      const checkTargetQuiz = async () => {
+        setIsLoading(true);
+        try {
+          const quiz = await getQuizById(targetQuizId);
+          if (quiz && quiz.isPublished) {
+            const curNow = new Date();
+            const startX = quiz.startTime ? new Date(quiz.startTime) : null;
+            const endY = quiz.endTime ? new Date(quiz.endTime) : null;
+            const isFlexibleWindow = Boolean(
+              startX && endY && endY.getTime() > startX.getTime()
+            );
 
-                    if (quiz.type === 'test' && startX) {
-                        if (isFlexibleWindow && endY) {
-                            if (isBefore(curNow, startX)) {
-                                alert(`Đề thi chưa mở. Khung giờ mở đề: ${format(startX, 'HH:mm dd/MM/yyyy')} đến ${format(endY, 'HH:mm dd/MM/yyyy')}.`);
-                                return;
-                            }
-                            if (isAfter(curNow, endY)) {
-                                alert(`Đã hết thời hạn vào làm đề thi này (Hạn chót vào thi: ${format(endY, 'HH:mm dd/MM/yyyy')}).`);
-                                return;
-                            }
-                        } else {
-                            const globalDeadline = addMinutes(startX, quiz.durationMinutes);
-                            if (isBefore(curNow, startX)) {
-                                alert(`Đề thi chưa đến giờ. Giờ thi bắt đầu lúc ${format(startX, 'HH:mm dd/MM/yyyy')}.`);
-                                return;
-                            }
-                            if (isAfter(curNow, globalDeadline)) {
-                                alert(`Đề thi đã kết thúc lúc ${format(globalDeadline, 'HH:mm dd/MM/yyyy')}.`);
-                                return;
-                            }
-                        }
-                    }
-
-                    // Kiểm tra phiên trước khi tự động mở
-                    const canStart = await checkActiveSession(quiz.id);
-                    if (canStart) {
-                        setActiveQuiz(quiz);
-                        // Xóa param trên URL để không bị loop
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
-                } else {
-                    alert("Đề thi này không tồn tại hoặc chưa được phát hành.");
+            if (quiz.type === 'test' && startX) {
+              if (isFlexibleWindow && endY) {
+                if (isBefore(curNow, startX)) {
+                  alert(
+                    `Đề thi chưa mở. Khung giờ mở đề: ${format(startX, 'HH:mm dd/MM/yyyy')} đến ${format(endY, 'HH:mm dd/MM/yyyy')}.`
+                  );
+                  return;
                 }
-            } catch (e) {
-                console.error("Lỗi lấy đề thi từ link:", e);
-            } finally {
-                setIsLoading(false);
+                if (isAfter(curNow, endY)) {
+                  alert(
+                    `Đã hết thời hạn vào làm đề thi này (Hạn chót vào thi: ${format(endY, 'HH:mm dd/MM/yyyy')}).`
+                  );
+                  return;
+                }
+              } else {
+                const globalDeadline = addMinutes(startX, quiz.durationMinutes);
+                if (isBefore(curNow, startX)) {
+                  alert(`Đề thi chưa đến giờ. Giờ thi bắt đầu lúc ${format(startX, 'HH:mm dd/MM/yyyy')}.`);
+                  return;
+                }
+                if (isAfter(curNow, globalDeadline)) {
+                  alert(`Đề thi đã kết thúc lúc ${format(globalDeadline, 'HH:mm dd/MM/yyyy')}.`);
+                  return;
+                }
+              }
             }
-        };
-        checkTargetQuiz();
+
+            const canStart = await checkActiveSession(quiz.id);
+            if (canStart) {
+              setActiveQuiz(quiz);
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          } else {
+            alert('Đề thi này không tồn tại hoặc chưa được phát hành.');
+          }
+        } catch (e) {
+          console.error('Lỗi lấy đề thi từ link:', e);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      checkTargetQuiz();
     }
   }, [targetQuizId]);
 
-  // Danh sách đề thi được phân công cho học sinh (Khối, Lớp, Công khai)
   const assignedQuizzes = useMemo(() => {
     return quizzes.filter((q: Quiz) => {
-      const matchGrade = !q.grade || q.grade === 'all' || gradeFilter === 'all' || String(q.grade) === String(gradeFilter);
+      const matchGrade =
+        !q.grade ||
+        q.grade === 'all' ||
+        gradeFilter === 'all' ||
+        String(q.grade) === String(gradeFilter);
       let isTargetMatch = false;
 
       if (q.targetType === 'classes') {
-        const hasClassIdMatch = Boolean(user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId));
-        const hasClassNameMatch = Boolean(user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className));
-        const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(c => 
-          (user.classId && c.id === user.classId) || (user.className && c.name === user.className)
-        ));
+        const hasClassIdMatch = Boolean(
+          user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId)
+        );
+        const hasClassNameMatch = Boolean(
+          user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className)
+        );
+        const hasAssignedClassesMatch = Boolean(
+          q.assignedClasses &&
+            q.assignedClasses.some(
+              (c) =>
+                (user.classId && c.id === user.classId) ||
+                (user.className && c.name === user.className)
+            )
+        );
         isTargetMatch = hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
       } else {
         isTargetMatch = !q.isUnlisted;
@@ -532,15 +626,23 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     });
   }, [quizzes, gradeFilter, user.classId, user.className]);
 
-  const completedQuizIds = useMemo(() => new Set(results.map(r => r.quizId)), [results]);
-  const completedAssignedCount = useMemo(() => assignedQuizzes.filter(q => completedQuizIds.has(q.id)).length, [assignedQuizzes, completedQuizIds]);
-  const uncompletedAssignedCount = useMemo(() => Math.max(0, assignedQuizzes.length - completedAssignedCount), [assignedQuizzes, completedAssignedCount]);
-  const uncompletedAssignedQuizzes = useMemo(() => assignedQuizzes.filter(q => !completedQuizIds.has(q.id)), [assignedQuizzes, completedQuizIds]);
+  const completedQuizIds = useMemo(() => new Set(results.map((r) => r.quizId)), [results]);
+  const completedAssignedCount = useMemo(
+    () => assignedQuizzes.filter((q) => completedQuizIds.has(q.id)).length,
+    [assignedQuizzes, completedQuizIds]
+  );
+  const uncompletedAssignedCount = useMemo(
+    () => Math.max(0, assignedQuizzes.length - completedAssignedCount),
+    [assignedQuizzes, completedAssignedCount]
+  );
+  const uncompletedAssignedQuizzes = useMemo(
+    () => assignedQuizzes.filter((q) => !completedQuizIds.has(q.id)),
+    [assignedQuizzes, completedQuizIds]
+  );
 
-  // Điểm cao nhất của từng đề đã nộp
   const bestScorePerQuiz = useMemo(() => {
     const map = new Map<string, number>();
-    results.forEach(r => {
+    results.forEach((r) => {
       const cur = map.get(r.quizId) ?? 0;
       if (r.score > cur) map.set(r.quizId, r.score);
     });
@@ -549,17 +651,18 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
   const totalAssignedScore = useMemo(() => {
     let sum = 0;
-    assignedQuizzes.forEach(q => {
-      sum += (bestScorePerQuiz.get(q.id) ?? 0); // Đề chưa làm tính 0.00 điểm
+    assignedQuizzes.forEach((q) => {
+      sum += bestScorePerQuiz.get(q.id) ?? 0;
     });
     return sum;
   }, [assignedQuizzes, bestScorePerQuiz]);
 
   const avgSubmittedScore = useMemo(() => {
-    return results.length > 0 ? (results.reduce((acc, r) => acc + r.score, 0) / results.length) : 0;
+    return results.length > 0
+      ? results.reduce((acc, r) => acc + r.score, 0) / results.length
+      : 0;
   }, [results]);
 
-  // ĐTB TỔNG KẾT (Quy tắc công bằng: Các đề được giao nhưng không làm sẽ tính 0.00 điểm)
   const officialAvgScore = useMemo(() => {
     if (assignedQuizzes.length === 0) return avgSubmittedScore;
     return totalAssignedScore / assignedQuizzes.length;
@@ -567,132 +670,72 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
   const stats = useMemo(() => {
     const totalQuizzes = results.length;
-    const avgScore = officialAvgScore;
     const totalSeconds = results.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
-    const effortPoints = totalSeconds / 2700; 
+    const effortPoints = totalSeconds / 2700;
 
     const bonusPoints = results.reduce((acc, r) => {
-        const bp = (r as any).bonusPoint;
-        if (bp !== undefined && bp !== null) {
-            return acc + Number(bp);
-        }
-        if (r.score >= 8) return acc + 1;
-        return acc;
+      const bp = (r as any).bonusPoint;
+      if (bp !== undefined && bp !== null) {
+        return acc + Number(bp);
+      }
+      if (r.score >= 8) return acc + 1;
+      return acc;
     }, 0);
 
     return {
-        totalQuizzes,
-        avgScore: officialAvgScore,
-        avgSubmittedScore,
-        completedAssignedCount,
-        totalAssignedCount: assignedQuizzes.length,
-        uncompletedAssignedCount,
-        totalSeconds,
-        effortPoints,
-        bonusPoints,
-        accumulatedPoints: effortPoints + bonusPoints
+      totalQuizzes,
+      avgScore: officialAvgScore,
+      avgSubmittedScore,
+      completedAssignedCount,
+      totalAssignedCount: assignedQuizzes.length,
+      uncompletedAssignedCount,
+      totalSeconds,
+      effortPoints,
+      bonusPoints,
+      accumulatedPoints: effortPoints + bonusPoints,
     };
-  }, [results, officialAvgScore, avgSubmittedScore, completedAssignedCount, assignedQuizzes.length, uncompletedAssignedCount]);
+  }, [
+    results,
+    officialAvgScore,
+    avgSubmittedScore,
+    completedAssignedCount,
+    assignedQuizzes.length,
+    uncompletedAssignedCount,
+  ]);
 
-  // Thống kê tổng số câu hỏi đã làm trên tổng số câu hỏi của các đề
   const overallQuestionsStats = useMemo(() => {
     let totalQuestions = 0;
     let completedQuestions = 0;
 
     const targetList = assignedQuizzes.length > 0 ? assignedQuizzes : quizzes;
-    targetList.forEach(q => {
+    targetList.forEach((q) => {
       const qTotal = q.questionCount || (q.questions ? q.questions.length : 0);
       totalQuestions += qTotal;
-      const qAttempts = results.filter(r => r.quizId === q.id).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      const qAttempts = results
+        .filter((r) => r.quizId === q.id)
+        .sort(
+          (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        );
       if (qAttempts.length > 0) {
         const latest = qAttempts[0];
-        const done = countCompletedQuestions(latest.userAnswers, qTotal) || (latest.score > 0 ? qTotal : 0);
+        const done =
+          countCompletedQuestions(latest.userAnswers, qTotal) ||
+          (latest.score > 0 ? qTotal : 0);
         completedQuestions += done;
       }
     });
 
-    const percentage = totalQuestions > 0 ? Math.min(100, Math.round((completedQuestions / totalQuestions) * 100)) : 0;
+    const percentage =
+      totalQuestions > 0
+        ? Math.min(100, Math.round((completedQuestions / totalQuestions) * 100))
+        : 0;
     return {
       completed: completedQuestions,
       total: totalQuestions,
-      percentage
+      percentage,
     };
   }, [assignedQuizzes, quizzes, results]);
 
-  // Recharts Chart State & Computations
-  const [chartType, setChartType] = useState<'timeline' | 'distribution'>('timeline');
-  const [chartScope, setChartScope] = useState<'all' | 'test' | 'practice'>('all');
-  const [chartLimit, setChartLimit] = useState<number>(15);
-
-  // Chronological score data for Recharts (Sorted oldest to newest for progression line)
-  const scoreHistoryData = useMemo(() => {
-    let sorted = [...results].sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
-    
-    if (chartScope !== 'all') {
-      sorted = sorted.filter(r => {
-        const q = quizzes.find(item => item.id === r.quizId);
-        return q ? q.type === chartScope : true;
-      });
-    }
-
-    if (chartLimit > 0 && sorted.length > chartLimit) {
-      sorted = sorted.slice(sorted.length - chartLimit);
-    }
-
-    return sorted.map((r, idx) => {
-      const q = quizzes.find(item => item.id === r.quizId);
-      const subDate = new Date(r.submittedAt);
-      const quizTitle = q?.title || 'Bài thi';
-      const shortTitle = quizTitle.length > 22 ? quizTitle.slice(0, 20) + '...' : quizTitle;
-      const durationMin = Math.max(1, Math.round((r.durationSeconds || 0) / 60));
-      return {
-        id: r.id,
-        attemptNumber: idx + 1,
-        quizId: r.quizId,
-        quizTitle,
-        shortTitle,
-        score: Number(r.score.toFixed(2)),
-        date: format(subDate, 'dd/MM/yyyy HH:mm'),
-        shortDate: format(subDate, 'dd/MM'),
-        durationMinutes: durationMin,
-        quizType: q?.type || 'test',
-        label: `#${idx + 1} (${format(subDate, 'dd/MM')})`
-      };
-    });
-  }, [results, quizzes, chartScope, chartLimit]);
-
-  // Phổ điểm (Score distribution for bar chart)
-  const scoreDistributionData = useMemo(() => {
-    let filtered = [...results];
-    if (chartScope !== 'all') {
-      filtered = filtered.filter(r => {
-        const q = quizzes.find(item => item.id === r.quizId);
-        return q ? q.type === chartScope : true;
-      });
-    }
-
-    const total = filtered.length || 1;
-    const groups = [
-      { key: 'under5', name: 'Dưới 5.0 (Cần cố gắng)', shortName: '< 5.0', range: [0, 5], count: 0, color: '#f43f5e' },
-      { key: '5to65', name: '5.0 - 6.4 (Trung bình)', shortName: '5.0 - 6.4', range: [5, 6.5], count: 0, color: '#f59e0b' },
-      { key: '65to8', name: '6.5 - 7.9 (Khá)', shortName: '6.5 - 7.9', range: [6.5, 8], count: 0, color: '#3b82f6' },
-      { key: '8to10', name: '8.0 - 10.0 (Giỏi / Xuất sắc)', shortName: '8.0 - 10.0', range: [8, 10.01], count: 0, color: '#10b981' }
-    ];
-
-    filtered.forEach(r => {
-      if (r.score < 5) groups[0].count++;
-      else if (r.score < 6.5) groups[1].count++;
-      else if (r.score < 8) groups[2].count++;
-      else groups[3].count++;
-    });
-
-    return groups.map(g => ({
-      ...g,
-      percentage: filtered.length > 0 ? Math.round((g.count / total) * 100) : 0
-    }));
-  }, [results, quizzes, chartScope]);
-
-  // Thống kê phân tích xu hướng
   const performanceInsights = useMemo(() => {
     if (results.length === 0) {
       return {
@@ -701,22 +744,26 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         recentAvg: 0,
         trendDiff: 0,
         passRate: 0,
-        distinctionRate: 0
+        distinctionRate: 0,
       };
     }
-    const scores = results.map(r => r.score);
+    const scores = results.map((r) => r.score);
     const highest = Math.max(...scores);
-    const sortedDesc = [...results].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    const sortedDesc = [...results].sort(
+      (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
     const latest = sortedDesc[0]?.score || 0;
-    
-    // 3 bài gần nhất
+
     const recent3 = sortedDesc.slice(0, 3);
-    const recentAvg = recent3.length > 0 ? (recent3.reduce((acc, r) => acc + r.score, 0) / recent3.length) : 0;
+    const recentAvg =
+      recent3.length > 0
+        ? recent3.reduce((acc, r) => acc + r.score, 0) / recent3.length
+        : 0;
     const overallAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
     const trendDiff = recentAvg - overallAvg;
 
-    const passCount = results.filter(r => r.score >= 5).length;
-    const distinctionCount = results.filter(r => r.score >= 8).length;
+    const passCount = results.filter((r) => r.score >= 5).length;
+    const distinctionCount = results.filter((r) => r.score >= 8).length;
 
     return {
       highest,
@@ -724,219 +771,235 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
       recentAvg,
       trendDiff,
       passRate: Math.round((passCount / results.length) * 100),
-      distinctionRate: Math.round((distinctionCount / results.length) * 100)
+      distinctionRate: Math.round((distinctionCount / results.length) * 100),
     };
   }, [results]);
 
   useEffect(() => {
     refreshData();
-    // 10 phút (600.000 ms) tự động kiểm tra làm mới nền một lần
-    const interval = setInterval(() => refreshData(true), 10 * 60 * 1000); 
+    const interval = setInterval(() => refreshData(true), 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [refreshData]);
 
-  const handleExitQuiz = (options?: { scrollToLeaderboard?: boolean; completedQuizId?: string }) => {
+  const handleExitQuiz = (options?: {
+    scrollToLeaderboard?: boolean;
+    completedQuizId?: string;
+  }) => {
     const finishedQuizId = options?.completedQuizId || activeQuiz?.id || null;
     setActiveQuiz(null);
     setActivePracticeQuiz(null);
     if (finishedQuizId) {
       setLeaderboardQuizId(finishedQuizId);
     }
-    setLeaderboardRefreshKey(prev => prev + 1);
+    if (options?.scrollToLeaderboard) {
+      setActiveMenu('leaderboard');
+    }
+    setLeaderboardRefreshKey((prev) => prev + 1);
     setTimeout(() => {
       refreshData(false, true);
-      if (options?.scrollToLeaderboard) {
-        setTimeout(() => {
-          const el = document.getElementById('student-leaderboard');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 120);
-      }
     }, 350);
-  };
-
-  const formatStudyTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
   };
 
   const [currentTime, setCurrentTime] = useState(() => new Date());
   useEffect(() => {
-    // Cập nhật thời gian mỗi 30 giây để tự động ẩn các đề thi vừa kết thúc thời gian mở
     const timer = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
-  const now = currentTime;
+  const isQuizExpired = useCallback(
+    (q: Quiz, time: Date = currentTime): boolean => {
+      const startX = q.startTime ? new Date(q.startTime) : null;
+      const endY = q.endTime ? new Date(q.endTime) : null;
+      const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
 
-  // Hàm kiểm tra đề thi đã hết thời hạn mở đề / làm bài chưa
-  const isQuizExpired = useCallback((q: Quiz, time: Date = currentTime): boolean => {
-    const startX = q.startTime ? new Date(q.startTime) : null;
-    const endY = q.endTime ? new Date(q.endTime) : null;
-    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
-
-    if (startX) {
-      if (isFlexibleWindow && endY) {
-        return isAfter(time, endY);
-      } else {
-        const globalDeadline = addMinutes(startX, q.durationMinutes);
-        return isAfter(time, globalDeadline);
+      if (startX) {
+        if (isFlexibleWindow && endY) {
+          return isAfter(time, endY);
+        } else {
+          const globalDeadline = addMinutes(startX, q.durationMinutes);
+          return isAfter(time, globalDeadline);
+        }
       }
-    }
-    if (endY) {
-      return isAfter(time, endY);
-    }
-    return false;
-  }, [currentTime]);
+      if (endY) {
+        return isAfter(time, endY);
+      }
+      return false;
+    },
+    [currentTime]
+  );
 
-  // Logic kiểm tra lộ trình học tập (Prerequisite Path)
   const getQuizStatus = (q: Quiz) => {
     const qOrder = q.orderIndex ?? 1;
-    
-    // Đề có STT = 0 là đề tự do (không chặn ai và không bị ai chặn)
     if (qOrder === 0) return { isLocked: false };
-    
-    // Nếu chưa có chương hoặc STT = 1 thì mặc định mở
     if (!q.category || qOrder <= 1) return { isLocked: false };
-    
-    // Tìm các đề trong cùng chương có thứ tự nhỏ hơn
-    // Chỉ xét các đề đang còn hạn (để tránh học sinh bị kẹt bởi đề đã hết hạn)
-    // Và bỏ qua các đề có STT = 0
+
     const prerequisites = quizzes
-        .filter(prev => 
-            prev.category === q.category && 
-            (prev.orderIndex ?? 0) > 0 && 
-            (prev.orderIndex ?? 0) < qOrder &&
-            !isQuizExpired(prev, currentTime)
-        )
-        .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0));
-    
+      .filter(
+        (prev) =>
+          prev.category === q.category &&
+          (prev.orderIndex ?? 0) > 0 &&
+          (prev.orderIndex ?? 0) < qOrder &&
+          !isQuizExpired(prev, currentTime)
+      )
+      .sort((a, b) => (b.orderIndex ?? 0) - (a.orderIndex ?? 0));
+
     if (prerequisites.length === 0) return { isLocked: false };
-    
+
     const prevQuiz = prerequisites[0];
     const bestScore = results
-        .filter(r => r.quizId === prevQuiz.id)
-        .reduce((max, r) => Math.max(max, r.score), 0);
-    
+      .filter((r) => r.quizId === prevQuiz.id)
+      .reduce((max, r) => Math.max(max, r.score), 0);
+
     if (bestScore < 5) {
-        return { isLocked: true, reason: `Cần đạt >= 5 điểm ở đề "${prevQuiz.title}"` };
+      return { isLocked: true, reason: `Cần đạt >= 5 điểm ở đề "${prevQuiz.title}"` };
     }
-    
+
     return { isLocked: false };
   };
 
   const filteredQuizzes = useMemo(() => {
     return quizzes.filter((q: Quiz) => {
-        const matchGrade = !q.grade || q.grade === 'all' || gradeFilter === 'all' || String(q.grade) === String(gradeFilter);
-        const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
-        const matchYear = !academicYearFilter || academicYearFilter === 'all' || 
-            (academicYearFilter === 'none' ? !q.academicYear : (q.academicYear === academicYearFilter || (!q.academicYear && academicYearFilter === currentAcademicYear)));
-        
-        // Kiểm tra phân quyền giao đề theo Lớp
-        let isTargetMatch = false;
-        if (q.targetType === 'classes') {
-          const hasClassIdMatch = Boolean(user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId));
-          const hasClassNameMatch = Boolean(user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className));
-          const hasAssignedClassesMatch = Boolean(q.assignedClasses && q.assignedClasses.some(c => 
-            (user.classId && c.id === user.classId) || (user.className && c.name === user.className)
-          ));
-          isTargetMatch = hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
-        } else {
-          isTargetMatch = !q.isUnlisted;
-        }
+      const matchGrade =
+        !q.grade ||
+        q.grade === 'all' ||
+        gradeFilter === 'all' ||
+        String(q.grade) === String(gradeFilter);
+      const matchChapter = chapterFilter === 'all' || q.category === chapterFilter;
+      const matchYear =
+        !academicYearFilter ||
+        academicYearFilter === 'all' ||
+        (academicYearFilter === 'none'
+          ? !q.academicYear
+          : q.academicYear === academicYearFilter ||
+            (!q.academicYear && academicYearFilter === currentAcademicYear));
 
-        return matchGrade && matchChapter && isTargetMatch && matchYear && q.isPublished;
-    });
-  }, [quizzes, gradeFilter, chapterFilter, academicYearFilter, user.classId, user.className, currentAcademicYear]);
-
-  // Helper tính toán thời gian mở đề & thông tin làm bài của riêng học sinh này
-  const getQuizTiming = useCallback((q: Quiz) => {
-    const startX = q.startTime ? new Date(q.startTime) : null;
-    const endY = q.endTime ? new Date(q.endTime) : null;
-    const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
-    
-    let isStarted = true;
-    let isEnded = false;
-    
-    if (startX) {
-      if (isFlexibleWindow && endY) {
-        isStarted = !isBefore(currentTime, startX);
-        isEnded = isAfter(currentTime, endY);
+      let isTargetMatch = false;
+      if (q.targetType === 'classes') {
+        const hasClassIdMatch = Boolean(
+          user.classId && q.assignedClassIds && q.assignedClassIds.includes(user.classId)
+        );
+        const hasClassNameMatch = Boolean(
+          user.className && q.assignedClassIds && q.assignedClassIds.includes(user.className)
+        );
+        const hasAssignedClassesMatch = Boolean(
+          q.assignedClasses &&
+            q.assignedClasses.some(
+              (c) =>
+                (user.classId && c.id === user.classId) ||
+                (user.className && c.name === user.className)
+            )
+        );
+        isTargetMatch = hasClassIdMatch || hasClassNameMatch || hasAssignedClassesMatch;
       } else {
-        const globalDeadline = addMinutes(startX, q.durationMinutes);
-        isStarted = !isBefore(currentTime, startX);
-        isEnded = isAfter(currentTime, globalDeadline);
+        isTargetMatch = !q.isUnlisted;
       }
-    } else if (endY) {
-      isEnded = isAfter(currentTime, endY);
-    }
-    
-    const isExpired = isQuizExpired(q, currentTime);
-    const myAttempts = results.filter(r => r.quizId === q.id).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-    const attemptCount = myAttempts.length;
-    const maxAttempts = q.maxAttempts ?? (q.type === 'practice' ? 99 : 2);
-    const isFrozen = q.type === 'test' && attemptCount >= maxAttempts;
-    const bestScore = attemptCount > 0 ? Math.max(...myAttempts.map(r => r.score)) : null;
 
-    return {
-      startX,
-      endY,
-      isFlexibleWindow,
-      isStarted,
-      isEnded,
-      isExpired,
-      myAttempts,
-      attemptCount,
-      maxAttempts,
-      isFrozen,
-      bestScore
-    };
-  }, [currentTime, results, isQuizExpired]);
+      return matchGrade && matchChapter && isTargetMatch && matchYear && q.isPublished;
+    });
+  }, [
+    quizzes,
+    gradeFilter,
+    chapterFilter,
+    academicYearFilter,
+    user.classId,
+    user.className,
+    currentAcademicYear,
+  ]);
 
-  // Phân loại rõ ràng đề thi theo đúng thông tin tài khoản học sinh:
-  // 1. Đề thi đang mở (Đang trong giờ làm bài & còn lượt thi)
+  const getQuizTiming = useCallback(
+    (q: Quiz) => {
+      const startX = q.startTime ? new Date(q.startTime) : null;
+      const endY = q.endTime ? new Date(q.endTime) : null;
+      const isFlexibleWindow = Boolean(startX && endY && endY.getTime() > startX.getTime());
+
+      let isStarted = true;
+      let isEnded = false;
+
+      if (startX) {
+        if (isFlexibleWindow && endY) {
+          isStarted = !isBefore(currentTime, startX);
+          isEnded = isAfter(currentTime, endY);
+        } else {
+          const globalDeadline = addMinutes(startX, q.durationMinutes);
+          isStarted = !isBefore(currentTime, startX);
+          isEnded = isAfter(currentTime, globalDeadline);
+        }
+      } else if (endY) {
+        isEnded = isAfter(currentTime, endY);
+      }
+
+      const isExpired = isQuizExpired(q, currentTime);
+      const myAttempts = results
+        .filter((r) => r.quizId === q.id)
+        .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      const attemptCount = myAttempts.length;
+      const maxAttempts = q.maxAttempts ?? (q.type === 'practice' ? 99 : 2);
+      const isFrozen = q.type === 'test' && attemptCount >= maxAttempts;
+      const bestScore =
+        attemptCount > 0 ? Math.max(...myAttempts.map((r) => r.score)) : null;
+
+      return {
+        startX,
+        endY,
+        isFlexibleWindow,
+        isStarted,
+        isEnded,
+        isExpired,
+        myAttempts,
+        attemptCount,
+        maxAttempts,
+        isFrozen,
+        bestScore,
+      };
+    },
+    [currentTime, results, isQuizExpired]
+  );
+
   const openTestQuizzes = useMemo(() => {
-    return filteredQuizzes.filter(q => {
+    return filteredQuizzes.filter((q) => {
       if (q.type !== 'test') return false;
       const timing = getQuizTiming(q);
       return !timing.isExpired && timing.isStarted && !timing.isEnded && !timing.isFrozen;
     });
   }, [filteredQuizzes, getQuizTiming]);
 
-  // 2. Đề thi sắp làm (Có lịch mở trong tương lai, chưa tới giờ thi)
   const upcomingTestQuizzes = useMemo(() => {
-    return filteredQuizzes.filter(q => {
+    return filteredQuizzes.filter((q) => {
       if (q.type !== 'test') return false;
       const timing = getQuizTiming(q);
       return !timing.isExpired && !timing.isStarted && !timing.isEnded;
     });
   }, [filteredQuizzes, getQuizTiming]);
 
-
-  // 4. Kho đề luyện tập (Bao gồm đề tự luyện và đề sửa bài được phép làm lại - Yêu cầu 4)
   const practiceQuizzes = useMemo(() => {
-    return filteredQuizzes.filter(q => {
+    return filteredQuizzes.filter((q) => {
       const isLiveReviewed = liveReviewedQuizIds.includes(q.id);
       if (isLiveReviewed) return true;
       return q.type === 'practice' && !isQuizExpired(q, currentTime);
     });
   }, [filteredQuizzes, currentTime, isQuizExpired, liveReviewedQuizIds]);
 
-  // Bộ lọc và hiển thị danh sách các đề đã làm ở phía dưới
   const [resultsFilter, setResultsFilter] = useState<'all' | 'expired' | 'active'>('all');
   const [resultsDisplayCount, setResultsDisplayCount] = useState(15);
 
   const enrichedResults = useMemo(() => {
-    return results.map(r => {
-      const quiz = quizzes.find(q => q.id === r.quizId);
+    return results.map((r) => {
+      const quiz = quizzes.find((q) => q.id === r.quizId);
       const title = quiz?.title || r.quizTitle || (r as any).title || 'Đề thi đã nộp';
       const category = quiz?.category || r.quizCategory || '';
-      const rawType = quiz?.type || r.quizType || ((title.toLowerCase().includes('kiểm tra') || title.toLowerCase().includes('đề')) ? 'test' : 'practice');
+      const rawType =
+        quiz?.type ||
+        r.quizType ||
+        (title.toLowerCase().includes('kiểm tra') || title.toLowerCase().includes('đề')
+          ? 'test'
+          : 'practice');
       const isExpired = quiz ? isQuizExpired(quiz, currentTime) : true;
       const sameQuizAttempts = results
-        .filter(item => item.quizId === r.quizId)
-        .sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
-      const attemptIndex = sameQuizAttempts.findIndex(item => item.id === r.id);
+        .filter((item) => item.quizId === r.quizId)
+        .sort(
+          (a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime()
+        );
+      const attemptIndex = sameQuizAttempts.findIndex((item) => item.id === r.id);
       const attemptNumber = attemptIndex >= 0 ? attemptIndex + 1 : 1;
       const hasMultipleAttempts = sameQuizAttempts.length > 1;
 
@@ -949,24 +1012,105 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         isExpired,
         attemptNumber,
         hasMultipleAttempts,
-        maxAttempts: quiz?.maxAttempts ?? (rawType === 'practice' ? 99 : 2)
+        maxAttempts: quiz?.maxAttempts ?? (rawType === 'practice' ? 99 : 2),
       };
     });
   }, [results, quizzes, currentTime, isQuizExpired]);
 
   const filteredResults = useMemo(() => {
     if (resultsFilter === 'expired') {
-      return enrichedResults.filter(item => item.isExpired);
+      return enrichedResults.filter((item) => item.isExpired);
     }
     if (resultsFilter === 'active') {
-      return enrichedResults.filter(item => !item.isExpired);
+      return enrichedResults.filter((item) => !item.isExpired);
     }
     return enrichedResults;
   }, [enrichedResults, resultsFilter]);
 
-  const expiredResultsCount = useMemo(() => enrichedResults.filter(r => r.isExpired).length, [enrichedResults]);
-  const activeResultsCount = useMemo(() => enrichedResults.filter(r => !r.isExpired).length, [enrichedResults]);
+  const expiredResultsCount = useMemo(
+    () => enrichedResults.filter((r) => r.isExpired).length,
+    [enrichedResults]
+  );
+  const activeResultsCount = useMemo(
+    () => enrichedResults.filter((r) => !r.isExpired).length,
+    [enrichedResults]
+  );
 
+  // Cấu hình danh sách menu cho panel bên trái
+  const menuItems = useMemo(
+    () => [
+      {
+        key: 'exams' as StudentMenuKey,
+        label: 'Đề thi & Kiểm tra',
+        description: 'Các bài kiểm tra đang mở, lịch thi sắp tới và đề chưa hoàn thành',
+        icon: FileText,
+        badge: openTestQuizzes.length + upcomingTestQuizzes.length,
+        alertCount: uncompletedAssignedQuizzes.length,
+      },
+      {
+        key: 'practice' as StudentMenuKey,
+        label: 'Kho luyện tập',
+        description: 'Ôn tập tự do theo chuyên đề và đề đã sửa bài trên lớp',
+        icon: Zap,
+        badge: practiceQuizzes.length,
+      },
+      {
+        key: 'overview' as StudentMenuKey,
+        label: 'Tổng quan & Biểu đồ',
+        description: 'Điểm tổng kết, tiến độ học tập và biểu đồ phân tích phong độ',
+        icon: BarChart3,
+        badgeText: `${stats.avgScore.toFixed(1)}đ`,
+      },
+      {
+        key: 'history' as StudentMenuKey,
+        label: 'Lịch sử nộp bài',
+        description: 'Danh sách bài đã nộp, điểm số chi tiết và xem lại lời giải',
+        icon: History,
+        badge: results.length,
+      },
+      {
+        key: 'leaderboard' as StudentMenuKey,
+        label: 'Bảng xếp hạng',
+        description: 'Theo dõi thứ hạng của bạn so với các thí sinh khác theo từng đề',
+        icon: Trophy,
+        badgeText: results.length > 0 ? 'Theo đề' : undefined,
+      },
+      {
+        key: 'honors' as StudentMenuKey,
+        label: 'Bảng vàng vinh danh',
+        description: 'Các thành tích xuất sắc được giáo viên ghi nhận và tuyên dương',
+        icon: Award,
+        badge: honorsLoaded ? publishedResults.length : undefined,
+      },
+      {
+        key: 'offline' as StudentMenuKey,
+        label: 'Kho ngoại tuyến',
+        description: 'Làm bài không cần mạng và quản lý đồng bộ kết quả về máy chủ',
+        icon: HardDrive,
+        badge: downloadedCount,
+        alertCount: pendingCount,
+      },
+    ],
+    [
+      openTestQuizzes.length,
+      upcomingTestQuizzes.length,
+      uncompletedAssignedQuizzes.length,
+      practiceQuizzes.length,
+      stats.avgScore,
+      results.length,
+      honorsLoaded,
+      publishedResults.length,
+      downloadedCount,
+      pendingCount,
+    ]
+  );
+
+  const activeMenuConfig = useMemo(
+    () => menuItems.find((m) => m.key === activeMenu) || menuItems[0],
+    [menuItems, activeMenu]
+  );
+
+  // Chế độ làm bài toàn màn hình
   if (activeLiveSession) {
     return (
       <LiveReviewStudentTaker
@@ -988,1481 +1132,1408 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     return <QuickPractice quiz={activePracticeQuiz} student={user} onExit={handleExitQuiz} />;
   }
 
+  const showFilterBox = activeMenu === 'exams' || activeMenu === 'practice';
+
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-10 pb-20">
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 pb-16">
       {isCheckingSession && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center">
-            <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4">
-                <Loader2 className="animate-spin text-blue-600" size={48}/>
-                <p className="font-black uppercase text-xs tracking-widest text-slate-800">Đang kiểm tra bảo mật...</p>
-            </div>
+          <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-3">
+            <Loader2 className="animate-spin text-blue-600" size={40} />
+            <p className="font-bold text-xs text-slate-800">Đang kiểm tra phiên làm bài...</p>
+          </div>
         </div>
       )}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-        <div className="relative z-10">
-            <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic">Chào mừng, {user.fullName} 👋</h1>
-            <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest mt-1">
-              Khối {user.grade}
-              {user.className ? ` • Lớp ${user.className}` : ''}
-              {user.academicYear ? ` (${user.academicYear})` : ''}
-              {` • Mã số: ${user.studentCode}`}
-            </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 relative z-10">
-            {/* Online / Offline status badge */}
-            <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-[10px] font-black uppercase shadow-xs ${
-              isOnline 
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                : 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
-            }`}>
-              {isOnline ? <Wifi size={13} className="text-emerald-600"/> : <WifiOff size={13} className="text-amber-600"/>}
-              <span>{isOnline ? 'Online' : 'Offline'}</span>
+
+      {/* Bố cục 2 panel: Menu điều hướng bên trái + Nội dung kích hoạt bên phải */}
+      <div className="flex flex-col lg:flex-row items-start gap-6">
+        {/* PANEL 1 (TRÁI): HỒ SƠ & MENU ĐIỀU HƯỚNG */}
+        <aside className="w-full lg:w-[276px] shrink-0 lg:sticky lg:top-20 space-y-4">
+          {/* Thẻ thông tin học sinh */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+            <div className="space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <h1 className="text-base font-black text-slate-900 leading-snug truncate">
+                  {user.fullName}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => refreshData(false, true)}
+                  title="Làm mới dữ liệu"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0 cursor-pointer"
+                >
+                  <RefreshCw size={14} className={isLoading ? 'animate-spin text-blue-600' : ''} />
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 font-medium truncate">
+                Khối {user.grade || '12'}
+                {user.className ? ` · Lớp ${user.className}` : ''}
+                {user.studentCode ? ` · ${user.studentCode}` : ''}
+              </p>
             </div>
 
-            {/* Offline Center button */}
-            <button
-              onClick={() => setIsOfflineManagerOpen(true)}
-              className="px-3.5 py-2 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition-all border border-slate-700 shadow-sm flex items-center gap-2 text-xs font-bold relative"
-            >
-              <HardDrive size={16} className="text-teal-400"/>
-              <span className="hidden sm:inline">Kho Ngoại Tuyến</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-teal-500 text-slate-950 font-black text-[9px]">
-                {downloadedCount}
+            <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-100 text-xs">
+              <div>
+                <p className="text-[11px] font-medium text-slate-400">ĐTB Tổng kết</p>
+                <p className="text-sm font-black font-mono tabular-nums text-slate-900">
+                  {stats.avgScore.toFixed(2)}đ
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium text-slate-400">Điểm tích lũy</p>
+                <p className="text-sm font-black font-mono tabular-nums text-amber-700">
+                  {stats.accumulatedPoints.toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] font-semibold">
+              <span
+                className={`inline-flex items-center gap-1.5 ${
+                  isOnline ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                {isOnline ? <Wifi size={13} /> : <WifiOff size={13} />}
+                <span>{isOnline ? 'Đang trực tuyến' : 'Ngoại tuyến'}</span>
               </span>
               {pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 text-[8px] font-black text-white items-center justify-center">!</span>
-                </span>
-              )}
-            </button>
-
-            <button 
-                onClick={() => refreshData(false, true)} 
-                title="Làm mới dữ liệu & Đề thi mới nhất"
-                className={`p-3 rounded-2xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all border border-slate-100 shadow-sm flex items-center gap-2 text-xs font-bold ${isLoading ? 'opacity-70' : ''}`}
-            >
-                <RefreshCw size={18} className={isLoading ? 'animate-spin text-blue-600' : ''}/>
-                <span className="hidden sm:inline">Làm mới</span>
-            </button>
-            <div className="flex items-center gap-3 bg-yellow-50 px-6 py-3 rounded-[1.5rem] border border-yellow-100 shadow-sm group">
-                <div className="w-10 h-10 bg-yellow-400 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><Medal size={24}/></div>
-                <div className="text-right">
-                    <p className="text-[9px] font-black text-yellow-600 uppercase leading-none mb-1">Tích lũy</p>
-                    <span className="text-xl font-black text-yellow-700">{stats.accumulatedPoints.toFixed(2)}</span>
-                </div>
-            </div>
-        </div>
-      </header>
-
-      {/* 🔴 LIVE REVIEW INTERACTIVE INVITATION BANNER (YÊU CẦU 1) */}
-      {liveReviewSessionCheck && (
-        <div className="bg-gradient-to-r from-rose-600 via-amber-600 to-rose-700 rounded-3xl p-6 text-white shadow-2xl border-4 border-white/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 animate-scale-in">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
-              <Radio className="w-7 h-7 text-white animate-pulse" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className="bg-white text-rose-700 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full tracking-wider shadow-sm flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
-                  ĐANG PHÁT SÓNG TRỰC TIẾP
-                </span>
-                <span className="text-white/90 text-xs font-bold bg-black/20 px-2 py-0.5 rounded-lg">
-                  Lớp: {liveReviewSessionCheck.targetClassNames.join(', ')}
-                </span>
-              </div>
-              <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight">
-                {liveReviewSessionCheck.quizTitle}
-              </h2>
-              <p className="text-xs text-rose-100 font-medium mt-1 max-w-2xl leading-relaxed">
-                Thầy/Cô đang mở phiên sửa bài đố vui trực tiếp! Các câu hỏi sẽ được kích hoạt lần lượt để bạn trả lời và nhận điểm tức thì.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setActiveLiveSession(liveReviewSessionCheck)}
-            className="w-full md:w-auto px-6 py-3.5 bg-white hover:bg-rose-50 text-rose-700 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl hover:shadow-2xl transition transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2.5 shrink-0 cursor-pointer"
-          >
-            <Zap className="w-5 h-5 fill-rose-600 text-rose-600 animate-bounce" />
-            <span>THAM GIA ĐỐ VUI NGAY</span>
-          </button>
-        </div>
-      )}
-
-      {/* Filters Section & Status Switcher */}
-      <section className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 px-3.5 py-2 bg-slate-50 rounded-2xl border border-slate-100">
-                <ShieldAlert size={16} className="text-blue-600"/>
-                <span className="text-[10px] font-black uppercase text-slate-400">Bộ lọc:</span>
-            </div>
-            
-            <select 
-              className="bg-amber-50 border-2 border-amber-300 text-amber-950 font-black px-4 py-2 rounded-2xl text-[10px] uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[170px]"
-              value={academicYearFilter}
-              onChange={(e) => setAcademicYearFilter(e.target.value)}
-            >
-              <option value="all">🗄️ TẤT CẢ NIÊN KHÓA</option>
-              <option value={currentAcademicYear}>⭐ NIÊN KHÓA {currentAcademicYear} (HIỆN HÀNH)</option>
-              {['2027-2028', '2026-2027', '2025-2026', '2024-2025'].filter(y => y !== currentAcademicYear).map(yr => (
-                <option key={yr} value={yr}>📅 NĂM HỌC {yr}</option>
-              ))}
-            </select>
-
-            <select 
-              className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer min-w-[190px]"
-              value={chapterFilter}
-              onChange={(e) => setChapterFilter(e.target.value)}
-            >
-              <option value="all">Tất cả chương</option>
-              {chapters
-                .filter((c: Chapter) => gradeFilter === 'all' || String(c.grade) === String(gradeFilter))
-                .map((c: Chapter) => (
-                  <option key={c.id} value={c.name}>{c.name || (c as any).title || "Chương chưa đặt tên"}</option>
-                ))
-              }
-            </select>
-
-            {chapterFilter !== 'all' && (
-              <button 
-                  onClick={() => { setChapterFilter('all'); }}
-                  className="px-4 py-2 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
-              >
-                  Đặt lại
-              </button>
-            )}
-          </div>
-
-          <div className="text-[9px] font-black uppercase text-slate-400 italic">
-              {user.className ? `Lớp ${user.className} • ` : ''}MSHS: {user.studentCode} | Khối {user.grade || '12'}
-          </div>
-        </div>
-
-        {/* Thanh chuyển đổi nhanh trạng thái: Đang mở, Sắp làm, Đã làm, Luyện tập */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
-            <button
-                onClick={() => setQuizStatusTab('all')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'all'
-                        ? 'bg-slate-900 text-white shadow-md'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-200'
-                }`}
-            >
-                <span>Tất cả ({openTestQuizzes.length + upcomingTestQuizzes.length + practiceQuizzes.length})</span>
-            </button>
-            <button
-                onClick={() => setQuizStatusTab('open')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${
-                    quizStatusTab === 'open'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
-            >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Đang mở ({openTestQuizzes.length})</span>
-            </button>
-            <button
-                onClick={() => setQuizStatusTab('upcoming')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'upcoming'
-                        ? 'bg-amber-600 text-white shadow-md shadow-amber-200'
-                        : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                }`}
-            >
-                <Clock size={12} />
-                <span>Sắp làm ({upcomingTestQuizzes.length})</span>
-            </button>
-            <button
-                onClick={() => setQuizStatusTab('uncompleted')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'uncompleted'
-                        ? 'bg-rose-600 text-white shadow-md shadow-rose-200'
-                        : uncompletedAssignedQuizzes.length > 0 
-                            ? 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200' 
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-200'
-                }`}
-            >
-                <AlertTriangle size={12} className={uncompletedAssignedQuizzes.length > 0 ? "text-rose-600" : ""} />
-                <span>Chưa làm ({uncompletedAssignedQuizzes.length})</span>
-            </button>
-            <button
-                onClick={() => {
-                    const el = document.getElementById('student-results-history');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 group"
-                title="Xem danh sách bài thi đã làm & kết quả chi tiết ở bảng bên dưới"
-            >
-                <CheckCircle2 size={12} className="text-emerald-600 group-hover:scale-110 transition-transform" />
-                <span>Đã làm ({results.length})</span>
-            </button>
-            <button
-                onClick={() => {
-                    const el = document.getElementById('student-leaderboard');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/70 group cursor-pointer"
-                title="Xem vị trí xếp hạng của bạn so với các bạn khác"
-            >
-                <Trophy size={12} className="text-amber-600 group-hover:scale-110 transition-transform" />
-                <span>Bảng xếp hạng</span>
-            </button>
-            <button
-                onClick={() => setQuizStatusTab('practice')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'practice'
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-200'
-                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                }`}
-            >
-                <Zap size={12} />
-                <span>Luyện tập ({practiceQuizzes.length})</span>
-            </button>
-            <button
-                onClick={() => setQuizStatusTab('downloaded')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 ${
-                    quizStatusTab === 'downloaded'
-                        ? 'bg-teal-600 text-white shadow-md shadow-teal-200'
-                        : 'bg-teal-50 text-teal-800 hover:bg-teal-100'
-                }`}
-            >
-                <HardDrive size={12} />
-                <span>Đã tải về máy ({downloadedQuizzes.length})</span>
-            </button>
-        </div>
-      </section>
-
-      {isLoading && results.length === 0 && (
-          <div className="py-20 text-center space-y-4">
-              <Loader2 className="animate-spin text-blue-500 mx-auto" size={40}/>
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Đang kết nối Cloud...</p>
-          </div>
-      )}
-
-      {/* Bảng Vàng Vinh Danh Cá Nhân (Chỉ hiển thị khi chính em đó được vinh danh) */}
-      {!isLoading && publishedResults.length > 0 && (
-          <section className="animate-fade-in-up">
-              <div className="flex items-center gap-3 mb-6 px-4">
-                  <Star className="text-yellow-500 fill-yellow-500" size={18}/>
-                  <h2 className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic">Bảng Vàng Danh Dự Cá Nhân Của Bạn</h2>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {publishedResults.map(pub => {
-                      const userResultInPub = pub.results.find(r => r.studentCode?.toUpperCase() === user.studentCode?.toUpperCase()) || pub.results[0];
-                      return (
-                          <div key={pub.id} className="relative group overflow-hidden bg-slate-900 rounded-[2rem] p-5 shadow-xl border-2 border-yellow-500/20 hover:border-yellow-500 transition-all flex flex-col h-full">
-                              <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-yellow-500/20 transition-all"></div>
-                              <div className="relative z-10 flex flex-col h-full space-y-3">
-                                  <div className="flex items-center gap-3">
-                                      <div className="w-10 h-10 bg-yellow-500 text-slate-900 rounded-2xl flex items-center justify-center shadow-lg shrink-0"><Award size={22} /></div>
-                                      <div className="flex-1 overflow-hidden">
-                                          <p className="text-[8px] font-black text-yellow-500 uppercase tracking-widest truncate">{pub.quizTitle}</p>
-                                          <p className="text-[9px] font-bold text-white/50 uppercase leading-none mt-0.5">{format(new Date(pub.publishedAt), 'dd/MM/yyyy')}</p>
-                                      </div>
-                                  </div>
-                                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 backdrop-blur-sm flex-1 flex flex-col justify-between items-center text-center">
-                                      <div className="flex flex-col items-center">
-                                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Điểm vinh danh</p>
-                                          <div className="text-2xl font-black text-emerald-400 leading-none mb-1">{userResultInPub?.score.toFixed(1)}đ</div>
-                                          <p className="text-[9px] font-bold text-white/70 mt-1">{user.fullName}</p>
-                                      </div>
-                                      <button onClick={() => setViewingHonorees(pub)} className="w-full mt-3 py-2 bg-yellow-500 text-slate-900 rounded-xl text-[9px] font-black uppercase hover:bg-white transition-all shadow-md flex items-center justify-center gap-1.5"><Award size={13}/> Xem chi tiết vinh danh</button>
-                                  </div>
-                              </div>
-                          </div>
-                      );
-                  })}
-              </div>
-          </section>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className={`bg-white rounded-[2rem] p-6 sm:p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105 ${stats.uncompletedAssignedCount > 0 ? 'border-amber-300' : 'border-slate-200'}`}>
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${stats.avgScore >= 8 ? 'bg-emerald-50 text-emerald-600' : stats.avgScore >= 5 ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
-              <Trophy size={28} />
-            </div>
-            <div>
-              <p className="text-slate-400 text-[10px] font-black uppercase">ĐTB Tổng kết</p>
-              <h3 className={`text-2xl font-black ${stats.avgScore >= 8 ? 'text-emerald-600' : stats.avgScore >= 5 ? 'text-blue-600' : 'text-rose-600'}`}>
-                {stats.avgScore.toFixed(2)}
-              </h3>
-              <span className="text-[9px] font-bold text-slate-400 block">
-                {stats.uncompletedAssignedCount > 0 
-                  ? `⚠️ Gồm ${stats.uncompletedAssignedCount} đề chưa nộp (0đ)` 
-                  : '✨ Đã hoàn thành đủ 100% đề giao'}
-              </span>
-            </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] p-6 sm:p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
-            <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><BookOpen size={28} /></div>
-            <div>
-              <p className="text-slate-400 text-[10px] font-black uppercase">Tiến độ bài giao</p>
-              <h3 className="text-2xl font-black text-slate-800">
-                {stats.completedAssignedCount}/{stats.totalAssignedCount} bài
-              </h3>
-              <span className="text-[9px] font-bold text-slate-400 block">
-                ĐTB bài đã nộp: <strong className="text-indigo-600">{stats.avgSubmittedScore.toFixed(2)}đ</strong>
-              </span>
-            </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] p-6 sm:p-8 border shadow-sm flex flex-col justify-between gap-3 transition-transform hover:scale-105">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner">
-                <CheckCircle2 size={28} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-slate-400 text-[10px] font-black uppercase">Tiến độ câu hỏi</p>
-                <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-                  {overallQuestionsStats.completed}/{overallQuestionsStats.total} <span className="text-xs font-bold text-slate-400">câu</span>
-                </h3>
-              </div>
-            </div>
-            <div className="w-full">
-              <div className="flex justify-between items-center text-[9px] font-black uppercase mb-1.5">
-                <span className="text-slate-400">Tỷ lệ hoàn thành</span>
-                <span className="text-emerald-600 font-extrabold">{overallQuestionsStats.percentage}%</span>
-              </div>
-              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 p-0.5">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${overallQuestionsStats.percentage}%` }}
-                />
-              </div>
-            </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] p-6 sm:p-8 border shadow-sm flex items-center gap-5 transition-transform hover:scale-105">
-            <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><Clock size={28} /></div>
-            <div>
-              <p className="text-slate-400 text-[10px] font-black uppercase">TG luyện tập & Tích lũy</p>
-              <h3 className="text-xl font-black text-slate-800">{formatStudyTime(stats.totalSeconds)}</h3>
-              <span className="text-[9px] font-black text-yellow-600 uppercase block">⭐ Tích lũy: {stats.accumulatedPoints.toFixed(2)}</span>
-            </div>
-        </div>
-      </div>
-
-      {/* Biểu đồ thống kê kết quả thi & Lịch sử điểm số với Recharts */}
-      <section className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden space-y-6">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-blue-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none"></div>
-
-        {/* Header & Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
-              <BarChart3 size={24} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">
-                  Biểu Đồ Thống Kê & Tiến Trình Điểm Số
-                </h2>
-                <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 font-black text-[9px] rounded-full uppercase hidden sm:inline-flex items-center gap-1">
-                  <Sparkles size={10} /> Recharts Analytics
-                </span>
-              </div>
-              <p className="text-slate-400 font-medium text-xs mt-0.5">
-                Lịch sử điểm số qua các lần thi, bài luyện tập và phân tích phong độ học tập
-              </p>
-            </div>
-          </div>
-
-          {/* Toggle Type + Filters */}
-          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-            {/* Tab switch */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
-              <button
-                onClick={() => setChartType('timeline')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
-                  chartType === 'timeline'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <LineChartIcon size={13} />
-                <span>Tiến trình điểm</span>
-              </button>
-              <button
-                onClick={() => setChartType('distribution')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
-                  chartType === 'distribution'
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <BarChart2 size={13} />
-                <span>Phổ điểm</span>
-              </button>
-            </div>
-
-            {/* Scope filter */}
-            <select
-              value={chartScope}
-              onChange={(e) => setChartScope(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-            >
-              <option value="all">Tất cả bài ({results.length})</option>
-              <option value="test">Chỉ đề kiểm tra</option>
-              <option value="practice">Chỉ bài luyện tập</option>
-            </select>
-
-            {/* Limit filter (only for timeline) */}
-            {chartType === 'timeline' && (
-              <select
-                value={chartLimit}
-                onChange={(e) => setChartLimit(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-              >
-                <option value={10}>10 bài gần nhất</option>
-                <option value={15}>15 bài gần nhất</option>
-                <option value={30}>30 bài gần nhất</option>
-                <option value={0}>Tất cả lịch sử</option>
-              </select>
-            )}
-          </div>
-        </div>
-
-        {/* Analytical Insight Cards */}
-        {results.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 relative z-10">
-            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                <Trophy size={18} />
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase">Điểm cao nhất</p>
-                <p className="text-lg font-black text-emerald-600 leading-tight">
-                  {performanceInsights.highest.toFixed(2)}
-                  <span className="text-[10px] text-slate-400 font-normal"> /10</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                <Clock size={18} />
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase">Lần thi gần nhất</p>
-                <p className="text-lg font-black text-blue-600 leading-tight">
-                  {performanceInsights.latest.toFixed(2)}
-                  <span className="text-[10px] text-slate-400 font-normal"> /10</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                performanceInsights.trendDiff >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-              }`}>
-                {performanceInsights.trendDiff >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase">Phong độ 3 bài gần đây</p>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-lg font-black text-slate-800 leading-tight">
-                    {performanceInsights.recentAvg.toFixed(2)}
-                  </p>
-                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
-                    performanceInsights.trendDiff >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                  }`}>
-                    {performanceInsights.trendDiff >= 0 ? `+${performanceInsights.trendDiff.toFixed(2)}` : performanceInsights.trendDiff.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                <Target size={18} />
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase">Tỷ lệ Đạt / Giỏi</p>
-                <p className="text-xs font-black text-slate-800 leading-tight mt-0.5">
-                  Đạt: <span className="text-blue-600">{performanceInsights.passRate}%</span> • Giỏi: <span className="text-emerald-600">{performanceInsights.distinctionRate}%</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Main Chart Area */}
-        <div className="relative z-10 w-full min-h-[300px] flex flex-col justify-center">
-          {results.length === 0 ? (
-            <div className="py-12 px-4 text-center space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
-                <LineChartIcon size={24} />
-              </div>
-              <p className="text-sm font-black text-slate-700 uppercase">Chưa có dữ liệu bài thi</p>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Hãy hoàn thành các bài kiểm tra hoặc bài luyện tập để hệ thống tự động vẽ biểu đồ phân tích tiến trình điểm số của bạn.
-              </p>
-            </div>
-          ) : scoreHistoryData.length === 0 ? (
-            <div className="py-12 px-4 text-center space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-              <p className="text-xs font-bold text-slate-600">Không có bài thi nào phù hợp với bộ lọc đã chọn.</p>
-              <button
-                onClick={() => setChartScope('all')}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-blue-700 transition-colors"
-              >
-                Xem tất cả
-              </button>
-            </div>
-          ) : chartType === 'timeline' ? (
-            <div className="w-full h-[320px] pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={scoreHistoryData}
-                  margin={{ top: 20, right: 15, left: -15, bottom: 25 }}
+                <button
+                  type="button"
+                  onClick={() => setActiveMenu('offline')}
+                  className="font-mono tabular-nums text-amber-700 hover:underline cursor-pointer"
                 >
-                  <defs>
-                    <linearGradient id="scoreAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="shortDate"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    dy={8}
-                  />
-                  <YAxis
-                    domain={[0, 10]}
-                    ticks={[0, 2, 4, 6, 8, 10]}
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip
-                    content={({ active, payload }: any) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-xs text-xs z-50">
-                            <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
-                              <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${
-                                data.quizType === 'practice' ? 'bg-amber-500/20 text-amber-300' : 'bg-blue-500/20 text-blue-300'
-                              }`}>
-                                {data.quizType === 'practice' ? '⚡ Luyện tập' : '📝 Đề thi'} • #{data.attemptNumber}
-                              </span>
-                              <span className="text-slate-400 text-[9px]">{data.date}</span>
-                            </div>
-                            <p className="font-bold text-slate-100 text-sm mb-2 line-clamp-2">{data.quizTitle}</p>
-                            <div className="grid grid-cols-2 gap-2 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50">
-                              <div>
-                                <p className="text-[8px] uppercase text-slate-400 font-bold">Điểm số</p>
-                                <p className={`text-lg font-black ${
-                                  data.score >= 8 ? 'text-emerald-400' : data.score >= 5 ? 'text-blue-400' : 'text-rose-400'
-                                }`}>
-                                  {data.score.toFixed(2)} <span className="text-[10px] text-slate-400">/ 10</span>
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[8px] uppercase text-slate-400 font-bold">Thời gian</p>
-                                <p className="text-slate-200 font-bold text-xs mt-1">{data.durationMinutes} phút</p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <ReferenceLine
-                    y={8}
-                    stroke="#10b981"
-                    strokeDasharray="4 4"
-                    label={{ value: 'Giỏi (8.0)', position: 'insideTopRight', fill: '#10b981', fontSize: 10, fontWeight: 700 }}
-                  />
-                  <ReferenceLine
-                    y={5}
-                    stroke="#f59e0b"
-                    strokeDasharray="4 4"
-                    label={{ value: 'Đạt (5.0)', position: 'insideBottomRight', fill: '#f59e0b', fontSize: 10, fontWeight: 700 }}
-                  />
-                  <ReferenceLine
-                    y={Number(stats.avgScore.toFixed(2))}
-                    stroke="#6366f1"
-                    strokeWidth={1.5}
-                    label={{ value: `ĐTB (${stats.avgScore.toFixed(2)})`, position: 'insideLeft', fill: '#6366f1', fontSize: 10, fontWeight: 700 }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="score"
-                    name="Điểm số"
-                    stroke="#2563eb"
-                    strokeWidth={3}
-                    fill="url(#scoreAreaGradient)"
-                    activeDot={{ r: 7, fill: '#2563eb', stroke: '#fff', strokeWidth: 3 }}
-                    dot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="flex flex-wrap items-center justify-center gap-6 mt-2 text-[10px] font-bold text-slate-500">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
-                  <span>Điểm bài thi</span>
+                  {pendingCount} bài chờ đồng bộ
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Danh sách Menu */}
+          <nav
+            aria-label="Menu học sinh"
+            className="bg-white rounded-2xl border border-slate-200 p-2"
+          >
+            {/* Mobile / Tablet horizontal scroll menu */}
+            <div className="flex lg:hidden items-center gap-1.5 overflow-x-auto pb-1">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeMenu === item.key;
+                return (
+                  <button
+                    key={`mob_${item.key}`}
+                    type="button"
+                    onClick={() => setActiveMenu(item.key)}
+                    className={`inline-flex items-center gap-2 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon size={15} className="shrink-0" />
+                    <span>{item.label}</span>
+                    {item.badge !== undefined && (
+                      <span
+                        className={`font-mono tabular-nums text-[11px] ${
+                          isActive ? 'text-slate-300' : 'text-slate-400'
+                        }`}
+                      >
+                        ({item.badge})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Desktop vertical sidebar menu */}
+            <div className="hidden lg:flex flex-col gap-1">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeMenu === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveMenu(item.key)}
+                    className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <Icon
+                        size={16}
+                        className={isActive ? 'text-amber-400 shrink-0' : 'text-slate-400 shrink-0'}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0 font-mono tabular-nums text-[11px]">
+                      {item.alertCount !== undefined && item.alertCount > 0 && (
+                        <span
+                          className={
+                            isActive ? 'text-rose-300 font-bold' : 'text-rose-600 font-bold'
+                          }
+                          title="Cần chú ý"
+                        >
+                          !{item.alertCount}
+                        </span>
+                      )}
+                      {item.badge !== undefined ? (
+                        <span className={isActive ? 'text-slate-300' : 'text-slate-400'}>
+                          {item.badge}
+                        </span>
+                      ) : item.badgeText ? (
+                        <span className={isActive ? 'text-slate-300' : 'text-slate-400'}>
+                          {item.badgeText}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        </aside>
+
+        {/* PANEL 2 (PHẢI): NỘI DUNG KÍCH HOẠT THEO MENU ĐÃ CHỌN */}
+        <main className="flex-1 min-w-0 w-full space-y-5">
+          {/* Thông báo tiến trình tải đề ngoại tuyến nếu đang tải */}
+          {downloadingQuizId && downloadStatusText && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-center gap-3 text-xs font-bold text-blue-800">
+              <Loader2 size={16} className="animate-spin shrink-0" />
+              <span>{downloadStatusText}</span>
+            </div>
+          )}
+
+          {/* Banner Sửa bài trực tiếp (Live Review) - luôn hiển thị nếu giáo viên đang mở phòng */}
+          {liveReviewSessionCheck && (
+            <div className="bg-gradient-to-r from-rose-600 via-amber-600 to-rose-700 rounded-2xl p-5 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center shrink-0 border border-white/25">
+                  <Radio className="w-6 h-6 text-white" />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-indigo-500 inline-block"></span>
-                  <span>ĐTB chung ({stats.avgScore.toFixed(2)})</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-emerald-500 border-dashed border-t inline-block"></span>
-                  <span>Chuẩn Giỏi (8.0)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-amber-500 border-dashed border-t inline-block"></span>
-                  <span>Chuẩn Đạt (5.0)</span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-rose-100 font-semibold">
+                    <span className="font-black text-white uppercase tracking-wide">
+                      Đang phát sóng trực tiếp
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>Lớp: {liveReviewSessionCheck.targetClassNames.join(', ')}</span>
+                  </div>
+                  <h2 className="text-base font-black text-white mt-0.5">
+                    {liveReviewSessionCheck.quizTitle}
+                  </h2>
+                  <p className="text-xs text-rose-100 mt-1">
+                    Giáo viên đang mở phiên sửa bài đố vui trực tiếp. Tham gia để trả lời và nhận điểm tức thì.
+                  </p>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveLiveSession(liveReviewSessionCheck)}
+                className="w-full md:w-auto px-5 py-2.5 bg-white hover:bg-rose-50 text-rose-700 font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shrink-0 whitespace-nowrap cursor-pointer"
+              >
+                <Zap size={15} className="fill-rose-600 text-rose-600" />
+                <span>Tham gia ngay</span>
+              </button>
+            </div>
+          )}
+
+          {/* Bộ lọc đề đặt trên đầu Panel 2 để thao tác nhanh */}
+          {showFilterBox && (
+            <div className="bg-white rounded-2xl border border-slate-200 px-5 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 shrink-0">
+                <Filter size={14} className="text-blue-600 shrink-0" />
+                <span className="text-xs font-black text-slate-800 whitespace-nowrap">Bộ lọc đề</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1 md:justify-end">
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="student-year-filter"
+                    className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0"
+                  >
+                    Niên khóa
+                  </label>
+                  <select
+                    id="student-year-filter"
+                    className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[180px]"
+                    value={academicYearFilter}
+                    onChange={(e) => setAcademicYearFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả niên khóa</option>
+                    <option value={currentAcademicYear}>
+                      Niên khóa {currentAcademicYear} (Hiện hành)
+                    </option>
+                    {['2027-2028', '2026-2027', '2025-2026', '2024-2025']
+                      .filter((y) => y !== currentAcademicYear)
+                      .map((yr) => (
+                        <option key={yr} value={yr}>
+                          Năm học {yr}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 min-w-0">
+                  <label
+                    htmlFor="student-chapter-filter"
+                    className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0"
+                  >
+                    Chương học
+                  </label>
+                  <select
+                    id="student-chapter-filter"
+                    className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[200px] sm:max-w-[280px]"
+                    value={chapterFilter}
+                    onChange={(e) => setChapterFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả chương</option>
+                    {chapters
+                      .filter(
+                        (c: Chapter) =>
+                          gradeFilter === 'all' || String(c.grade) === String(gradeFilter)
+                      )
+                      .map((c: Chapter) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name || (c as any).title || 'Chương chưa đặt tên'}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {chapterFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setChapterFilter('all')}
+                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
+                  >
+                    Đặt lại
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Thanh tiêu đề ngữ cảnh của panel đang mở */}
+          <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight truncate">
+                {activeMenuConfig.label}
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {activeMenuConfig.description}
+              </p>
+            </div>
+
+            {activeMenu === 'exams' && (
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 overflow-x-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExamSubTab('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    examSubTab === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Tất cả ({openTestQuizzes.length + upcomingTestQuizzes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExamSubTab('open')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    examSubTab === 'open'
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Đang mở ({openTestQuizzes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExamSubTab('upcoming')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    examSubTab === 'upcoming'
+                      ? 'bg-white text-amber-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Sắp làm ({upcomingTestQuizzes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExamSubTab('uncompleted')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    examSubTab === 'uncompleted'
+                      ? 'bg-white text-rose-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Chưa nộp ({uncompletedAssignedQuizzes.length})
+                </button>
+              </div>
+            )}
+
+            {activeMenu === 'history' && results.length > 0 && (
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setResultsFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    resultsFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Tất cả ({enrichedResults.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultsFilter('expired')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    resultsFilter === 'expired'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Đã hết hạn ({expiredResultsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultsFilter('active')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    resultsFilter === 'active'
+                      ? 'bg-white text-emerald-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Đang mở ({activeResultsCount})
+                </button>
+              </div>
+            )}
+
+            {activeMenu === 'honors' && (
+              <button
+                type="button"
+                onClick={() => loadHonors(true)}
+                disabled={isLoadingHonors}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors self-start sm:self-auto shrink-0 cursor-pointer"
+              >
+                <RefreshCw size={14} className={isLoadingHonors ? 'animate-spin text-blue-600' : ''} />
+                <span>Cập nhật vinh danh</span>
+              </button>
+            )}
+
+            {activeMenu === 'offline' && (
+              <button
+                type="button"
+                onClick={() => setIsOfflineManagerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-colors self-start sm:self-auto shrink-0 cursor-pointer"
+              >
+                <HardDrive size={14} className="text-teal-400" />
+                <span>Quản lý đồng bộ ({pendingCount})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Loading lần đầu cho các tab phụ thuộc dữ liệu gốc */}
+          {isLoading && quizzes.length === 0 && results.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 py-20 text-center space-y-3">
+              <Loader2 className="animate-spin text-blue-600 mx-auto" size={36} />
+              <p className="text-xs font-bold text-slate-500">Đang tải dữ liệu học tập...</p>
             </div>
           ) : (
-            <div className="w-full h-[320px] pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={scoreDistributionData}
-                  margin={{ top: 20, right: 15, left: -15, bottom: 25 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="shortName"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    dy={8}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip
-                    content={({ active, payload }: any) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700 text-xs z-50">
-                            <p className="font-black uppercase tracking-wider text-[10px] text-slate-300 mb-1">
-                              {data.name}
-                            </p>
-                            <p className="text-sm font-bold text-white">
-                              Số lượng: <span className="text-emerald-400 text-base font-black">{data.count}</span> bài ({data.percentage}%)
-                            </p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Bar dataKey="count" name="Số bài thi" radius={[10, 10, 0, 0]} maxBarSize={64}>
-                    {scoreDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="flex flex-wrap items-center justify-center gap-4 mt-2 text-[10px] font-bold">
-                {scoreDistributionData.map((item) => (
-                  <div key={item.key} className="flex items-center gap-1.5 text-slate-600">
-                    <span className="w-3 h-3 rounded-md inline-block" style={{ backgroundColor: item.color }}></span>
-                    <span>{item.name}: <strong>{item.count}</strong> bài ({item.percentage}%)</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
+            <>
+              {/* 1. PANEL ĐỀ THI & KIỂM TRA */}
+              {activeMenu === 'exams' && (
+                <div className="space-y-8">
+                  {/* Đề chưa hoàn thành */}
+                  {examSubTab === 'uncompleted' && (
+                    <div className="space-y-4">
+                      {uncompletedAssignedQuizzes.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                          {uncompletedAssignedQuizzes.map((q) => {
+                            const timing = getQuizTiming(q);
+                            const isOpen =
+                              !timing.isExpired &&
+                              timing.isStarted &&
+                              !timing.isEnded &&
+                              !timing.isFrozen;
+                            const totalQuestions =
+                              q.questionCount || (q.questions ? q.questions.length : 0);
 
-      <section className="space-y-12">
-          {/* MỤC BÀI THI CHƯA HOÀN THÀNH - CHỈ HIỂN THỊ KHI Ở TAB "CHƯA LÀM" */}
-          {quizStatusTab === 'uncompleted' && (
-              <div className="mb-8">
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <AlertTriangle size={18} className="text-rose-500" />
-                          <h2 className="text-base font-black text-slate-800 uppercase tracking-tight">Bài thi chưa hoàn thành (Giao riêng cho Lớp)</h2>
-                          <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 font-black text-[9px] rounded-full uppercase">
-                              {uncompletedAssignedQuizzes.length} đề chưa làm • Tính 0.00đ vào ĐTB
-                          </span>
-                      </div>
-                      <div className="h-px flex-1 bg-rose-100"></div>
-                  </div>
-
-                  {uncompletedAssignedQuizzes.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                          {uncompletedAssignedQuizzes.map(q => {
-                              const timing = getQuizTiming(q);
-                              const isOpen = !timing.isExpired && timing.isStarted && !timing.isEnded && !timing.isFrozen;
-                              const totalQuestions = q.questionCount || (q.questions ? q.questions.length : 0);
-
-                              return (
-                                  <div key={`uncomp_card_${q.id}`} className={`bg-white rounded-[1.5rem] border-2 p-6 flex flex-col transition-all shadow-md ${
-                                      isOpen ? 'border-amber-400 hover:border-amber-500 shadow-amber-100' : 'border-rose-200'
-                                  }`}>
-                                      <div className="flex justify-between items-start mb-3">
-                                          <span className={`px-2.5 py-1 rounded-xl text-[8px] font-black uppercase flex items-center gap-1.5 ${
-                                              isOpen ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                          }`}>
-                                              {isOpen ? '⚡ ĐANG MỞ - CẦN LÀM NGAY' : '🔴 CHƯA NỘP (TÍNH 0.00Đ)'}
-                                          </span>
-                                          <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
-                                      </div>
-                                      {q.category && <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                                      <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
-
-                                      <div className="bg-slate-50 rounded-xl p-3 mb-4 space-y-1.5 text-[9px] font-bold text-slate-600 border border-slate-100">
-                                          <div className="flex items-center justify-between text-slate-500">
-                                              <span>Số câu hỏi:</span>
-                                              <span className="text-slate-800 font-extrabold">{totalQuestions} câu</span>
-                                          </div>
-                                          <div className="flex items-center justify-between text-slate-500">
-                                              <span>Trạng thái nộp:</span>
-                                              <span className="text-rose-600 font-black">Chưa có kết quả</span>
-                                          </div>
-                                      </div>
-
-                                      <div className="mt-auto">
-                                          {isOpen ? (
-                                              <button
-                                                  onClick={() => handleStartQuiz(q)}
-                                                  className="w-full py-3 rounded-xl font-black uppercase text-[9px] bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                                              >
-                                                  <Zap size={13} /> Vào làm bài bổ sung ngay
-                                              </button>
-                                          ) : (
-                                              <div className="w-full py-2.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 font-black uppercase text-[9px] text-center">
-                                                  Quá hạn thi • Đang tính 0.00đ
-                                              </div>
-                                          )}
-                                      </div>
+                            return (
+                              <div
+                                key={`uncomp_${q.id}`}
+                                className={`bg-white rounded-2xl border p-5 flex flex-col justify-between gap-4 ${
+                                  isOpen ? 'border-amber-300' : 'border-rose-200'
+                                }`}
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                                    <span className={isOpen ? 'text-emerald-700' : 'text-rose-700'}>
+                                      {isOpen ? 'Đang mở · Cần nộp ngay' : 'Chưa nộp (0.00đ)'}
+                                    </span>
+                                    <span className="font-mono tabular-nums text-slate-500">
+                                      {q.durationMinutes} phút · {totalQuestions} câu
+                                    </span>
                                   </div>
-                              );
+                                  {q.category && (
+                                    <p className="text-[11px] font-semibold text-amber-700 truncate">
+                                      {q.category}
+                                    </p>
+                                  )}
+                                  <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                                    {q.title}
+                                  </h3>
+                                </div>
+
+                                <div className="pt-3 border-t border-slate-100">
+                                  {isOpen ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartQuiz(q)}
+                                      className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                      <Zap size={14} />
+                                      <span>Vào làm bài ngay</span>
+                                    </button>
+                                  ) : (
+                                    <p className="text-center text-xs font-bold text-rose-700 py-2 bg-rose-50 rounded-xl">
+                                      Đã quá hạn thi · Đang tính 0.00đ
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
                           })}
-                      </div>
-                  ) : (
-                      <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-500 text-xs font-bold space-y-2">
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
                           <CheckCircle2 size={32} className="text-emerald-500 mx-auto" />
-                          <p className="font-black uppercase text-slate-800 text-sm">Tuyệt vời!</p>
-                          <p className="text-slate-400">Bạn đã hoàn thành 100% các đề thi được phân công cho lớp. Không có đề thi nào bị bỏ lỡ.</p>
-                      </div>
+                          <p className="font-black text-slate-800 text-sm">
+                            Bạn đã hoàn thành 100% bài được giao
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Không có đề thi bắt buộc nào bị bỏ sót.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
-              </div>
-          )}
 
-          {/* 1. ĐỀ THI ĐANG MỜ (VÀO LÀM BÀI NGAY) */}
-          {(quizStatusTab === 'all' || quizStatusTab === 'open') && (
-              <div>
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                          <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Đề thi đang mở (Làm bài chính thức)</h2>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black text-[9px] rounded-full uppercase">
-                              {openTestQuizzes.length} đề sẵn sàng
+                  {/* Đề thi đang mở */}
+                  {(examSubTab === 'all' || examSubTab === 'open') && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between px-1">
+                        <h3 className="text-sm font-black text-slate-800">
+                          Đề thi đang mở{' '}
+                          <span className="font-mono tabular-nums text-blue-600">
+                            ({openTestQuizzes.length})
                           </span>
+                        </h3>
                       </div>
-                      <div className="h-px flex-1 bg-emerald-100"></div>
-                  </div>
 
-                  {openTestQuizzes.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                          {openTestQuizzes.map(q => {
-                              const timing = getQuizTiming(q);
-                              const latestAttempt = timing.myAttempts[0];
-                              const totalQuestions = q.questionCount || (q.questions ? q.questions.length : (latestAttempt?.totalQuestions || 0));
-                              const completedQuestions = latestAttempt ? (countCompletedQuestions(latestAttempt.userAnswers, totalQuestions) || (latestAttempt.score > 0 ? totalQuestions : 0)) : 0;
+                      {openTestQuizzes.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                          {openTestQuizzes.map((q) => {
+                            const timing = getQuizTiming(q);
+                            const latestAttempt = timing.myAttempts[0];
+                            const totalQuestions =
+                              q.questionCount ||
+                              (q.questions ? q.questions.length : latestAttempt?.totalQuestions || 0);
+                            const completedQuestions = latestAttempt
+                              ? countCompletedQuestions(latestAttempt.userAnswers, totalQuestions) ||
+                                (latestAttempt.score > 0 ? totalQuestions : 0)
+                              : 0;
+                            const isDownloaded = downloadedQuizIds.has(q.id);
 
-                              return (
-                                  <div key={q.id} className="bg-white rounded-[1.5rem] border-2 border-blue-600 p-6 flex flex-col transition-all shadow-xl hover:shadow-2xl">
-                                      <div className="flex justify-between items-start mb-3">
-                                          <div className="px-2.5 py-1 rounded-xl text-[8px] font-black uppercase flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200">
-                                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                              {timing.isFlexibleWindow ? 'ĐANG MỞ ĐỀ' : 'ĐANG TRONG GIỜ THI'}
-                                          </div>
-                                          <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
-                                      </div>
-                                      {q.category && <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                                      <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
-                                      
-                                      {timing.startX && (
-                                          <div className="text-[10px] font-bold text-slate-600 mb-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
-                                              {timing.isFlexibleWindow && timing.endY ? (
-                                                  <>
-                                                      <div className="flex items-center gap-1.5 text-blue-700 text-[9px]">
-                                                          <Calendar size={12} className="shrink-0" />
-                                                          <span>Khung mở: <strong>{format(timing.startX, 'HH:mm dd/MM')}</strong> → <strong>{format(timing.endY, 'HH:mm dd/MM')}</strong></span>
-                                                      </div>
-                                                      <div className="text-[8px] text-slate-500 font-medium pl-4">
-                                                          ⚡ Tính đủ {q.durationMinutes} phút kể từ lúc vào làm bài.
-                                                      </div>
-                                                  </>
-                                              ) : (
-                                                  <div className="flex items-center gap-1.5 text-slate-800 text-[9px]">
-                                                      <Calendar size={12} className="text-blue-600 shrink-0" />
-                                                      <span>Giờ thi: <strong>{format(timing.startX, 'HH:mm - dd/MM/yyyy')}</strong></span>
-                                                  </div>
-                                              )}
-                                          </div>
-                                      )}
-
-                                      <div className="mb-3.5">
-                                          <QuizProgressIndicator
-                                              completed={completedQuestions}
-                                              total={totalQuestions}
-                                              variant="card"
-                                          />
-                                      </div>
-
-                                      <div className="bg-slate-50 rounded-xl p-2.5 grid grid-cols-2 gap-2 mb-4 text-center border border-slate-100">
-                                          <div>
-                                              <p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Số lần làm</p>
-                                              <p className="text-xs font-black text-slate-800">{timing.attemptCount} / {timing.maxAttempts}</p>
-                                          </div>
-                                          <div>
-                                              <p className="text-[7px] font-black text-blue-500 uppercase mb-0.5">Điểm cao nhất</p>
-                                              <p className="text-xs font-black text-blue-600">{timing.bestScore !== null ? `${timing.bestScore.toFixed(1)}đ` : '-'}</p>
-                                          </div>
-                                      </div>
-
-                                      <div className="mt-auto space-y-2">
-                                          <button 
-                                              onClick={() => handleStartQuiz(q)} 
-                                              className="w-full py-3 rounded-xl font-black uppercase text-[9px] bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                                          >
-                                              <Zap size={13}/> Vào làm bài ({timing.attemptCount === 0 ? `Lần 1/${timing.maxAttempts}` : `Lần ${timing.attemptCount + 1}/${timing.maxAttempts}`})
-                                          </button>
-
-                                          {timing.attemptCount > 0 && (
-                                              <button 
-                                                  onClick={() => {
-                                                      const res = timing.myAttempts[0];
-                                                      if (res) handleViewResult(res);
-                                                  }} 
-                                                  className="w-full py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-black uppercase text-[8px] flex items-center justify-center gap-1.5 transition-colors"
-                                              >
-                                                  <Eye size={11}/> Xem lại bài đã nộp ({timing.myAttempts[0].score.toFixed(1)}đ)
-                                              </button>
-                                          )}
-                                      </div>
+                            return (
+                              <div
+                                key={q.id}
+                                className="bg-white rounded-2xl border border-blue-200 p-5 flex flex-col justify-between gap-4 shadow-xs hover:border-blue-400 transition-colors"
+                              >
+                                <div className="space-y-2.5">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                                    <span className="text-blue-700">
+                                      {timing.isFlexibleWindow ? 'Đang mở đề' : 'Đang trong giờ thi'}
+                                    </span>
+                                    <span className="font-mono tabular-nums text-slate-500">
+                                      {q.durationMinutes} phút · {totalQuestions} câu
+                                    </span>
                                   </div>
-                              );
-                          })}
-                      </div>
-                  ) : (
-                      quizStatusTab === 'open' && (
-                          <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400 text-xs font-bold">
-                              Hiện tại không có đề thi nào trong khung giờ mở làm bài. Bạn có thể xem lịch ở tab "Sắp làm" hoặc ôn luyện tại tab "Luyện tập".
-                          </div>
-                      )
-                  )}
-              </div>
-          )}
 
-          {/* 2. ĐỀ THI SẮP LÀM (CHỜ ĐẾN GIỜ MỞ ĐỀ) */}
-          {(quizStatusTab === 'all' || quizStatusTab === 'upcoming') && upcomingTestQuizzes.length > 0 && (
-              <div>
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <Clock size={16} className="text-amber-500"/>
-                          <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Đề thi sắp diễn ra (Lịch thi sắp tới)</h2>
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-black text-[9px] rounded-full uppercase">
-                              {upcomingTestQuizzes.length} đề chờ giờ
-                          </span>
-                      </div>
-                      <div className="h-px flex-1 bg-amber-100"></div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {upcomingTestQuizzes.map(q => {
-                          const timing = getQuizTiming(q);
-                          const totalQuestions = q.questionCount || (q.questions ? q.questions.length : 0);
-
-                          return (
-                              <div key={q.id} className="bg-white rounded-[1.5rem] border border-amber-200 p-6 flex flex-col transition-all border-b-4 border-b-amber-400 shadow-sm">
-                                  <div className="flex justify-between items-start mb-3">
-                                      <div className="px-2.5 py-1 rounded-xl text-[8px] font-black uppercase flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200">
-                                          <Clock size={10} className="text-amber-600"/>
-                                          CHỜ GIỜ MỞ ĐỀ
-                                      </div>
-                                      <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.durationMinutes} phút</span>
-                                  </div>
-                                  {q.category && <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                                  <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-3 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
+                                  {q.category && (
+                                    <p className="text-[11px] font-semibold text-slate-500 truncate">
+                                      {q.category}
+                                    </p>
+                                  )}
+                                  <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                                    {q.title}
+                                  </h4>
 
                                   {timing.startX && (
-                                      <div className="text-[10px] font-bold text-amber-900 mb-4 bg-amber-50/70 p-3 rounded-2xl border border-amber-200 space-y-1">
-                                          <div className="flex items-center gap-1.5 text-[10px]">
-                                              <Calendar size={13} className="text-amber-600 shrink-0" />
-                                              <span>Mở đề lúc: <strong>{format(timing.startX, 'HH:mm - dd/MM/yyyy')}</strong></span>
+                                    <div className="text-[11px] text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 space-y-0.5">
+                                      {timing.isFlexibleWindow && timing.endY ? (
+                                        <>
+                                          <div className="flex items-center gap-1.5 font-medium">
+                                            <Calendar size={12} className="text-blue-600 shrink-0" />
+                                            <span className="font-mono tabular-nums">
+                                              {format(timing.startX, 'HH:mm dd/MM')} →{' '}
+                                              {format(timing.endY, 'HH:mm dd/MM')}
+                                            </span>
                                           </div>
-                                          {timing.isFlexibleWindow && timing.endY && (
-                                              <div className="text-[8px] text-amber-700 pl-4.5">
-                                                  Hạn chót vào thi: {format(timing.endY, 'HH:mm dd/MM')}
-                                              </div>
-                                          )}
-                                      </div>
-                                  )}
-
-                                  <div className="bg-slate-50 rounded-xl p-2.5 grid grid-cols-2 gap-2 mb-4 text-center border border-slate-100">
-                                      <div>
-                                          <p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Số câu hỏi</p>
-                                          <p className="text-xs font-black text-slate-800">{totalQuestions} câu</p>
-                                      </div>
-                                      <div>
-                                          <p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Tối đa lượt</p>
-                                          <p className="text-xs font-black text-slate-800">{timing.maxAttempts} lần</p>
-                                      </div>
-                                  </div>
-
-                                  <div className="mt-auto">
-                                      <button 
-                                          disabled={true} 
-                                          className="w-full py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl font-black uppercase text-[8px] cursor-not-allowed flex items-center justify-center gap-1.5"
-                                          title={`Đề thi sẽ mở vào lúc ${timing.startX ? format(timing.startX, 'HH:mm dd/MM/yyyy') : 'sớm nhất'}`}
-                                      >
-                                          <Clock size={11}/> Chưa đến giờ mở đề
-                                      </button>
-                                  </div>
-                              </div>
-                          );
-                      })}
-                  </div>
-              </div>
-          )}
-
-
-          {/* 4. KHO ĐỀ LUYỆN TẬP (ÔN TẬP TỰ DO) */}
-          {(quizStatusTab === 'all' || quizStatusTab === 'practice') && practiceQuizzes.length > 0 && (
-              <div>
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <Zap size={16} className="text-purple-600"/>
-                          <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Kho đề luyện tập (Ôn tập tự do)</h2>
-                          <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-black text-[9px] rounded-full uppercase">
-                              {practiceQuizzes.length} đề tự luyện
-                          </span>
-                      </div>
-                      <div className="h-px flex-1 bg-purple-100"></div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {practiceQuizzes.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).map(q => {
-                        const status = getQuizStatus(q);
-                        const qStats = (qid: string) => {
-                          const attempts = results.filter(r => r.quizId === qid);
-                          if (attempts.length === 0) return null;
-                          return { count: attempts.length, max: Math.max(...attempts.map(r => r.score)) };
-                        };
-                        const qs = qStats(q.id);
-
-                        const pAttempts = results.filter(r => r.quizId === q.id).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-                        const latestPAttempt = pAttempts[0];
-                        const pTotalQuestions = q.questionCount || (q.questions ? q.questions.length : (latestPAttempt?.totalQuestions || 0));
-                        const pCompletedQuestions = latestPAttempt ? (countCompletedQuestions(latestPAttempt.userAnswers, pTotalQuestions) || (latestPAttempt.score > 0 ? pTotalQuestions : 0)) : 0;
-
-                        const isReviewedForPractice = liveReviewedQuizIds.includes(q.id);
-                        const isLocked = isReviewedForPractice ? false : status.isLocked;
-
-                        return (
-                          <div key={q.id} className={`bg-white rounded-[1.5rem] border ${isReviewedForPractice ? 'border-rose-300 shadow-md ring-1 ring-rose-200' : 'border-slate-200'} p-6 flex flex-col transition-all border-b-4 ${isLocked ? 'opacity-75 grayscale' : 'hover:shadow-xl hover:-translate-y-1 group hover:border-b-purple-500'}`}>
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <div className="px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-xl font-black text-[8px] uppercase flex items-center gap-1">
-                                  <Zap size={10}/> {q.questionCount || (q.questions ? q.questions.length : 0)} câu
-                                </div>
-                                {isReviewedForPractice && (
-                                  <span className="px-2 py-0.5 bg-rose-50 border border-rose-300 text-rose-700 rounded-xl font-black text-[8px] uppercase flex items-center gap-1">
-                                    <Sparkles size={9} className="text-rose-500" /> Đề sửa bài (Làm lại)
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[9px] font-black text-slate-400 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}</span>
-                            </div>
-                            {q.category && <p className="text-[8px] font-black text-purple-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                            <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-4 group-hover:text-purple-600 uppercase flex items-center gap-2 line-clamp-2 min-h-[2.5em]">
-                                {isLocked && <Lock size={14} className="text-slate-400 shrink-0"/>}
-                                {q.title}
-                            </h3>
-                            
-                            {isLocked ? (
-                                <div className="mt-auto bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase mb-0.5">Đang khóa</p>
-                                    <p className="text-[9px] font-bold text-slate-600 leading-tight">{status.reason}</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="bg-purple-50/40 rounded-xl p-3 grid grid-cols-2 gap-2 mb-3 text-center border border-purple-100/60">
-                                        <div><p className="text-[7px] font-black text-slate-400 uppercase mb-0.5">Lượt luyện</p><p className="text-xs font-black text-slate-700">{qs?.count || 0}</p></div>
-                                        <div><p className="text-[7px] font-black text-purple-600 uppercase mb-0.5">Điểm Max</p><p className="text-xs font-black text-purple-700">{qs ? qs.max.toFixed(1) : '-'}</p></div>
-                                    </div>
-
-                                    <div className="mb-4">
-                                        <QuizProgressIndicator
-                                            completed={pCompletedQuestions}
-                                            total={pTotalQuestions}
-                                            variant="card"
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2 mt-auto">
-                                      <button onClick={() => handleStartPractice(q)} className="flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-black transition-all shadow-md active:scale-95 cursor-pointer">
-                                        <Zap size={12}/> {isReviewedForPractice ? 'Ôn tập lại' : 'Luyện tập'}
-                                      </button>
-                                      {isReviewedForPractice ? (
-                                        <button 
-                                          onClick={() => handleStartQuiz(q)} 
-                                          title="Làm lại đề như một bài thi hoàn chỉnh" 
-                                          className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-[9px] font-black uppercase transition-all shadow-md active:scale-95 cursor-pointer"
-                                        >
-                                          <RotateCcw size={11}/> Thi lại
-                                        </button>
+                                          <p className="text-[11px] text-slate-400">
+                                            Tính đủ {q.durationMinutes} phút từ lúc bắt đầu làm.
+                                          </p>
+                                        </>
                                       ) : (
-                                        <button 
-                                          disabled={true} 
-                                          title="Đề luyện tập: Chỉ mở chế độ ôn luyện từng câu, không tính vào bài thi chính thức" 
-                                          className="flex items-center justify-center gap-1.5 bg-slate-100 border border-dashed border-slate-300 text-slate-400 py-2.5 rounded-xl text-[9px] font-bold uppercase cursor-not-allowed opacity-40"
-                                        >
-                                          <Lock size={10}/> Khóa Thi
-                                        </button>
+                                        <div className="flex items-center gap-1.5 font-medium">
+                                          <Calendar size={12} className="text-blue-600 shrink-0" />
+                                          <span className="font-mono tabular-nums">
+                                            Giờ thi: {format(timing.startX, 'HH:mm - dd/MM/yyyy')}
+                                          </span>
+                                        </div>
                                       )}
                                     </div>
+                                  )}
+
+                                  <QuizProgressIndicator
+                                    completed={completedQuestions}
+                                    total={totalQuestions}
+                                    variant="card"
+                                  />
+
+                                  <div className="flex items-center justify-between text-xs text-slate-600 pt-1 font-mono tabular-nums">
+                                    <span>
+                                      Lượt làm:{' '}
+                                      <strong className="text-slate-900">
+                                        {timing.attemptCount}/{timing.maxAttempts}
+                                      </strong>
+                                    </span>
+                                    <span>
+                                      Cao nhất:{' '}
+                                      <strong className="text-blue-700">
+                                        {timing.bestScore !== null
+                                          ? `${timing.bestScore.toFixed(1)}đ`
+                                          : '—'}
+                                      </strong>
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartQuiz(q)}
+                                      className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                      <Zap size={14} />
+                                      <span>
+                                        Vào làm bài (Lần {timing.attemptCount + 1}/{timing.maxAttempts})
+                                      </span>
+                                    </button>
+                                    {isOnline && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleDownloadQuiz(q, e)}
+                                        disabled={Boolean(downloadingQuizId)}
+                                        title={
+                                          isDownloaded
+                                            ? 'Đã lưu ngoại tuyến (Nhấn để cập nhật bản mới)'
+                                            : 'Tải đề về máy để làm ngoại tuyến'
+                                        }
+                                        className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer ${
+                                          isDownloaded
+                                            ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100'
+                                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                      >
+                                        {isDownloaded ? (
+                                          <CloudCheck size={16} />
+                                        ) : (
+                                          <Download size={16} />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {timing.attemptCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const res = timing.myAttempts[0];
+                                        if (res) handleViewResult(res);
+                                      }}
+                                      className="w-full py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                    >
+                                      <Eye size={13} />
+                                      <span>
+                                        Xem lại bài đã nộp ({timing.myAttempts[0].score.toFixed(1)}đ)
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs font-medium text-slate-500">
+                          Hiện tại không có đề thi nào đang trong giờ mở. Bạn có thể kiểm tra lịch ở mục Sắp làm hoặc ôn tập ở Kho luyện tập.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Đề thi sắp làm */}
+                  {(examSubTab === 'all' || examSubTab === 'upcoming') &&
+                    (upcomingTestQuizzes.length > 0 || examSubTab === 'upcoming') && (
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-black text-slate-800 px-1">
+                          Đề thi sắp diễn ra{' '}
+                          <span className="font-mono tabular-nums text-amber-700">
+                            ({upcomingTestQuizzes.length})
+                          </span>
+                        </h3>
+
+                        {upcomingTestQuizzes.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                            {upcomingTestQuizzes.map((q) => {
+                              const timing = getQuizTiming(q);
+                              const totalQuestions =
+                                q.questionCount || (q.questions ? q.questions.length : 0);
+
+                              return (
+                                <div
+                                  key={q.id}
+                                  className="bg-white rounded-2xl border border-amber-200 p-5 flex flex-col justify-between gap-4"
+                                >
+                                  <div className="space-y-2.5">
+                                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                                      <span className="text-amber-700">Chờ giờ mở đề</span>
+                                      <span className="font-mono tabular-nums text-slate-500">
+                                        {q.durationMinutes} phút · {totalQuestions} câu
+                                      </span>
+                                    </div>
+                                    {q.category && (
+                                      <p className="text-[11px] font-semibold text-slate-500 truncate">
+                                        {q.category}
+                                      </p>
+                                    )}
+                                    <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                                      {q.title}
+                                    </h4>
+                                    {timing.startX && (
+                                      <div className="text-xs text-amber-900 bg-amber-50/70 px-3 py-2.5 rounded-xl border border-amber-200 space-y-0.5">
+                                        <div className="flex items-center gap-1.5 font-semibold">
+                                          <Calendar size={13} className="text-amber-600 shrink-0" />
+                                          <span className="font-mono tabular-nums">
+                                            Mở lúc: {format(timing.startX, 'HH:mm - dd/MM/yyyy')}
+                                          </span>
+                                        </div>
+                                        {timing.isFlexibleWindow && timing.endY && (
+                                          <p className="text-[11px] text-amber-700 font-mono tabular-nums">
+                                            Hạn chót: {format(timing.endY, 'HH:mm dd/MM')}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="pt-2 border-t border-slate-100">
+                                    <button
+                                      type="button"
+                                      disabled={true}
+                                      className="w-full py-2.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl font-bold text-xs cursor-not-allowed flex items-center justify-center gap-1.5"
+                                    >
+                                      <Clock size={13} />
+                                      <span>Chưa đến giờ mở đề</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs font-medium text-slate-500">
+                            Không có lịch thi sắp tới nào trong bộ lọc hiện tại.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </div>
+              )}
+
+              {/* 2. PANEL KHO LUYỆN TẬP */}
+              {activeMenu === 'practice' && (
+                <div className="space-y-4">
+                  {practiceQuizzes.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {practiceQuizzes.map((q) => {
+                        const qRes = results.filter((r) => r.quizId === q.id);
+                        const qs =
+                          qRes.length > 0
+                            ? {
+                                count: qRes.length,
+                                max: Math.max(...qRes.map((r) => r.score)),
+                                latest: qRes[0],
+                              }
+                            : null;
+                        const pTotalQuestions =
+                          q.questionCount ||
+                          (q.questions ? q.questions.length : qs?.latest?.totalQuestions || 0);
+                        const pCompletedQuestions = qs?.latest
+                          ? countCompletedQuestions(qs.latest.userAnswers, pTotalQuestions) ||
+                            (qs.latest.score > 0 ? pTotalQuestions : 0)
+                          : 0;
+                        const status = getQuizStatus(q);
+                        const isReviewedForPractice = liveReviewedQuizIds.includes(q.id);
+                        const isLocked = isReviewedForPractice ? false : status.isLocked;
+                        const isDownloaded = downloadedQuizIds.has(q.id);
+
+                        return (
+                          <div
+                            key={q.id}
+                            className={`bg-white rounded-2xl border p-5 flex flex-col justify-between gap-4 transition-colors ${
+                              isReviewedForPractice
+                                ? 'border-rose-300'
+                                : 'border-slate-200 hover:border-purple-300'
+                            } ${isLocked ? 'opacity-75' : ''}`}
+                          >
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                                <span
+                                  className={
+                                    isReviewedForPractice ? 'text-rose-700' : 'text-purple-700'
+                                  }
+                                >
+                                  {isReviewedForPractice
+                                    ? 'Đề sửa bài · Làm lại'
+                                    : 'Ôn tập tự do'}
+                                </span>
+                                <span className="font-mono tabular-nums text-slate-500">
+                                  {q.questionCount || (q.questions ? q.questions.length : 0)} câu ·{' '}
+                                  {q.grade === 'all' ? 'Chung' : `Khối ${q.grade}`}
+                                </span>
+                              </div>
+
+                              {q.category && (
+                                <p className="text-[11px] font-semibold text-slate-500 truncate">
+                                  {q.category}
+                                </p>
+                              )}
+                              <h4 className="font-black text-slate-900 text-sm leading-snug flex items-start gap-1.5 line-clamp-2">
+                                {isLocked && (
+                                  <Lock size={14} className="text-slate-400 shrink-0 mt-0.5" />
+                                )}
+                                <span>{q.title}</span>
+                              </h4>
+
+                              {!isLocked && (
+                                <>
+                                  <div className="flex items-center justify-between text-xs text-slate-600 font-mono tabular-nums pt-1">
+                                    <span>
+                                      Lượt luyện:{' '}
+                                      <strong className="text-slate-900">{qs?.count || 0}</strong>
+                                    </span>
+                                    <span>
+                                      Điểm Max:{' '}
+                                      <strong className="text-purple-700">
+                                        {qs ? `${qs.max.toFixed(1)}đ` : '—'}
+                                      </strong>
+                                    </span>
+                                  </div>
+                                  <QuizProgressIndicator
+                                    completed={pCompletedQuestions}
+                                    total={pTotalQuestions}
+                                    variant="card"
+                                  />
                                 </>
+                              )}
+                            </div>
+
+                            {isLocked ? (
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                                <p className="font-bold text-slate-500">Đang khóa điều kiện</p>
+                                <p className="font-medium text-slate-700 mt-0.5">{status.reason}</p>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartPractice(q)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-black text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  <Zap size={13} />
+                                  <span>{isReviewedForPractice ? 'Ôn tập lại' : 'Luyện tập'}</span>
+                                </button>
+                                {isReviewedForPractice && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartQuiz(q)}
+                                    title="Làm lại đề như một bài thi hoàn chỉnh"
+                                    className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                  >
+                                    <RotateCcw size={13} />
+                                    <span>Thi lại</span>
+                                  </button>
+                                )}
+                                {isOnline && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadQuiz(q, e)}
+                                    disabled={Boolean(downloadingQuizId)}
+                                    title={
+                                      isDownloaded
+                                        ? 'Đã lưu ngoại tuyến'
+                                        : 'Tải đề về máy để ôn ngoại tuyến'
+                                    }
+                                    className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer ${
+                                      isDownloaded
+                                        ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100'
+                                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {isDownloaded ? (
+                                      <CloudCheck size={16} />
+                                    ) : (
+                                      <Download size={16} />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         );
-                    })}
-                  </div>
-              </div>
-          )}
-
-          {/* 5. ĐỀ THI ĐÃ TẢI VỀ MẤY (LÀM NGOẠI TUYẾN 100%) */}
-          {(quizStatusTab === 'downloaded' || (quizStatusTab === 'all' && downloadedQuizzes.length > 0)) && (
-              <div>
-                  <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2">
-                          <HardDrive size={16} className="text-teal-600"/>
-                          <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Đề thi đã tải về máy (Sẵn sàng Offline 100%)</h2>
-                          <span className="px-2 py-0.5 bg-teal-100 text-teal-800 font-black text-[9px] rounded-full uppercase">
-                              {downloadedQuizzes.length} đề offline
-                          </span>
-                      </div>
-                      <div className="h-px flex-1 bg-teal-100"></div>
-                  </div>
-
-                  {downloadedQuizzes.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {downloadedQuizzes.map(q => {
-                            const totalQuestions = q.questionCount || (q.questions ? q.questions.length : 0);
-
-                            return (
-                                <div key={q.id} className="bg-white rounded-[1.5rem] border-2 border-teal-500 p-6 flex flex-col transition-all shadow-lg hover:shadow-xl relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 bg-teal-500 text-white text-[7px] font-black uppercase px-3 py-1 rounded-bl-xl flex items-center gap-1">
-                                        <CloudCheck size={10} /> OFFLINE READY
-                                    </div>
-                                    <div className="flex justify-between items-start mb-3 pt-1">
-                                        <span className="text-[9px] font-black text-teal-700 uppercase bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">{q.durationMinutes} phút</span>
-                                        <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded-md">{totalQuestions} câu</span>
-                                    </div>
-                                    {q.category && <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest mb-1 italic truncate">{q.category}</p>}
-                                    <h3 className="font-black text-slate-800 text-[13px] leading-tight mb-4 uppercase line-clamp-2 min-h-[2.5em]">{q.title}</h3>
-
-                                    <div className="bg-teal-50/60 p-3 rounded-xl border border-teal-100 mb-4 text-[9px] font-bold text-teal-900 space-y-1">
-                                        <div className="flex items-center gap-1.5 text-teal-700">
-                                            <WifiOff size={12} className="shrink-0" />
-                                            <span>Làm bài không cần kết nối Internet</span>
-                                        </div>
-                                        <div className="text-[8px] text-teal-600 font-medium pl-4">
-                                            ⚡ Tự động nạp kết quả khi có mạng trở lại.
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-auto space-y-2">
-                                        <button
-                                            onClick={() => handleStartQuiz(q)}
-                                            className="w-full py-3 rounded-xl font-black uppercase text-[9px] bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                                        >
-                                            <Zap size={13} /> Làm bài ngay (Offline)
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteOfflineQuiz(q.id)}
-                                            className="w-full py-2 rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50 font-black uppercase text-[8px] flex items-center justify-center gap-1.5 transition-colors"
-                                        >
-                                            <Trash2 size={11} /> Xóa khỏi máy
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                      })}
                     </div>
                   ) : (
-                    <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400 text-xs font-bold">
-                        Chưa có đề thi nào được tải về máy. Bạn có thể nhấn nút Tải về máy trên bất kỳ thẻ đề thi nào để sẵn sàng làm bài ngoại tuyến!
+                    <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
+                      <Zap size={28} className="text-purple-500 mx-auto" />
+                      <p className="text-sm font-black text-slate-800">
+                        Chưa có đề luyện tập phù hợp với bộ lọc
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Thử chọn "Tất cả chương" hoặc thay đổi niên khóa ở thanh bên trái.
+                      </p>
                     </div>
                   )}
-              </div>
-          )}
-      </section>
-
-      {/* Khi không có đề thi nào trong mục đã chọn */}
-      {openTestQuizzes.length === 0 && upcomingTestQuizzes.length === 0 && practiceQuizzes.length === 0 && (
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-10 text-center shadow-sm">
-              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-3">
-                  <FileText size={24} />
-              </div>
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Không có đề thi nào trong danh mục này</h3>
-              <p className="text-xs text-slate-500 font-medium max-w-md mx-auto mt-1">
-                  Hiện tại không có đề thi phù hợp với bộ lọc. Hãy chuyển tab "Tất cả" hoặc kiểm tra lại niên khóa và chương học.
-              </p>
-          </div>
-      )}
-
-      {/* Bảng xếp hạng thành tích học sinh theo từng đề thi */}
-      <StudentLeaderboard
-        student={user}
-        results={results}
-        quizzes={quizzes}
-        selectedQuizId={leaderboardQuizId}
-        onSelectQuizId={setLeaderboardQuizId}
-        refreshTrigger={leaderboardRefreshKey}
-        isOnline={isOnline}
-      />
-
-      {/* Danh sách các đề đã làm & Lịch sử nộp bài (Bao gồm các đề đã hết hạn mở) */}
-      <section id="student-results-history" className="pt-10 scroll-mt-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner shrink-0">
-                      <History size={20} />
-                  </div>
-                  <div>
-                      <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
-                          Danh sách các đề đã làm & Lịch sử nộp bài
-                          {results.length > 0 && (
-                              <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-black text-[9px] rounded-full uppercase">
-                                  {results.length} bài
-                              </span>
-                          )}
-                      </h2>
-                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                          Tất cả các đề đã hoàn thành (bao gồm đề đã hết hạn mở đề) và kết quả chi tiết
-                      </p>
-                  </div>
-              </div>
-
-              {/* Bộ lọc trạng thái đề đã làm */}
-              {results.length > 0 && (
-                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start md:self-auto">
-                      <button
-                          onClick={() => setResultsFilter('all')}
-                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${
-                              resultsFilter === 'all'
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                          Tất cả ({enrichedResults.length})
-                      </button>
-                      <button
-                          onClick={() => setResultsFilter('expired')}
-                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all flex items-center gap-1 ${
-                              resultsFilter === 'expired'
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                          <Lock size={10} className="text-slate-400" />
-                          Đã hết hạn ({expiredResultsCount})
-                      </button>
-                      <button
-                          onClick={() => setResultsFilter('active')}
-                          className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all flex items-center gap-1 ${
-                              resultsFilter === 'active'
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                          <Zap size={10} className="text-emerald-500" />
-                          Đang mở ({activeResultsCount})
-                      </button>
-                  </div>
+                </div>
               )}
-          </div>
 
-          <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden overflow-x-auto">
-              <table className="w-full text-left">
-                  <thead>
-                      <tr className="bg-slate-50 border-b text-[9px] font-black uppercase tracking-widest text-slate-400">
-                          <th className="p-6">Tên đề thi & Trạng thái</th>
-                          <th className="p-6 text-center">Phân loại</th>
-                          <th className="p-6 text-center">Tiến độ câu hỏi</th>
-                          <th className="p-6 text-center">Thời điểm nộp</th>
-                          <th className="p-6 text-center">Kết quả</th>
-                          <th className="p-6 text-center">Hành động</th>
+              {/* 3. PANEL TỔNG QUAN & BIỂU ĐỒ (Chỉ mount khi chọn menu này) */}
+              {activeMenu === 'overview' && (
+                <StudentAnalyticsPanel
+                  stats={stats}
+                  overallQuestionsStats={overallQuestionsStats}
+                  performanceInsights={performanceInsights}
+                  results={results}
+                  quizzes={quizzes}
+                  onGoToExams={() => setActiveMenu('exams')}
+                />
+              )}
+
+              {/* 4. PANEL LỊCH SỬ NỘP BÀI */}
+              {activeMenu === 'history' && (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        <th className="py-3.5 px-5">Đề thi & Trạng thái</th>
+                        <th className="py-3.5 px-4 text-center">Phân loại</th>
+                        <th className="py-3.5 px-4 text-center">Tiến độ</th>
+                        <th className="py-3.5 px-4 text-center">Thời điểm nộp</th>
+                        <th className="py-3.5 px-4 text-right">Điểm số</th>
+                        <th className="py-3.5 px-5 text-right">Hành động</th>
                       </tr>
-                  </thead>
-                  <tbody className="divide-y">
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
                       {filteredResults.slice(0, resultsDisplayCount).map((r) => {
-                          const quiz = r.quiz;
-                          const displayTitle = r.quizTitle || quiz?.title || 'Đề thi đã nộp';
-                          const displayCategory = r.quizCategory || quiz?.category || '';
-                          const displayType = r.quizType || quiz?.type || 'test';
-                          const rowTotal = r.totalQuestions || quiz?.questionCount || 0;
-                          const rowCompleted = countCompletedQuestions(r.userAnswers, rowTotal) || (r.score > 0 ? rowTotal : 0);
-                          return (
-                              <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
-                                  <td className="p-6">
-                                      <div className="space-y-1.5 max-w-md">
-                                          <div className="flex flex-wrap items-center gap-2">
-                                              <span className="font-black text-slate-800 uppercase text-xs leading-snug">
-                                                  {displayTitle}
-                                              </span>
-                                          </div>
-                                          <div className="flex flex-wrap items-center gap-1.5">
-                                              {/* Huy hiệu tình trạng hết hạn của đề */}
-                                              {r.isExpired ? (
-                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[8px] font-black uppercase">
-                                                      <Lock size={9} className="text-slate-400" /> Đã hết hạn mở
-                                                  </span>
-                                              ) : (
-                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[8px] font-black uppercase">
-                                                      <Zap size={9} className="text-emerald-500" /> Đang mở
-                                                  </span>
-                                              )}
+                        const quiz = r.quiz;
+                        const displayTitle = r.quizTitle || quiz?.title || 'Đề thi đã nộp';
+                        const displayCategory = r.quizCategory || quiz?.category || '';
+                        const displayType = r.quizType || quiz?.type || 'test';
+                        const rowTotal = r.totalQuestions || quiz?.questionCount || 0;
+                        const rowCompleted =
+                          countCompletedQuestions(r.userAnswers, rowTotal) ||
+                          (r.score > 0 ? rowTotal : 0);
 
-                                              {/* Lần làm bài nếu có nhiều lần */}
-                                              {r.hasMultipleAttempts && (
-                                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[8px] font-black uppercase shrink-0">
-                                                      Lần {r.attemptNumber}/{r.maxAttempts}
-                                                  </span>
-                                              )}
-
-                                              {displayCategory && (
-                                                  <span className="text-[9px] text-slate-400 font-medium truncate max-w-[200px]">
-                                                      • {displayCategory}
-                                                  </span>
-                                              )}
-                                          </div>
-                                      </div>
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <span className={`inline-block px-2.5 py-1 rounded-xl text-[8px] font-black uppercase border ${
-                                          displayType === 'test' 
-                                              ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                                      }`}>
-                                          {displayType === 'test' ? 'Bài thi bắt buộc' : 'Luyện tập tự do'}
-                                      </span>
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <QuizProgressIndicator
-                                          completed={rowCompleted}
-                                          total={rowTotal}
-                                          variant="table"
-                                      />
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <p className="text-xs font-bold text-slate-700">
-                                          {format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}
-                                      </p>
-                                      {r.durationSeconds ? (
-                                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">
-                                              Làm trong {Math.floor(r.durationSeconds / 60)} phút {r.durationSeconds % 60}s
-                                          </p>
-                                      ) : null}
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <span className={`inline-flex items-center justify-center min-w-[50px] px-3 py-1 rounded-xl text-sm font-black border ${
-                                          r.score >= 8 
-                                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
-                                              : r.score >= 5 
-                                              ? 'text-blue-700 bg-blue-50 border-blue-200' 
-                                              : 'text-orange-700 bg-orange-50 border-orange-200'
-                                      }`}>
-                                          {r.score.toFixed(2)}đ
-                                      </span>
-                                  </td>
-                                  <td className="p-6 text-center">
-                                      <div className="inline-flex items-center justify-center gap-2">
-                                          <button 
-                                              onClick={() => handleViewResult(r)} 
-                                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
-                                              title="Xem lại bài thi đã nộp, đáp án và lời giải"
-                                          >
-                                              <Eye size={12}/> Xem lại <ChevronRight size={12}/>
-                                          </button>
-                                          <button
-                                              onClick={() => {
-                                                  setLeaderboardQuizId(r.quizId);
-                                                  const el = document.getElementById('student-leaderboard');
-                                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                              }}
-                                              className="inline-flex items-center gap-1 px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all shadow-sm active:scale-95 cursor-pointer"
-                                              title="Xem thứ hạng của bạn ở đề thi này"
-                                          >
-                                              <Trophy size={12}/> Xếp hạng
-                                          </button>
-                                      </div>
-                                  </td>
-                              </tr>
-                          );
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-4 px-5 max-w-md">
+                              <p className="font-bold text-slate-900 leading-snug">{displayTitle}</p>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 mt-1">
+                                <span
+                                  className={
+                                    r.isExpired ? 'text-slate-500' : 'text-emerald-700 font-semibold'
+                                  }
+                                >
+                                  {r.isExpired ? 'Đã hết hạn mở' : 'Đang mở'}
+                                </span>
+                                {r.hasMultipleAttempts && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="font-mono tabular-nums text-blue-700 font-semibold">
+                                      Lần {r.attemptNumber}/{r.maxAttempts}
+                                    </span>
+                                  </>
+                                )}
+                                {displayCategory && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="truncate max-w-[180px]">{displayCategory}</span>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-center whitespace-nowrap">
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  displayType === 'test' ? 'text-blue-700' : 'text-amber-700'
+                                }`}
+                              >
+                                {displayType === 'test' ? 'Kiểm tra' : 'Luyện tập'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              <QuizProgressIndicator
+                                completed={rowCompleted}
+                                total={rowTotal}
+                                variant="table"
+                              />
+                            </td>
+                            <td className="py-4 px-4 text-center whitespace-nowrap">
+                              <p className="font-mono tabular-nums font-semibold text-slate-700">
+                                {format(new Date(r.submittedAt), 'HH:mm dd/MM/yyyy')}
+                              </p>
+                              {r.durationSeconds ? (
+                                <p className="text-[11px] text-slate-400 font-mono tabular-nums mt-0.5">
+                                  {Math.floor(r.durationSeconds / 60)}p {r.durationSeconds % 60}s
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="py-4 px-4 text-right whitespace-nowrap">
+                              <span
+                                className={`font-mono tabular-nums text-sm font-black ${
+                                  r.score >= 8
+                                    ? 'text-emerald-700'
+                                    : r.score >= 5
+                                    ? 'text-blue-700'
+                                    : 'text-orange-700'
+                                }`}
+                              >
+                                {r.score.toFixed(2)}đ
+                              </span>
+                            </td>
+                            <td className="py-4 px-5 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewResult(r)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"
+                                  title="Xem lại bài thi đã nộp, đáp án và lời giải"
+                                >
+                                  <Eye size={13} />
+                                  <span>Xem lại</span>
+                                  <ChevronRight size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLeaderboardQuizId(r.quizId);
+                                    setActiveMenu('leaderboard');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-colors cursor-pointer"
+                                  title="Xem thứ hạng của bạn ở đề thi này"
+                                >
+                                  <Trophy size={13} />
+                                  <span>Xếp hạng</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
                       })}
-                  </tbody>
-              </table>
+                    </tbody>
+                  </table>
 
-              {filteredResults.length === 0 && (
-                  <div className="p-16 text-center text-slate-400 font-black uppercase text-[10px] italic">
-                      {results.length === 0 ? 'Bạn chưa thực hiện bài thi nào' : 'Không có bài làm nào trong mục này'}
-                  </div>
-              )}
+                  {filteredResults.length === 0 && (
+                    <div className="p-12 text-center text-slate-500 text-xs font-medium">
+                      {results.length === 0
+                        ? 'Bạn chưa thực hiện bài thi nào.'
+                        : 'Không có bài làm nào phù hợp với bộ lọc đã chọn.'}
+                    </div>
+                  )}
 
-              {/* Điều khiển phân trang / mở rộng danh sách */}
-              {filteredResults.length > 15 && (
-                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-500">
-                      <span>
-                          Đang hiển thị {Math.min(resultsDisplayCount, filteredResults.length)} / {filteredResults.length} bài
+                  {filteredResults.length > 15 && (
+                    <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-slate-500">
+                      <span className="font-mono tabular-nums">
+                        Đang hiển thị {Math.min(resultsDisplayCount, filteredResults.length)} /{' '}
+                        {filteredResults.length} bài
                       </span>
                       <div className="flex items-center gap-2">
-                          {filteredResults.length > resultsDisplayCount && (
-                              <>
-                                  <button
-                                      onClick={() => setResultsDisplayCount(prev => prev + 15)}
-                                      className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
-                                  >
-                                      Xem thêm (+15)
-                                  </button>
-                                  <button
-                                      onClick={() => setResultsDisplayCount(filteredResults.length)}
-                                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-blue-700 transition-colors shadow-sm"
-                                  >
-                                      Xem tất cả ({filteredResults.length})
-                                  </button>
-                              </>
-                          )}
-                          {resultsDisplayCount > 15 && (
-                              <button
-                                  onClick={() => setResultsDisplayCount(15)}
-                                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase text-slate-500 hover:text-slate-800 transition-colors"
-                              >
-                                  Thu gọn
-                              </button>
-                          )}
+                        {filteredResults.length > resultsDisplayCount && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setResultsDisplayCount((prev) => prev + 15)}
+                              className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                              Xem thêm (+15)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setResultsDisplayCount(filteredResults.length)}
+                              className="px-3.5 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors cursor-pointer"
+                            >
+                              Xem tất cả ({filteredResults.length})
+                            </button>
+                          </>
+                        )}
+                        {resultsDisplayCount > 15 && (
+                          <button
+                            type="button"
+                            onClick={() => setResultsDisplayCount(15)}
+                            className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                          >
+                            Thu gọn
+                          </button>
+                        )}
                       </div>
-                  </div>
+                    </div>
+                  )}
+                </div>
               )}
-          </div>
-      </section>
 
-      {selectedResult && <ResultDetailModal isOpen={true} result={selectedResult.result} quiz={selectedResult.quiz} onClose={() => setSelectedResult(null)} />}
-      {previewQuiz && <QuizPreviewModal quiz={previewQuiz} isAdmin={false} onClose={() => setPreviewQuiz(null)} />}
-      {viewingHonorees && (
-          <div className="fixed inset-0 bg-slate-900/95 z-[3000] flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
-              <div className="bg-white rounded-[3.5rem] w-full max-w-lg flex flex-col overflow-hidden shadow-2xl border-4 border-yellow-400">
-                  <div className="p-8 bg-slate-900 text-white flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-4">
-                          <div className="p-3 bg-yellow-500 text-slate-900 rounded-2xl shadow-lg"><Trophy size={24}/></div>
-                          <div>
-                              <h3 className="text-lg font-black uppercase tracking-tight italic">Bảng Vàng Danh Dự Cá Nhân</h3>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 leading-none">{viewingHonorees.quizTitle}</p>
-                          </div>
-                      </div>
-                      <button onClick={() => setViewingHonorees(null)} className="p-4 bg-slate-800 rounded-2xl hover:bg-red-600 transition-colors"><X/></button>
-                  </div>
-                  <div className="p-8 space-y-5 bg-slate-50 text-center">
-                      <div className="inline-flex p-4 bg-yellow-100 text-yellow-600 rounded-full shadow-inner animate-bounce">
-                          <Award size={48} />
-                      </div>
-                      <div>
-                          <p className="text-[9px] font-black uppercase tracking-widest text-yellow-600 mb-1">CHỨC MỪNG THÀNH TÍCH XUẤT SẮC</p>
-                          <h4 className="text-2xl font-black text-slate-800 uppercase tracking-tight">{user.fullName}</h4>
-                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">
-                              MSHS: {user.studentCode} {user.className ? `• Lớp ${user.className}` : ''} • Khối {user.grade}
-                          </p>
-                      </div>
+              {/* 5. PANEL BẢNG XẾP HẠNG (Chỉ kích hoạt & tải dữ liệu khi học sinh chọn menu này) */}
+              {activeMenu === 'leaderboard' && (
+                <StudentLeaderboard
+                  student={user}
+                  results={results}
+                  quizzes={quizzes}
+                  selectedQuizId={leaderboardQuizId}
+                  onSelectQuizId={setLeaderboardQuizId}
+                  refreshTrigger={leaderboardRefreshKey}
+                  isOnline={isOnline}
+                />
+              )}
 
-                      <div className="py-5 bg-white rounded-3xl border border-slate-200 shadow-sm max-w-xs mx-auto">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ĐIỂM SỐ VINH DANH</p>
-                          <p className="text-4xl font-black text-emerald-500 mt-1">
-                              {(viewingHonorees.results.find(r => r.studentCode?.toUpperCase() === user.studentCode?.toUpperCase())?.score ?? viewingHonorees.results[0]?.score ?? 0).toFixed(2)}đ
-                          </p>
-                      </div>
-
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                          Vinh danh vào ngày {format(new Date(viewingHonorees.publishedAt), 'HH:mm dd/MM/yyyy')}
+              {/* 6. PANEL BẢNG VÀNG VINH DANH (Chỉ tải dữ liệu khi kích hoạt menu này) */}
+              {activeMenu === 'honors' && (
+                <div>
+                  {isLoadingHonors ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 py-16 text-center space-y-3">
+                      <Loader2 className="animate-spin text-amber-500 mx-auto" size={32} />
+                      <p className="text-xs font-bold text-slate-500">
+                        Đang tải danh sách vinh danh...
                       </p>
+                    </div>
+                  ) : publishedResults.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {publishedResults.map((pub) => {
+                        const userResultInPub =
+                          pub.results.find(
+                            (r) => r.studentCode?.toUpperCase() === user.studentCode?.toUpperCase()
+                          ) || pub.results[0];
+                        return (
+                          <div
+                            key={pub.id}
+                            className="bg-slate-900 rounded-2xl p-5 border border-yellow-500/30 flex flex-col justify-between gap-4 text-white"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-10 h-10 bg-yellow-500 text-slate-900 rounded-xl flex items-center justify-center shrink-0">
+                                <Award size={20} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-yellow-400 truncate">
+                                  {pub.quizTitle}
+                                </p>
+                                <p className="text-[11px] font-mono tabular-nums text-slate-400 mt-0.5">
+                                  Vinh danh ngày {format(new Date(pub.publishedAt), 'dd/MM/yyyy')}
+                                </p>
+                              </div>
+                            </div>
 
+                            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-center space-y-1">
+                              <p className="text-[11px] font-semibold text-slate-400">
+                                Điểm số vinh danh
+                              </p>
+                              <p className="text-3xl font-black font-mono tabular-nums text-emerald-400">
+                                {(userResultInPub?.score ?? 0).toFixed(1)}đ
+                              </p>
+                              <p className="text-xs font-semibold text-slate-200">{user.fullName}</p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setViewingHonorees(pub)}
+                              className="w-full py-2.5 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-xl text-xs font-black transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Award size={14} />
+                              <span>Xem chứng nhận vinh danh</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-2">
+                      <Award size={32} className="text-slate-300 mx-auto" />
+                      <p className="text-sm font-black text-slate-800">
+                        Chưa có bảng vinh danh cá nhân
+                      </p>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Khi bạn đạt thành tích xuất sắc và được giáo viên tuyên dương, bảng vàng vinh danh của bạn sẽ xuất hiện tại đây.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 7. PANEL KHO NGOẠI TUYẾN */}
+              {activeMenu === 'offline' && (
+                <div className="space-y-5">
+                  {syncFeedback && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-xs font-bold text-blue-800">
+                      {syncFeedback}
+                    </div>
+                  )}
+
+                  {downloadedQuizzes.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {downloadedQuizzes.map((q) => {
+                        const totalQuestions =
+                          q.questionCount || (q.questions ? q.questions.length : 0);
+
+                        return (
+                          <div
+                            key={q.id}
+                            className="bg-white rounded-2xl border border-teal-300 p-5 flex flex-col justify-between gap-4"
+                          >
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                                <span className="inline-flex items-center gap-1 text-teal-700">
+                                  <CloudCheck size={13} />
+                                  <span>Sẵn sàng Offline</span>
+                                </span>
+                                <span className="font-mono tabular-nums text-slate-500">
+                                  {q.durationMinutes} phút · {totalQuestions} câu
+                                </span>
+                              </div>
+                              {q.category && (
+                                <p className="text-[11px] font-semibold text-slate-500 truncate">
+                                  {q.category}
+                                </p>
+                              )}
+                              <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                                {q.title}
+                              </h4>
+                              <p className="text-xs text-teal-800 bg-teal-50/70 px-3 py-2 rounded-xl border border-teal-100">
+                                Làm bài không cần Internet; kết quả sẽ tự động đồng bộ khi có mạng.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => handleStartQuiz(q)}
+                                className="w-full py-2.5 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-700 text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Zap size={14} />
+                                <span>Làm bài ngay (Offline)</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOfflineQuiz(q.id)}
+                                className="w-full py-2 rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Trash2 size={13} />
+                                <span>Xóa khỏi máy</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-3">
+                      <HardDrive size={30} className="text-teal-500 mx-auto" />
+                      <p className="text-sm font-black text-slate-800">
+                        Chưa có đề thi nào được lưu ngoại tuyến
+                      </p>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Nhấn biểu tượng tải xuống trên thẻ đề thi ở mục Đề thi hoặc Kho luyện tập để lưu về máy làm bài khi mất mạng.
+                      </p>
                       <button
-                          onClick={() => setViewingHonorees(null)}
-                          className="w-full py-3 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs hover:bg-black transition-all shadow-md active:scale-95"
+                        type="button"
+                        onClick={() => setActiveMenu('exams')}
+                        className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                       >
-                          Đóng
+                        Đi tới danh sách đề thi
                       </button>
-                  </div>
-              </div>
-          </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+
+      {/* Các Modal chi tiết */}
+      {selectedResult && (
+        <ResultDetailModal
+          isOpen={true}
+          result={selectedResult.result}
+          quiz={selectedResult.quiz}
+          onClose={() => setSelectedResult(null)}
+        />
       )}
+      {previewQuiz && (
+        <QuizPreviewModal
+          quiz={previewQuiz}
+          isAdmin={false}
+          onClose={() => setPreviewQuiz(null)}
+        />
+      )}
+      {viewingHonorees && (
+        <div className="fixed inset-0 bg-slate-900/90 z-[3000] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-lg flex flex-col overflow-hidden shadow-2xl border-2 border-yellow-400">
+            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-yellow-500 text-slate-900 rounded-xl">
+                  <Trophy size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">Bảng Vàng Danh Dự Cá Nhân</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{viewingHonorees.quizTitle}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingHonorees(null)}
+                className="p-2 bg-slate-800 rounded-xl hover:bg-red-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-8 space-y-5 bg-slate-50 text-center">
+              <div className="inline-flex p-4 bg-yellow-100 text-yellow-600 rounded-full">
+                <Award size={40} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-yellow-700 mb-1">
+                  Chúc mừng thành tích xuất sắc
+                </p>
+                <h4 className="text-2xl font-black text-slate-900">{user.fullName}</h4>
+                <p className="text-xs font-medium text-slate-500 mt-1">
+                  MSHS: {user.studentCode}
+                  {user.className ? ` · Lớp ${user.className}` : ''} · Khối {user.grade}
+                </p>
+              </div>
+
+              <div className="py-4 bg-white rounded-2xl border border-slate-200 max-w-xs mx-auto">
+                <p className="text-xs font-semibold text-slate-400">Điểm số vinh danh</p>
+                <p className="text-4xl font-black font-mono tabular-nums text-emerald-600 mt-1">
+                  {(
+                    viewingHonorees.results.find(
+                      (r) => r.studentCode?.toUpperCase() === user.studentCode?.toUpperCase()
+                    )?.score ??
+                    viewingHonorees.results[0]?.score ??
+                    0
+                  ).toFixed(2)}
+                  đ
+                </p>
+              </div>
+
+              <p className="text-xs font-medium text-slate-500 font-mono tabular-nums">
+                Vinh danh vào {format(new Date(viewingHonorees.publishedAt), 'HH:mm dd/MM/yyyy')}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setViewingHonorees(null)}
+                className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-black transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Session Warning Modal */}
       {sessionWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
-            <div className={`p-6 text-white ${sessionWarning.type === 'different_quiz' ? 'bg-red-500' : 'bg-amber-500'}`}>
-              <div className="flex items-center gap-3 mb-2">
-                <ShieldAlert className="w-8 h-8" />
-                <h3 className="text-xl font-black uppercase tracking-tight">
-                  {sessionWarning.type === 'different_quiz' ? 'Cảnh báo bảo mật' : 'Thông báo phiên làm bài'}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100">
+            <div
+              className={`p-6 text-white ${
+                sessionWarning.type === 'different_quiz' ? 'bg-red-500' : 'bg-amber-500'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-1.5">
+                <ShieldAlert className="w-7 h-7" />
+                <h3 className="text-lg font-black">
+                  {sessionWarning.type === 'different_quiz'
+                    ? 'Cảnh báo bảo mật'
+                    : 'Thông báo phiên làm bài'}
                 </h3>
               </div>
-              <p className="text-white/90 text-sm font-bold">
-                {sessionWarning.type === 'different_quiz' 
-                  ? 'Phát hiện nhiều phiên làm bài đồng thời' 
+              <p className="text-white/90 text-xs font-bold">
+                {sessionWarning.type === 'different_quiz'
+                  ? 'Phát hiện nhiều phiên làm bài đồng thời'
                   : 'Phát hiện phiên làm bài trên thiết bị khác'}
               </p>
             </div>
-            
-            <div className="p-8">
-              <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Đề thi đang hoạt động:</p>
-                <p className="text-slate-700 font-black text-lg leading-tight">{sessionWarning.quizTitle}</p>
+
+            <div className="p-6 space-y-5">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <p className="text-[11px] font-bold text-slate-400 mb-1">Đề thi đang hoạt động:</p>
+                <p className="text-slate-800 font-black text-base leading-snug">
+                  {sessionWarning.quizTitle}
+                </p>
               </div>
 
-              <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
+              <div className="text-slate-600 text-xs leading-relaxed">
                 {sessionWarning.type === 'different_quiz' ? (
                   <p>
-                    Hệ đồng nhận thấy bạn đang làm bài thi <span className="font-bold text-slate-900">"{sessionWarning.quizTitle}"</span>. 
-                    Để đảm bảo tính công bằng, bạn <span className="font-bold text-red-600 underline">không thể</span> bắt đầu một đề thi mới khi chưa hoàn thành đề thi hiện tại.
+                    Hệ thống nhận thấy bạn đang làm bài thi{' '}
+                    <span className="font-bold text-slate-900">"{sessionWarning.quizTitle}"</span>.
+                    Bạn cần hoàn thành hoặc kết thúc phiên cũ trước khi bắt đầu đề thi mới.
                   </p>
                 ) : (
                   <p>
-                    Bạn đang có một phiên làm bài cho đề này trên thiết bị hoặc trình duyệt khác. 
-                    Nếu tiếp tục, dữ liệu chưa nộp ở máy kia <span className="font-bold text-amber-600">sẽ bị mất</span>. Bạn có chắc chắn muốn bắt đầu lại trên máy này?
+                    Bạn đang có một phiên làm bài cho đề này trên thiết bị hoặc trình duyệt khác.
+                    Nếu tiếp tục, dữ liệu chưa nộp ở máy kia{' '}
+                    <span className="font-bold text-amber-700">sẽ bị mất</span>. Bạn có muốn bắt đầu
+                    lại trên máy này?
                   </p>
                 )}
               </div>
 
-              <div className="mt-8 flex flex-col gap-3">
+              <div className="flex flex-col gap-2.5">
                 <button
+                  type="button"
                   onClick={sessionWarning.onConfirm}
-                  className={`w-full py-4 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                    sessionWarning.type === 'different_quiz' ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
+                  className={`w-full py-3 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer ${
+                    sessionWarning.type === 'different_quiz'
+                      ? 'bg-red-500 hover:bg-red-600'
+                      : 'bg-amber-500 hover:bg-amber-600'
                   }`}
                 >
-                  {sessionWarning.type === 'different_quiz' ? 'Kết thúc đề cũ & Bắt đầu đề mới' : 'Tiếp tục (Bắt đầu mới)'}
+                  {sessionWarning.type === 'different_quiz'
+                    ? 'Kết thúc đề cũ & Bắt đầu đề mới'
+                    : 'Tiếp tục (Bắt đầu mới)'}
                 </button>
                 <button
+                  type="button"
                   onClick={sessionWarning.onCancel}
-                  className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-200 transition-colors cursor-pointer"
                 >
                   Hủy bỏ
                 </button>

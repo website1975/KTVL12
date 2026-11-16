@@ -12,7 +12,7 @@ import QuickAssignModal from './QuickAssignModal';
 import FolderModal from './FolderModal';
 import FolderMoveModal from './FolderMoveModal';
 import ZaloNoticeModal, { generateZaloNoticeText } from './ZaloNoticeModal';
-import { getQuizById, getCurrentAcademicYear, updateQuiz, updateQuizTitle } from '../../services/storage';
+import { getQuizById, getCurrentAcademicYear, updateQuiz, updateQuizTitle, getQuizSubmissionCounts } from '../../services/storage';
 import { exportQuizToJson, exportQuizzesBatchToJson } from '../../services/quizExport';
 
 export type QuizStatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'classes' | 'all_grade' | 'unlisted';
@@ -113,6 +113,7 @@ export default function QuizList({
     const [isZaloModalOpen, setIsZaloModalOpen] = useState(false);
     const [zaloCopiedToastId, setZaloCopiedToastId] = useState<string | null>(null);
     const [renamingQuizId, setRenamingQuizId] = useState<string | null>(null);
+    const [submissionCounts, setSubmissionCounts] = useState<Record<string, number>>({});
 
     const handleOpenZaloNotice = (quiz: Quiz, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
@@ -394,6 +395,23 @@ export default function QuizList({
     }, [qSearch, qGradeFilter, qChapterFilter, qStatusFilter, activeFolderId]);
 
     const visibleQuizzes = filtered.slice(0, visibleCount);
+    const visibleQuizIdsKey = useMemo(() => visibleQuizzes.map(q => q.id).join(','), [visibleQuizzes]);
+
+    useEffect(() => {
+        if (viewMode !== 'flat' && !activeFolderId) return;
+        const ids = visibleQuizIdsKey ? visibleQuizIdsKey.split(',').filter(Boolean) : [];
+        if (ids.length === 0) return;
+
+        let cancelled = false;
+        getQuizSubmissionCounts(ids).then(counts => {
+            if (!cancelled && counts && Object.keys(counts).length > 0) {
+                setSubmissionCounts(prev => ({ ...prev, ...counts }));
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [viewMode, activeFolderId, visibleQuizIdsKey, quizzes]);
 
     const activeFolder = useMemo(() => {
         if (!activeFolderId) return null;
@@ -1030,7 +1048,12 @@ export default function QuizList({
                                     cardStyle = "bg-white shadow-sm border-b-blue-600 border-slate-200/80";
                                 }
 
-                                const qResults = results.filter(r => r.quizId === q.id);
+                                const fallbackResultCount = results.length > 0
+                                    ? results.filter(r => r.quizId === q.id).length
+                                    : (q.attemptCount || 0);
+                                const submissionCount = submissionCounts[q.id] !== undefined
+                                    ? submissionCounts[q.id]
+                                    : fallbackResultCount;
 
                                 return (
                                     <div 
@@ -1242,7 +1265,7 @@ export default function QuizList({
                                                 </span>
                                                 <span className="flex items-center gap-1 text-blue-600 font-black">
                                                     <Users size={10}/>
-                                                    {qResults.length} bài
+                                                    {submissionCount} bài
                                                 </span>
                                             </div>
                                         </div>

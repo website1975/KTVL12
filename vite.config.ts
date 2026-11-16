@@ -32,12 +32,18 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 3000,
       strictPort: true,
+      allowedHosts: true,
       hmr: false,
     },
     preview: {
       host: '0.0.0.0',
       port: 3000,
       strictPort: true,
+      allowedHosts: true,
     },
+    define: {
+      'process.env.API_KEY': JSON.stringify(apiKey),
+      'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
+    }
   }
 })
