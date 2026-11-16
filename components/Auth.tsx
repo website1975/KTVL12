@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { findUser, saveUser, findUserByStudentCode, isDatabaseConnected, testSupabaseConnection } from '../services/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { BookOpen, AlertCircle, ShieldCheck, UserCircle, Loader2, Lock, WifiOff, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, ShieldCheck, UserCircle, Loader2, Lock, WifiOff, CheckCircle2 } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -97,16 +97,20 @@ export default function Auth({ onLogin }: AuthProps) {
       {/* Form hình chữ nhật sắc nét, không bo tròn, nhỏ gọn */}
       <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6 w-full max-w-[340px] rounded-none">
         
-        <div className="flex items-center gap-3 mb-5 border-b-2 border-gray-100 pb-4">
-          <div className="bg-black p-2 rounded-none">
-            <BookOpen className="w-5 h-5 text-white" />
+        <div className="flex flex-col items-center text-center mb-5 border-b-2 border-gray-100 pb-4">
+          <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 bg-slate-100 shrink-0">
+            <img
+              src="/assets/aistudio/image_4c6de8f4.png"
+              alt="Logo EduQuiz NHC"
+              className="w-full h-full object-cover scale-[1.07]"
+            />
           </div>
           <div>
             <h2 className="text-lg font-black text-black uppercase tracking-tight leading-none">
               {isAdminMode ? 'ADMIN LOGIN' : 'STUDENT LOGIN'}
             </h2>
             <p className="text-gray-400 text-[9px] font-bold uppercase tracking-widest mt-1">
-              EduQuiz VN System
+              EduQuiz NHC System
             </p>
           </div>
         </div>
