@@ -98,7 +98,7 @@ export default function Auth({ onLogin }: AuthProps) {
       <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6 w-full max-w-[340px] rounded-none">
         
         <div className="flex flex-col items-center text-center mb-5 border-b-2 border-gray-100 pb-4">
-          <div className="w-26 h-26 rounded-full overflow-hidden border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 bg-slate-100 shrink-0">
+          <div className="w-30 h-30 rounded-full overflow-hidden border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 bg-slate-100 shrink-0">
             <img
               src="/assets/aistudio/image_4c6de8f4.png"
               alt="Logo EduQuiz NHC"
