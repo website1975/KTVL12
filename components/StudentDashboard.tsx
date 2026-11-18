@@ -18,7 +18,11 @@ import {
   deleteOfflineQuiz,
 } from '../services/offlineStorage';
 import { useOfflineSync } from '../services/offlineSyncManager';
-import { getActiveLiveReviewForStudent, getLiveReviewedQuizIds } from '../services/liveReviewService';
+import {
+  getActiveLiveReviewForStudent,
+  getLiveReviewedQuizIds,
+  subscribeActiveLiveReviewUpdates,
+} from '../services/liveReviewService';
 import LiveReviewStudentTaker from './LiveReviewStudentTaker';
 import OfflineManagerModal from './OfflineManagerModal';
 import QuizTaker from './QuizTaker';
@@ -140,36 +144,49 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
     loadDownloadedQuizzes();
   }, [loadDownloadedQuizzes, downloadedCount]);
 
-  // Kiểm tra phiên sửa bài trực tiếp
-  useEffect(() => {
-    let isMounted = true;
-    const checkLive = async () => {
+  const lastLiveCheckRef = React.useRef<number>(0);
+
+  const checkLiveReview = useCallback(
+    async (force: boolean = false) => {
       if (activeLiveSession) return;
+      const nowMs = Date.now();
+      if (!force && nowMs - lastLiveCheckRef.current < 5000) return;
+      lastLiveCheckRef.current = nowMs;
       try {
         const session = await getActiveLiveReviewForStudent(user);
-        if (isMounted) {
-          setLiveReviewSessionCheck((prev) => {
-            if (!prev && !session) return null;
-            if (
-              prev &&
-              session &&
-              prev.id === session.id &&
-              prev.updatedAt === session.updatedAt &&
-              prev.currentQuestionIndex === session.currentQuestionIndex &&
-              prev.status === session.status
-            ) {
-              return prev;
-            }
-            return session;
-          });
-        }
-        const reviewedIds = getLiveReviewedQuizIds();
-        if (isMounted) setLiveReviewedQuizIds(reviewedIds);
+        setLiveReviewSessionCheck((prev) => {
+          if (!prev && !session) return null;
+          if (
+            prev &&
+            session &&
+            prev.id === session.id &&
+            prev.updatedAt === session.updatedAt &&
+            prev.currentQuestionIndex === session.currentQuestionIndex &&
+            prev.status === session.status
+          ) {
+            return prev;
+          }
+          return session;
+        });
+        setLiveReviewedQuizIds(getLiveReviewedQuizIds());
       } catch (e) {}
+    },
+    [user.id, user.classId, user.className, activeLiveSession]
+  );
+
+  // Kiểm tra phiên sửa bài trực tiếp (chỉ chạy 1 lần lúc đăng nhập + Realtime/BroadcastChannel + khi bấm nút Làm mới)
+  useEffect(() => {
+    let isMounted = true;
+    const runCheck = (force = false) => {
+      if (!isMounted || activeLiveSession) return;
+      checkLiveReview(force);
     };
 
-    checkLive();
-    const interval = setInterval(checkLive, 4000);
+    runCheck(true);
+
+    const unsubscribeRealtime = subscribeActiveLiveReviewUpdates(() => {
+      runCheck(true);
+    });
 
     let liveChannel: BroadcastChannel | null = null;
     try {
@@ -185,7 +202,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
               setLiveReviewSessionCheck(null);
               setActiveLiveSession(null);
             } else if (!activeLiveSession) {
-              checkLive();
+              runCheck(true);
             }
           }
         };
@@ -194,14 +211,14 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      unsubscribeRealtime();
       if (liveChannel) {
         try {
           liveChannel.close();
         } catch (e) {}
       }
     };
-  }, [user, activeLiveSession]);
+  }, [checkLiveReview, activeLiveSession]);
 
   const handleDownloadQuiz = async (quiz: Quiz, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -320,13 +337,16 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
         if (forceRefresh && activeMenu === 'leaderboard') {
           setLeaderboardRefreshKey((prev) => prev + 1);
         }
+        if (forceRefresh) {
+          checkLiveReview(true);
+        }
       } catch (err) {
         console.error('Lỗi đồng bộ dữ liệu StudentDashboard:', err);
       } finally {
         setIsLoading(false);
       }
     },
-    [user.id, user.studentCode, gradeFilter, activeMenu, loadHonors]
+    [user.id, user.studentCode, gradeFilter, activeMenu, loadHonors, checkLiveReview]
   );
 
   const [sessionWarning, setSessionWarning] = useState<{
@@ -1159,7 +1179,7 @@ export default function StudentDashboard({ user, targetQuizId }: StudentDashboar
                 <button
                   type="button"
                   onClick={() => refreshData(false, true)}
-                  title="Làm mới dữ liệu"
+                  title="Làm mới dữ liệu & kiểm tra phát sóng trực tiếp"
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0 cursor-pointer"
                 >
                   <RefreshCw size={14} className={isLoading ? 'animate-spin text-blue-600' : ''} />
