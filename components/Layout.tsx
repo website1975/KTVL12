@@ -4,7 +4,10 @@ import { User } from '../types';
 import { LogOut, GraduationCap, Key, XCircle, Database, Sparkles } from 'lucide-react';
 import { changePassword, isDatabaseConnected } from '../services/storage';
 import { getAIKey } from '../services/gemini';
-
+import {
+  verifyPortalCurrentPassword,
+  syncPasswordToPortal,
+} from '../services/ecosystemSso';
 interface LayoutProps {
   children: React.ReactNode;
   user: User | null;
@@ -23,29 +26,56 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
   const isAIReady = Boolean(rawKey && rawKey.length > 10);
 
   const handleChangePass = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!user) return;
-      setMsg(null);
-      setIsSubmitting(true);
+    e.preventDefault();
+    if (!user) return;
+    setMsg(null);
+    setIsSubmitting(true);
 
-      if (currentPassInput !== user.password) {
-          setMsg({ text: 'Mật khẩu hiện tại không đúng!', type: 'error' });
-          setIsSubmitting(false);
-          return;
+    try {
+      let isCurrentValid = currentPassInput === user.password;
+
+      // Trường hợp học sinh vào từ SSO (chưa có pass cục bộ hoặc mới đổi pass bên Web Học Tập)
+      if (!isCurrentValid && user.role === 'student') {
+        const accountCode = user.studentCode || user.username;
+        isCurrentValid = await verifyPortalCurrentPassword(accountCode, currentPassInput);
+      }
+
+      if (!isCurrentValid) {
+        setMsg({ text: 'Mật khẩu hiện tại không đúng!', type: 'error' });
+        setIsSubmitting(false);
+        return;
       }
 
       const success = await changePassword(user.id, newPassInput);
-      
-      setIsSubmitting(false);
-      if (success) {
-          alert("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.");
-          setIsChangePassOpen(false);
-          onLogout();
-      } else {
-          setMsg({ text: 'Có lỗi xảy ra, vui lòng thử lại.', type: 'error' });
+      if (!success) {
+        setIsSubmitting(false);
+        setMsg({ text: 'Có lỗi xảy ra, vui lòng thử lại.', type: 'error' });
+        return;
       }
-  };
 
+      // Ping đồng bộ mật khẩu mới sang Website Học Tập
+      let portalNotice = '';
+      if (user.role === 'student') {
+        const accountCode = user.studentCode || user.username;
+        const syncRes = await syncPasswordToPortal({
+          username: accountCode,
+          newPassword: newPassInput,
+          oldPassword: currentPassInput,
+        });
+        if (!syncRes.ok) {
+          portalNotice = `\n(Lưu ý: chưa đồng bộ được sang Web Học Tập: ${syncRes.error || 'lỗi kết nối'})`;
+        }
+      }
+
+      setIsSubmitting(false);
+      alert(`Đổi mật khẩu thành công! Vui lòng đăng nhập lại.${portalNotice}`);
+      setIsChangePassOpen(false);
+      onLogout();
+    } catch {
+      setIsSubmitting(false);
+      setMsg({ text: 'Có lỗi xảy ra, vui lòng thử lại.', type: 'error' });
+    }
+  };
   const openChangePass = () => {
       setMsg(null);
       setCurrentPassInput('');
