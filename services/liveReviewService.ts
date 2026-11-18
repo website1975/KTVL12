@@ -260,10 +260,30 @@ export async function getActiveLiveReviewSessions(): Promise<LiveReviewSession[]
   // 2. Quét từ Supabase Cloud (Nguồn dữ liệu tối cao)
   if (isDatabaseConnected() && supabase) {
     try {
+      // Kiểm tra HEAD trước (0 byte payload) để không tải JSON cột data khi không có phiên Live nào đang mở
+      const { count, error: countError } = await supabase
+        .from('exam_sessions')
+        .select('id', { count: 'exact', head: true })
+        .like('id', 'live_review_%')
+        .eq('data->>status', 'active');
+
+      if (!countError && count === 0) {
+        try {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(LOCAL_STORAGE_SESSION_PREFIX)) {
+              localStorage.removeItem(k);
+            }
+          }
+        } catch (e) {}
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('exam_sessions')
         .select('id, data')
-        .like('id', 'live_review_%');
+        .like('id', 'live_review_%')
+        .eq('data->>status', 'active');
 
       if (!error && Array.isArray(data)) {
         const activeCloudIds = new Set<string>();
@@ -831,5 +851,35 @@ export function getLiveReviewedQuizIds(): string[] {
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
+  }
+}
+
+/**
+ * Lắng nghe thay đổi phiên Live Review qua Supabase Realtime (tránh polling liên tục mỗi vài giây)
+ */
+export function subscribeActiveLiveReviewUpdates(onChange: () => void): () => void {
+  if (!isDatabaseConnected() || !supabase) return () => {};
+  try {
+    const channel = supabase
+      .channel(`live_review_watch_${Math.random().toString(36).slice(2, 8)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'exam_sessions' },
+        (payload: any) => {
+          const recordId = String(payload?.new?.id || payload?.old?.id || '');
+          if (!recordId || recordId.startsWith('live_review_')) {
+            onChange();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch (e) {}
+    };
+  } catch (e) {
+    return () => {};
   }
 }
